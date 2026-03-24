@@ -9,6 +9,7 @@ let currentUser = null;
 let activeAiPlatform = 'x-com';
 let activeTrendSource = 'all';
 let activePatternFilter = 'all';
+let sidebarOpen = false;
 
 async function fetchJson(url, options = {}) {
   const response = await fetch(url, options);
@@ -46,6 +47,36 @@ function fmtUsd(value) {
 function renderStatus(text) {
   const status = document.getElementById('status');
   status.textContent = text;
+}
+
+function closeSidebarMenu() {
+  const sidebar = document.getElementById('app-sidebar');
+  const menuToggle = document.getElementById('sidebar-menu-toggle');
+  if (!sidebar || !menuToggle) {
+    return;
+  }
+  sidebarOpen = false;
+  sidebar.classList.remove('sidebar-open');
+  menuToggle.setAttribute('aria-expanded', 'false');
+}
+
+function openSidebarMenu() {
+  const sidebar = document.getElementById('app-sidebar');
+  const menuToggle = document.getElementById('sidebar-menu-toggle');
+  if (!sidebar || !menuToggle) {
+    return;
+  }
+  sidebarOpen = true;
+  sidebar.classList.add('sidebar-open');
+  menuToggle.setAttribute('aria-expanded', 'true');
+}
+
+function toggleSidebarMenu() {
+  if (sidebarOpen) {
+    closeSidebarMenu();
+  } else {
+    openSidebarMenu();
+  }
 }
 
 function setAuthMessage(text, isError = false) {
@@ -172,8 +203,11 @@ function renderEarningsBoard(payload) {
   target.innerHTML = '';
   const scheduleLabel = payload.scheduleLabel || 'Tomorrow';
   payload.items.forEach((item) => {
+    const up = Number(item.predictedMove.up || 0);
+    const down = Number(item.predictedMove.down || 0);
+    const directionClass = up >= down ? 'up' : 'down';
     const card = document.createElement('article');
-    card.className = `earnings-card earnings-card--${item.direction}`;
+    card.className = `earnings-card earnings-card--${directionClass}`;
     card.setAttribute('role', 'button');
     card.setAttribute('tabindex', '0');
     card.addEventListener('click', () => renderEarningsDetail(item));
@@ -186,9 +220,9 @@ function renderEarningsBoard(payload) {
     card.innerHTML = `
       <h3>${item.ticker}</h3>
       <p>${scheduleLabel} • ${item.reportTimeLabel}</p>
-      <p><strong>${fmtPct(item.predictedMove.up)} up</strong> / ${fmtPct(item.predictedMove.down)} down</p>
+      <p><strong>${fmtPct(up)} up</strong> / ${fmtPct(down)} down</p>
       <p class="small-note">Volume: ${Number(item.volume || 0).toLocaleString()}</p>
-      <p class="small-note">${item.direction.toUpperCase()} bias</p>
+      <p class="small-note">${directionClass.toUpperCase()} bias</p>
     `;
     target.appendChild(card);
   });
@@ -233,7 +267,12 @@ function renderEarningsDetail(item) {
   const growthHtml = growth.map((line) => `<li>${line}</li>`).join('');
   const outlookHtml = outlookLines.map((line) => `<li>${line}</li>`).join('');
   const analystPushesHtml = analystPushes
-    .map((push) => `<li>${push.firm}: ${push.action} (${push.impact})</li>`)
+    .map((push) => {
+      if (typeof push === 'string') {
+        return `<li>${push}</li>`;
+      }
+      return `<li>${push.firm}: ${push.action} (${push.impact})</li>`;
+    })
     .join('');
 
   target.innerHTML = `
@@ -759,6 +798,34 @@ function setupAiSidebar() {
   });
 }
 
+function setupSidebarMenu() {
+  const menuToggle = document.getElementById('sidebar-menu-toggle');
+  const sidebar = document.getElementById('app-sidebar');
+  if (!menuToggle || !sidebar) {
+    return;
+  }
+
+  menuToggle.addEventListener('click', () => {
+    toggleSidebarMenu();
+  });
+
+  document.addEventListener('click', (event) => {
+    const target = event.target;
+    if (!(target instanceof Element)) {
+      return;
+    }
+    if (!sidebar.contains(target) && target !== menuToggle && !menuToggle.contains(target)) {
+      closeSidebarMenu();
+    }
+  });
+
+  document.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape') {
+      closeSidebarMenu();
+    }
+  });
+}
+
 function setupStockForm() {
   const form = document.getElementById('stock-form');
   form.addEventListener('submit', async (event) => {
@@ -838,6 +905,7 @@ function setupUnusualRefresh() {
 async function init() {
   authToken = localStorage.getItem('dumbdollars_token') || '';
   setupAuthForms();
+  setupSidebarMenu();
   setupAiSidebar();
   setupStockForm();
   setupScanForm();

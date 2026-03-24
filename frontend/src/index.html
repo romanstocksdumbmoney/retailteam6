@@ -9,6 +9,11 @@
   <body>
     <main class="container">
       <header class="hero">
+        <div class="menu-bar">
+          <button id="sidebar-menu-toggle" class="menu-toggle-btn" type="button" aria-expanded="true" aria-controls="sidebar-panel">
+            Menu
+          </button>
+        </div>
         <div class="diamond-banner">
           <div class="diamond-icon-wrap" aria-hidden="true">
             <span class="diamond-emoji">💎🙌</span>
@@ -60,7 +65,7 @@
       </header>
 
       <div class="app-layout">
-        <aside class="sidebar card">
+        <aside id="sidebar-panel" class="sidebar card">
           <div class="section-header">
             <h2>AI Discovery</h2>
             <span class="chip">Free</span>

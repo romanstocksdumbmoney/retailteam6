@@ -41,31 +41,33 @@ const EARNINGS_WATCHLIST = [
 ];
 
 const EARNINGS_VOLUME_BASE = {
-  AAPL: 95_000_000,
-  MSFT: 42_000_000,
-  NVDA: 68_000_000,
-  AMZN: 56_000_000,
-  GOOGL: 34_000_000,
-  META: 31_000_000,
-  TSLA: 77_000_000,
-  NFLX: 19_000_000,
-  AMD: 49_000_000,
-  JPM: 16_000_000,
-  BAC: 28_000_000,
-  UNH: 7_000_000,
-  AVGO: 22_000_000,
-  QCOM: 15_000_000,
-  ORCL: 11_000_000,
-  CRM: 8_000_000,
-  PYPL: 12_000_000,
-  DIS: 10_000_000,
-  INTC: 33_000_000,
-  PFE: 18_000_000,
-  KO: 14_000_000,
-  NKE: 11_000_000,
-  WMT: 9_000_000,
-  COST: 8_000_000
+  AAPL: 125_000_000,
+  MSFT: 92_000_000,
+  NVDA: 118_000_000,
+  AMZN: 101_000_000,
+  GOOGL: 76_000_000,
+  META: 72_000_000,
+  TSLA: 114_000_000,
+  NFLX: 38_000_000,
+  AMD: 109_000_000,
+  JPM: 31_000_000,
+  BAC: 44_000_000,
+  UNH: 18_000_000,
+  AVGO: 47_000_000,
+  QCOM: 29_000_000,
+  ORCL: 23_000_000,
+  CRM: 19_000_000,
+  PYPL: 26_000_000,
+  DIS: 25_000_000,
+  INTC: 55_000_000,
+  PFE: 33_000_000,
+  KO: 22_000_000,
+  NKE: 20_000_000,
+  WMT: 24_000_000,
+  COST: 21_000_000
 };
+
+const TOMORROW_EARNINGS_CALLS = ['AAPL', 'NVDA', 'TSLA', 'AMD', 'AMZN', 'MSFT', 'META', 'GOOGL'];
 
 const AI_DISCOVERY_PLATFORMS = [
   {
@@ -453,7 +455,7 @@ function getEarningsGamblingBoard(limit = 5) {
   const seed = hashString(`earnings:${tomorrowSeed()}`);
   const boundedLimit = Math.max(1, Math.min(8, Math.trunc(limit)));
   const scheduleDate = tomorrowIsoDate();
-  const rankedByVolume = EARNINGS_WATCHLIST.map((symbol) => ({
+  const rankedByVolume = TOMORROW_EARNINGS_CALLS.map((symbol) => ({
     symbol,
     estimatedVolume: estimateEarningsDayVolume(symbol)
   }))
