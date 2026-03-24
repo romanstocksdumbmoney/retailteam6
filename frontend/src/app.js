@@ -11,7 +11,6 @@ let activePatternFilter = 'all';
 let sidebarOpen = false;
 let billingInfo = null;
 let proPopupVisible = false;
-let proPlanVisible = false;
 
 function openExternal(url) {
   try {
@@ -82,23 +81,11 @@ function closeProPopup() {
 }
 
 function openProPlanScreen() {
-  const backdrop = document.getElementById('pro-plan-backdrop');
-  if (!backdrop) {
+  const targetUrl = '/pro.html';
+  if (window.location.pathname.endsWith('/pro.html')) {
     return;
   }
-  backdrop.classList.remove('hidden');
-  document.body.classList.add('pro-plan-open');
-  proPlanVisible = true;
-}
-
-function closeProPlanScreen() {
-  const backdrop = document.getElementById('pro-plan-backdrop');
-  if (!backdrop) {
-    return;
-  }
-  backdrop.classList.add('hidden');
-  document.body.classList.remove('pro-plan-open');
-  proPlanVisible = false;
+  window.location.href = targetUrl;
 }
 
 function closeSidebarMenu() {
@@ -222,7 +209,9 @@ async function beginProCheckoutFlow() {
         ...headersWithPlan()
       }
     });
-    closeProPlanScreen();
+    if (window.location.pathname.endsWith('/pro.html')) {
+      sessionStorage.setItem('dumbdollars_return_after_checkout', '/');
+    }
     window.location.href = payload.url;
   } catch (error) {
     setAuthMessage(error.message || 'Could not start checkout.', true);
@@ -1298,35 +1287,11 @@ function setupProPopup() {
   });
 }
 
-function setupProPlanScreen() {
-  const backdrop = document.getElementById('pro-plan-backdrop');
-  const closeBtn = document.getElementById('pro-plan-close');
-  const continueBtn = document.getElementById('pro-plan-start');
-  if (!backdrop || !closeBtn || !continueBtn) {
-    return;
-  }
-  closeBtn.addEventListener('click', closeProPlanScreen);
-  continueBtn.addEventListener('click', async () => {
-    await beginProCheckoutFlow();
-  });
-  backdrop.addEventListener('click', (event) => {
-    if (event.target === backdrop) {
-      closeProPlanScreen();
-    }
-  });
-  document.addEventListener('keydown', (event) => {
-    if (event.key === 'Escape' && proPlanVisible) {
-      closeProPlanScreen();
-    }
-  });
-}
-
 async function init() {
   authToken = localStorage.getItem('dumbdollars_token') || '';
   await fetchBillingInfo();
   setupAuthForms();
   setupProPopup();
-  setupProPlanScreen();
   setupSidebarMenu();
   setupAiSidebar();
   setupStockForm();
