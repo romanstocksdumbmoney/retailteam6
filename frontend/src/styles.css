@@ -244,18 +244,30 @@ body {
   margin-bottom: 0.6rem;
 }
 
-.pro-plan-emoji {
-  width: 92px;
-  height: 92px;
-  border-radius: 20px;
-  display: grid;
-  place-items: center;
-  border: 2px solid #facc15;
-  background: #facc15;
-  color: #0f172a;
-  font-size: 2rem;
-  line-height: 1;
-  box-shadow: inset 0 -10px 16px rgba(0, 0, 0, 0.2);
+.pro-plan-logo-image {
+  width: min(220px, 52vw);
+  height: auto;
+  display: block;
+  filter: drop-shadow(0 10px 22px rgba(0, 0, 0, 0.45));
+}
+
+.payment-security-banner {
+  margin-top: 0.75rem;
+  border: 1px solid rgba(34, 197, 94, 0.45);
+  border-radius: 10px;
+  background: rgba(22, 163, 74, 0.16);
+  padding: 0.6rem 0.75rem;
+}
+
+.payment-security-banner h3 {
+  margin: 0 0 0.25rem;
+  color: #86efac;
+}
+
+.payment-security-banner p {
+  margin: 0;
+  color: #dcfce7;
+  font-size: 0.9rem;
 }
 
 .pro-plan-modal h3 {

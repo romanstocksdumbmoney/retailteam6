@@ -14,6 +14,8 @@ async function fetchJson(url, options = {}) {
   return response.json();
 }
 
+const CHECKOUT_BUTTON_ID = 'payment-start';
+
 function getAuthHeaders() {
   const token = localStorage.getItem('dumbdollars_token') || '';
   if (!token) {
@@ -61,11 +63,29 @@ function renderTrustPoints(preview, billingInfo) {
   trustPoints.innerHTML = rows.map((item) => `<li>${item}</li>`).join('');
 }
 
+function renderPlanAndBenefits(preview) {
+  const planLine = document.getElementById('payment-plan-line');
+  const benefits = document.getElementById('payment-benefits');
+  if (!planLine || !benefits) {
+    return;
+  }
+  if (!preview) {
+    planLine.textContent = '$15/month';
+    return;
+  }
+  const amount = Number(preview.monthlyAmountUsd || 15);
+  planLine.textContent = `${preview.planName || 'DumbDollars Pro'} • $${amount}/month`;
+  if (Array.isArray(preview.benefits) && preview.benefits.length > 0) {
+    benefits.innerHTML = preview.benefits.map((item) => `<li>${item}</li>`).join('');
+  }
+}
+
 async function loadPaymentSummary() {
   const token = localStorage.getItem('dumbdollars_token') || '';
-  const checkoutButton = document.getElementById('payment-start-checkout');
+  const checkoutButton = document.getElementById(CHECKOUT_BUTTON_ID);
   if (!token) {
     setStatus('Sign in on the dashboard first, then return to complete payment.', true);
+    renderPlanAndBenefits(null);
     renderTrustPoints(null, null);
     if (checkoutButton) {
       checkoutButton.disabled = true;
@@ -77,12 +97,14 @@ async function loadPaymentSummary() {
     const preview = await fetchJson('/api/auth/billing/checkout-preview', {
       headers: getAuthHeaders()
     });
+    renderPlanAndBenefits(preview);
     renderTrustPoints(preview, billingInfo);
     if (checkoutButton) {
       checkoutButton.disabled = !Boolean(billingInfo?.configured);
     }
     setStatus('Secure checkout is ready.');
   } catch (error) {
+    renderPlanAndBenefits(null);
     renderTrustPoints(null, null);
     if (checkoutButton) {
       checkoutButton.disabled = true;
@@ -98,6 +120,10 @@ async function beginCheckout() {
     return;
   }
   try {
+    const checkoutButton = document.getElementById(CHECKOUT_BUTTON_ID);
+    if (checkoutButton) {
+      checkoutButton.disabled = true;
+    }
     setStatus('Starting secure checkout...');
     const session = await fetchJson('/api/auth/stripe/create-checkout-session', {
       method: 'POST',
@@ -106,14 +132,21 @@ async function beginCheckout() {
         ...getAuthHeaders()
       }
     });
+    if (!session || typeof session.url !== 'string' || !session.url.startsWith('https://checkout.stripe.com/')) {
+      throw new Error('Could not verify secure Stripe checkout URL.');
+    }
     window.location.href = session.url;
   } catch (error) {
     setStatus(error.message || 'Could not start secure checkout.', true);
+    const checkoutButton = document.getElementById(CHECKOUT_BUTTON_ID);
+    if (checkoutButton) {
+      checkoutButton.disabled = false;
+    }
   }
 }
 
 function initPaymentPage() {
-  const startButton = document.getElementById('payment-start-checkout');
+  const startButton = document.getElementById(CHECKOUT_BUTTON_ID);
   if (!startButton) {
     return;
   }
