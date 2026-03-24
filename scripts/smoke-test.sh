@@ -38,6 +38,7 @@ check_status_code() {
 }
 
 check_json_contains "/health" "\"status\":\"ok\""
+check_json_contains "/api/auth/me" "\"plan\":\"free\""
 check_json_contains "/api/market/stock-outlook?ticker=TSLA" "\"ticker\":\"TSLA\""
 check_json_contains "/api/market/scan-x?ticker=TSLA&method=llm-sentiment" "\"isLimited\":true"
 check_status_code "/api/market/options?ticker=TSLA&spot=220&strike=230&daysToExpiry=21&iv=0.42" "403"

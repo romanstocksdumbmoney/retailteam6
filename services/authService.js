@@ -1,0 +1,46 @@
+const jwt = require('jsonwebtoken');
+const bcrypt = require('bcryptjs');
+
+const AUTH_SECRET = process.env.AUTH_SECRET || 'local-dev-secret-change-me';
+const AUTH_EXPIRATION = process.env.AUTH_TOKEN_EXPIRATION || '7d';
+
+async function hashPassword(password) {
+  return bcrypt.hash(String(password), 10);
+}
+
+async function verifyPassword(password, passwordHash) {
+  return bcrypt.compare(String(password || ''), String(passwordHash || ''));
+}
+
+function signAuthToken(payload) {
+  return jwt.sign(payload, AUTH_SECRET, { expiresIn: AUTH_EXPIRATION });
+}
+
+function readAuthToken(token) {
+  try {
+    return jwt.verify(String(token || ''), AUTH_SECRET);
+  } catch (_error) {
+    return null;
+  }
+}
+
+function parseAuthToken(authorizationHeader) {
+  const raw = String(authorizationHeader || '');
+  const token = raw.replace(/^Bearer\s+/i, '').trim();
+  if (!token) {
+    return { ok: false };
+  }
+  const payload = readAuthToken(token);
+  if (!payload || !payload.userId) {
+    return { ok: false };
+  }
+  return { ok: true, userId: payload.userId, email: payload.email || '' };
+}
+
+module.exports = {
+  hashPassword,
+  verifyPassword,
+  signAuthToken,
+  readAuthToken,
+  parseAuthToken
+};

@@ -15,6 +15,25 @@ body {
   padding: 2rem 1rem 3rem;
 }
 
+.app-layout {
+  display: grid;
+  grid-template-columns: 280px minmax(0, 1fr);
+  gap: 1rem;
+  align-items: start;
+}
+
+.sidebar {
+  position: sticky;
+  top: 1rem;
+  display: grid;
+  gap: 1rem;
+}
+
+.main-panels {
+  display: grid;
+  gap: 1rem;
+}
+
 .hero {
   margin-bottom: 1rem;
 }
@@ -31,6 +50,25 @@ h1 {
 .status {
   margin-top: 0.6rem;
   color: #cbd5e1;
+}
+
+.hero-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.auth-row {
+  display: grid;
+  gap: 0.55rem;
+  margin-top: 0.75rem;
+}
+
+.auth-form {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
 }
 
 .plan-row {
@@ -67,6 +105,48 @@ h1 {
   display: flex;
   align-items: center;
   gap: 0.5rem;
+}
+
+.auth-bar {
+  display: grid;
+  gap: 0.6rem;
+  margin-top: 0.9rem;
+  padding: 0.75rem;
+  border: 1px solid #334155;
+  border-radius: 10px;
+  background: #111827;
+}
+
+.auth-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  gap: 0.55rem;
+}
+
+.auth-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.55rem;
+  align-items: center;
+}
+
+.btn-secondary {
+  background: #0f172a;
+  border-color: #334155;
+}
+
+.btn-secondary:hover {
+  background: #1e293b;
+}
+
+.open-link {
+  color: #93c5fd;
+  text-decoration: none;
+  font-weight: 700;
+}
+
+.open-link:hover {
+  text-decoration: underline;
 }
 
 input,
@@ -204,6 +284,115 @@ label {
   gap: 0.55rem;
 }
 
+.stack-item {
+  background: #0f172a;
+  border: 1px solid #334155;
+  border-radius: 8px;
+  padding: 0.6rem;
+}
+
+.stack-item p {
+  margin: 0.2rem 0;
+}
+
+.trend-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.trend-row a {
+  color: #93c5fd;
+  text-decoration: none;
+  font-size: 0.88rem;
+}
+
+.trend-row a:hover {
+  text-decoration: underline;
+}
+
+.trend-card {
+  border-radius: 10px;
+  border: 1px solid #334155;
+  padding: 0.6rem;
+  background: #0f172a;
+}
+
+.trend-card h4 {
+  margin: 0;
+}
+
+.trend-card p {
+  margin: 0.25rem 0;
+  font-size: 0.86rem;
+}
+
+.trend-card--up {
+  background: rgba(16, 185, 129, 0.12);
+  border-color: rgba(16, 185, 129, 0.38);
+}
+
+.trend-card--down {
+  background: rgba(239, 68, 68, 0.12);
+  border-color: rgba(239, 68, 68, 0.38);
+}
+
+.trend-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.55rem;
+}
+
+.trend-item {
+  background: #0f172a;
+  border: 1px solid #334155;
+  border-radius: 8px;
+  padding: 0.6rem;
+}
+
+.trend-item p {
+  margin: 0.2rem 0;
+  font-size: 0.85rem;
+}
+
+.ai-platforms {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.55rem;
+}
+
+.ai-platforms li {
+  background: #0f172a;
+  border: 1px solid #334155;
+  border-radius: 8px;
+  padding: 0.6rem;
+}
+
+.ai-platforms a {
+  color: #93c5fd;
+  text-decoration: none;
+  font-weight: 700;
+}
+
+.ai-platforms a:hover {
+  text-decoration: underline;
+}
+
+.momentum-up {
+  color: #34d399;
+  font-weight: 700;
+}
+
+.momentum-down {
+  color: #f87171;
+  font-weight: 700;
+}
+
 .earnings-grid,
 #earnings-gambling-grid {
   display: grid;
@@ -249,4 +438,14 @@ label {
   padding: 0.6rem;
   color: #fcd34d;
   font-size: 0.9rem;
+}
+
+@media (max-width: 960px) {
+  .app-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .sidebar {
+    position: static;
+  }
 }

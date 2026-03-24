@@ -5,13 +5,20 @@ const {
   buildOptionsSnapshot,
   buildEarningsGambling,
   buildSocialScan,
-  buildUnusualMoves
+  buildUnusualMoves,
+  getAiDiscovery,
+  getTrendTrades
 } = require('../services/marketEngine');
+const { parseAuthToken } = require('../services/authService');
+const { getUserById } = require('../services/userStore');
 
 const router = express.Router();
 const FREE_SCAN_METHODS = new Set(['llm-sentiment']);
 
 function parsePlan(req) {
+  if (req.user) {
+    return req.user.plan === 'pro' ? 'pro' : 'free';
+  }
   const raw = String(
     req.header('x-user-plan') || req.header('x-plan') || req.header('x-access-tier') || req.query.plan || 'free'
   ).toLowerCase();
@@ -20,6 +27,19 @@ function parsePlan(req) {
 
 function isPro(req) {
   return parsePlan(req) === 'pro';
+}
+
+function attachOptionalUser(req, _res, next) {
+  const parsed = parseAuthToken(req.header('authorization'));
+  if (!parsed.ok) {
+    return next();
+  }
+  const user = getUserById(parsed.userId);
+  if (!user) {
+    return next();
+  }
+  req.user = user;
+  return next();
 }
 
 function requirePro(req, res, next) {
@@ -216,6 +236,8 @@ function optionsHandler(req, res) {
   });
 }
 
+router.use(attachOptionalUser);
+
 router.get('/unusual-moves', requirePro, (_req, res) => {
   const raw = buildUnusualMoves();
   return res.json({
@@ -257,6 +279,17 @@ router.get('/pro-status', (req, res) => {
       'unusual moves feed'
     ]
   });
+});
+
+router.get('/ai-discovery', (req, res) => {
+  const query = String(req.query.query || req.query.q || '');
+  return res.json(getAiDiscovery(query));
+});
+
+router.get('/trend-trades', requirePro, (req, res) => {
+  const limit = Number(req.query.limit || 8);
+  const boundedLimit = Number.isFinite(limit) ? Math.max(1, Math.min(20, Math.trunc(limit))) : 8;
+  return res.json(getTrendTrades(boundedLimit));
 });
 
 router.get('/stock-outlook', stockOutlookHandler);

@@ -28,6 +28,72 @@ const EARNINGS_WATCHLIST = [
   'UNH'
 ];
 
+const AI_DISCOVERY_PLATFORMS = [
+  {
+    id: 'x-com',
+    label: 'X.com Pulse',
+    type: 'social',
+    description: 'Track trader narratives, breaking chatter, and ticker velocity.',
+    searchTemplate: 'https://x.com/search?q={query}',
+    freeAccess: true
+  },
+  {
+    id: 'openai',
+    label: 'OpenAI',
+    type: 'ai',
+    description: 'General AI research assistant for market context and summaries.',
+    searchTemplate: 'https://chat.openai.com/',
+    freeAccess: true
+  },
+  {
+    id: 'claude',
+    label: 'Claude',
+    type: 'ai',
+    description: 'Long-form reasoning and synthesis for catalysts and setups.',
+    searchTemplate: 'https://claude.ai/',
+    freeAccess: true
+  },
+  {
+    id: 'gemini',
+    label: 'Gemini',
+    type: 'ai',
+    description: 'Fast exploration of market themes and scenario planning.',
+    searchTemplate: 'https://gemini.google.com/',
+    freeAccess: true
+  },
+  {
+    id: 'perplexity',
+    label: 'Perplexity',
+    type: 'research',
+    description: 'Source-linked market research and headline validation.',
+    searchTemplate: 'https://www.perplexity.ai/',
+    freeAccess: true
+  }
+];
+
+const TREND_TRADE_SOURCES = [
+  'TikTok',
+  'YouTube Shorts',
+  'YouTube',
+  'Snapchat Spotlight',
+  'Instagram Reels',
+  'Facebook',
+  'X.com'
+];
+
+const TREND_TRADE_SYMBOLS = [
+  'META',
+  'GOOGL',
+  'NFLX',
+  'SNAP',
+  'AMZN',
+  'NVDA',
+  'AAPL',
+  'MSFT',
+  'TSLA',
+  'RBLX'
+];
+
 function clamp(value, min, max) {
   return Math.max(min, Math.min(max, value));
 }
@@ -267,6 +333,55 @@ function getEarningsGamblingBoard(limit = 5) {
   });
 }
 
+function getAiDiscovery(query = '') {
+  const cleanedQuery = String(query || '').trim();
+  const queryToken = cleanedQuery ? encodeURIComponent(cleanedQuery) : '';
+
+  return {
+    query: cleanedQuery,
+    platforms: AI_DISCOVERY_PLATFORMS.map((platform) => ({
+      ...platform,
+      searchUrl: platform.searchTemplate.replace('{query}', queryToken)
+    }))
+  };
+}
+
+function getTrendTrades(limit = 8) {
+  const seed = hashString(`trend-trades:${daySeed()}`);
+  const total = Math.max(1, Math.min(20, Math.trunc(limit)));
+  const rows = [];
+
+  for (let i = 0; i < total; i += 1) {
+    const source = TREND_TRADE_SOURCES[Math.floor(pseudoRandom(seed + i * 3) * TREND_TRADE_SOURCES.length)];
+    const symbol = TREND_TRADE_SYMBOLS[Math.floor(pseudoRandom(seed + i * 5 + 1) * TREND_TRADE_SYMBOLS.length)];
+    const trendScore = clamp(Math.round(60 + pseudoRandom(seed + i * 7 + 2) * 40), 50, 100);
+    const views = Math.round((0.5 + pseudoRandom(seed + i * 11 + 3) * 8.5) * 1_000_000);
+    const momentum = pseudoRandom(seed + i * 13 + 4) > 0.5 ? 'up' : 'down';
+    const confidenceUp = clamp(Math.round(45 + pseudoRandom(seed + i * 17 + 5) * 30), 35, 75);
+    const confidenceDown = 100 - confidenceUp;
+
+    rows.push({
+      source,
+      symbol,
+      trendScore,
+      views,
+      momentum,
+      confidence: {
+        up: confidenceUp,
+        down: confidenceDown
+      },
+      visibility: trendScore > 78 ? 'public' : 'emerging'
+    });
+  }
+
+  rows.sort((a, b) => b.trendScore - a.trendScore);
+
+  return {
+    generatedAt: new Date().toISOString(),
+    items: rows
+  };
+}
+
 module.exports = {
   SCANNER_METHODS,
   AI_ENGINES,
@@ -281,5 +396,7 @@ module.exports = {
   getUnusualMoves,
   buildUnusualMoves: getUnusualMoves,
   getEarningsGamblingBoard,
-  buildEarningsGambling: getEarningsGamblingBoard
+  buildEarningsGambling: getEarningsGamblingBoard,
+  getAiDiscovery,
+  getTrendTrades
 };

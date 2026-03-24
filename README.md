@@ -45,11 +45,31 @@ Core focus areas:
 - Unusual moves feed (Pro)
 - "Earnings Gambling" board with green/red directional cards
 
-## Plan gating
-Default plan is `free`. To simulate Pro access for API calls, send one of:
-- `x-user-plan: pro`
-- `x-plan: pro`
-- `x-access-tier: pro`
+## Authentication + billing (Stripe)
+
+DumbDollars now supports user accounts and paid Pro subscriptions.
+
+### Local auth
+- `POST /api/auth/register` with `{ "email", "password" }`
+- `POST /api/auth/login` with `{ "email", "password" }`
+- `GET /api/auth/me` (requires bearer token)
+- `POST /api/auth/logout`
+
+### Stripe Pro plan
+- Pro is set to **$15/month**
+- Endpoint to create checkout:
+  - `POST /api/auth/billing/create-checkout-session`
+- Endpoint to open billing portal:
+  - `POST /api/auth/billing/create-portal-session`
+- Webhook endpoint:
+  - `POST /api/auth/billing/webhook`
+
+Required env vars:
+- `JWT_SECRET`
+- `STRIPE_SECRET_KEY`
+- `STRIPE_WEBHOOK_SECRET`
+- `STRIPE_PRICE_ID`
+- `STRIPE_PRO_PRICE_USD=15`
 
 ## API Endpoints
 ### Public endpoints
@@ -61,12 +81,12 @@ Default plan is `free`. To simulate Pro access for API calls, send one of:
 - `GET /api/market/earnings-gambling?limit=5`
 - `GET /health`
 
-### Pro endpoints
+### Pro endpoints (requires authenticated user with active Stripe Pro subscription)
 - `GET /api/market/options?ticker=TSLA&spot=220&strike=230&daysToExpiry=21&iv=0.42&type=call`
 - `GET /api/market/unusual-moves`
 - `GET /api/market/scan-x?ticker=TSLA&method=multi` (and other non-free methods)
 
-If plan is not Pro, locked endpoints return `403` with an upgrade message.
+If account is not Pro, locked endpoints return `403` with an upgrade message.
 
 ## Frontend scripts
 From the `frontend` directory:
@@ -75,4 +95,4 @@ From the `frontend` directory:
 
 ## Notes
 - Current data is simulated for MVP behavior and UI wiring.
-- Next step is integrating real market/news/options providers and billing/authentication.
+- Next step is integrating live market/news/options provider APIs.

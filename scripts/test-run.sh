@@ -15,17 +15,17 @@ cleanup() {
 
 trap cleanup EXIT
 
-echo "[1/4] Installing backend dependencies..."
+echo "[1/5] Installing backend dependencies..."
 (cd "$ROOT_DIR" && npm install)
 
-echo "[2/4] Installing frontend dependencies..."
+echo "[2/5] Installing frontend dependencies..."
 (cd "$ROOT_DIR/frontend" && npm install)
 
-echo "[3/4] Building frontend..."
+echo "[3/5] Building frontend..."
 (cd "$ROOT_DIR/frontend" && npm run build)
 
-echo "[4/5] Starting backend..."
-(cd "$ROOT_DIR" && node server.js > "$SERVER_LOG" 2>&1) &
+echo "[4/5] Starting backend with test auth secret..."
+(cd "$ROOT_DIR" && JWT_SECRET="${JWT_SECRET:-dumbdollars-dev-secret}" node server.js > "$SERVER_LOG" 2>&1) &
 SERVER_PID=$!
 
 echo "Waiting for backend health endpoint..."

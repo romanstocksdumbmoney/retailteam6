@@ -1,8 +1,12 @@
 const PLAN_FREE = 'free';
 const PLAN_PRO = 'pro';
+const PRO_MONTHLY_PRICE = '$15/month';
 
 let activePlan = PLAN_FREE;
 let activeTicker = 'AAPL';
+let authToken = '';
+let currentUser = null;
+let activeAiPlatform = 'x-com';
 
 async function fetchJson(url, options = {}) {
   const response = await fetch(url, options);
@@ -22,7 +26,11 @@ async function fetchJson(url, options = {}) {
 }
 
 function headersWithPlan() {
-  return { 'x-user-plan': activePlan };
+  const headers = {};
+  if (authToken) {
+    headers.authorization = `Bearer ${authToken}`;
+  }
+  return headers;
 }
 
 function fmtPct(value) {
@@ -36,6 +44,45 @@ function fmtUsd(value) {
 function renderStatus(text) {
   const status = document.getElementById('status');
   status.textContent = text;
+}
+
+function setAuthMessage(text, isError = false) {
+  const node = document.getElementById('auth-status');
+  if (!node) {
+    return;
+  }
+  node.textContent = text;
+  node.className = isError ? 'small-note auth-error' : 'small-note';
+}
+
+function renderAuthState() {
+  const planBadge = document.getElementById('plan-badge');
+  const checkoutButton = document.getElementById('upgrade-btn');
+  const billingPortalButton = document.getElementById('billing-portal-btn');
+  const logoutButton = document.getElementById('logout-btn');
+
+  activePlan = currentUser && currentUser.plan === PLAN_PRO ? PLAN_PRO : PLAN_FREE;
+  planBadge.textContent = activePlan === PLAN_PRO ? 'PRO ACCESS' : 'FREE ACCESS';
+  planBadge.className = activePlan === PLAN_PRO ? 'plan-badge plan-pro' : 'plan-badge plan-free';
+
+  setAuthMessage(
+    currentUser
+      ? `${currentUser.email} • ${activePlan === PLAN_PRO ? 'Pro active' : 'Free plan'}`
+      : 'Not logged in'
+  );
+
+  if (checkoutButton) {
+    checkoutButton.disabled = !currentUser || activePlan === PLAN_PRO;
+    checkoutButton.textContent = activePlan === PLAN_PRO ? 'Pro Active' : `Upgrade to Pro (${PRO_MONTHLY_PRICE})`;
+  }
+
+  if (billingPortalButton) {
+    billingPortalButton.disabled = !currentUser;
+  }
+
+  if (logoutButton) {
+    logoutButton.disabled = !currentUser;
+  }
 }
 
 function renderOutlook(payload) {
@@ -134,6 +181,77 @@ function renderEarningsBoard(payload) {
   });
 }
 
+function renderAiSidebar(payload) {
+  const details = document.getElementById('ai-platform-details');
+  const select = document.getElementById('ai-platform-select');
+  const openLink = document.getElementById('ai-open-link');
+  if (!details || !select || !openLink) {
+    return;
+  }
+
+  const platforms = payload.platforms || [];
+  select.innerHTML = '';
+  details.innerHTML = '';
+
+  if (!platforms.length) {
+    details.innerHTML = '<div class="pro-lock">No AI platforms available.</div>';
+    openLink.setAttribute('href', '#');
+    return;
+  }
+
+  if (!platforms.some((platform) => platform.id === activeAiPlatform)) {
+    activeAiPlatform = platforms[0].id;
+  }
+
+  platforms.forEach((platform) => {
+    const option = document.createElement('option');
+    option.value = platform.id;
+    option.textContent = platform.label;
+    select.appendChild(option);
+
+    const isActive = activeAiPlatform === platform.id;
+    if (isActive) {
+      details.innerHTML = `
+        <article class="stack-item">
+          <p><strong>${platform.label}</strong> <span class="chip">Selected</span></p>
+          <p class="small-note">${platform.description}</p>
+        </article>
+      `;
+      openLink.setAttribute('href', platform.searchUrl);
+    }
+  });
+
+  select.value = activeAiPlatform;
+}
+
+function renderTrendTrades(payload) {
+  const target = document.getElementById('trend-trades-results');
+  if (!target) {
+    return;
+  }
+  target.innerHTML = '';
+  (payload.items || []).forEach((item) => {
+    const card = document.createElement('article');
+    card.className = `trend-card trend-card--${item.momentum}`;
+    card.innerHTML = `
+      <h4>${item.symbol}</h4>
+      <p><strong>${item.source}</strong> • ${item.visibility}</p>
+      <p>Trend score: ${item.trendScore}</p>
+      <p>Views: ${Number(item.views).toLocaleString()}</p>
+      <p>${item.confidence.up}% up / ${item.confidence.down}% down</p>
+    `;
+    target.appendChild(card);
+  });
+}
+
+function renderTrendTradesLocked(message) {
+  const target = document.getElementById('trend-trades-results');
+  if (!target) {
+    return;
+  }
+  target.innerHTML = `<div class="pro-lock">${message}</div>`;
+}
+
 async function loadOutlook(ticker) {
   const payload = await fetchJson(`/api/market/stock-outlook?ticker=${encodeURIComponent(ticker)}`, {
     headers: headersWithPlan()
@@ -154,6 +272,28 @@ async function runScanner(query, method) {
     { headers: headersWithPlan() }
   );
   renderScanner(payload);
+}
+
+async function loadAiSidebar(query = '') {
+  const payload = await fetchJson(`/api/market/ai-discovery?query=${encodeURIComponent(query)}`, {
+    headers: headersWithPlan()
+  });
+  renderAiSidebar(payload);
+}
+
+async function loadTrendTrades() {
+  try {
+    const payload = await fetchJson('/api/market/trend-trades?limit=8', {
+      headers: headersWithPlan()
+    });
+    renderTrendTrades(payload);
+  } catch (error) {
+    if (error.status === 403) {
+      renderTrendTradesLocked('Trend Trades is Pro-only. Upgrade to see social trend trading signals.');
+      return;
+    }
+    throw error;
+  }
 }
 
 async function loadUnusualFeed() {
@@ -195,21 +335,168 @@ async function calculateOptions(formValues) {
 async function refreshBaseline() {
   const health = await fetchJson('/health');
   renderStatus(`API status: ${health.status}`);
-  await Promise.all([loadOutlook(activeTicker), loadEarningsBoard()]);
+  await Promise.all([loadOutlook(activeTicker), loadEarningsBoard(), loadAiSidebar(activeTicker), loadTrendTrades()]);
 }
 
-function setupPlanToggle() {
-  const toggle = document.getElementById('plan-select');
-  if (!toggle) {
+async function fetchCurrentUser() {
+  if (!authToken) {
+    currentUser = null;
+    renderAuthState();
     return;
   }
-  toggle.addEventListener('change', async (event) => {
-    activePlan = event.target.value === PLAN_PRO ? PLAN_PRO : PLAN_FREE;
+
+  try {
+    const payload = await fetchJson('/api/auth/me', { headers: headersWithPlan() });
+    currentUser = payload.user;
+  } catch (_error) {
+    authToken = '';
+    localStorage.removeItem('dumbdollars_token');
+    currentUser = null;
+    setAuthMessage('Session expired. Please sign in again.', true);
+  }
+
+  renderAuthState();
+}
+
+async function login(email, password) {
+  const payload = await fetchJson('/api/auth/login', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email, password })
+  });
+
+  authToken = payload.token;
+  localStorage.setItem('dumbdollars_token', authToken);
+  await fetchCurrentUser();
+}
+
+async function signup(email, password) {
+  const payload = await fetchJson('/api/auth/signup', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email, password })
+  });
+
+  authToken = payload.token;
+  localStorage.setItem('dumbdollars_token', authToken);
+  await fetchCurrentUser();
+}
+
+function setupAuthForms() {
+  const loginForm = document.getElementById('login-form');
+  const signupForm = document.getElementById('signup-form');
+  const logoutButton = document.getElementById('logout-btn');
+  const checkoutButton = document.getElementById('upgrade-btn');
+  const billingPortalButton = document.getElementById('billing-portal-btn');
+
+  loginForm.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    const email = document.getElementById('login-email').value.trim().toLowerCase();
+    const password = document.getElementById('login-password').value;
     try {
-      await Promise.all([loadUnusualFeed(), refreshBaseline()]);
+      await login(email, password);
+      setAuthMessage('Logged in successfully.');
+      await Promise.all([refreshBaseline(), loadUnusualFeed(), loadTrendTrades()]);
     } catch (error) {
-      console.error(error);
-      renderStatus('Failed refreshing data after plan change.');
+      setAuthMessage(error.message || 'Login failed.', true);
+    }
+  });
+
+  signupForm.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    const email = document.getElementById('signup-email').value.trim().toLowerCase();
+    const password = document.getElementById('signup-password').value;
+    try {
+      await signup(email, password);
+      setAuthMessage('Account created and logged in.');
+      await Promise.all([refreshBaseline(), loadUnusualFeed(), loadTrendTrades()]);
+    } catch (error) {
+      setAuthMessage(error.message || 'Signup failed.', true);
+    }
+  });
+
+  logoutButton.addEventListener('click', async () => {
+    authToken = '';
+    currentUser = null;
+    localStorage.removeItem('dumbdollars_token');
+    renderAuthState();
+    setAuthMessage('Logged out.');
+    await Promise.all([refreshBaseline(), loadUnusualFeed(), loadTrendTrades()]);
+  });
+
+  checkoutButton.addEventListener('click', async () => {
+    if (!currentUser) {
+      setAuthMessage('Please login first.', true);
+      return;
+    }
+
+    try {
+      const payload = await fetchJson('/api/auth/stripe/create-checkout-session', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...headersWithPlan()
+        }
+      });
+      window.location.href = payload.url;
+    } catch (error) {
+      setAuthMessage(error.message || 'Could not start checkout.', true);
+    }
+  });
+
+  billingPortalButton.addEventListener('click', async () => {
+    if (!currentUser) {
+      setAuthMessage('Please login first.', true);
+      return;
+    }
+    try {
+      const payload = await fetchJson('/api/auth/stripe/create-customer-portal', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...headersWithPlan()
+        }
+      });
+      window.location.href = payload.url;
+    } catch (error) {
+      setAuthMessage(error.message || 'Could not open billing portal.', true);
+    }
+  });
+}
+
+function setupAiSidebar() {
+  const form = document.getElementById('ai-search-form');
+  const trendButton = document.getElementById('trend-trades-refresh');
+  const select = document.getElementById('ai-platform-select');
+
+  if (!form || !trendButton || !select) {
+    return;
+  }
+
+  form.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    const query = document.getElementById('ai-query').value.trim() || activeTicker;
+    try {
+      activeAiPlatform = select.value || activeAiPlatform;
+      await loadAiSidebar(query);
+      await runScanner(query, 'llm-sentiment');
+    } catch (error) {
+      const target = document.getElementById('scan-results');
+      target.innerHTML = `<div class="pro-lock">${error.message || 'AI search failed.'}</div>`;
+    }
+  });
+
+  select.addEventListener('change', async () => {
+    activeAiPlatform = select.value || 'x-com';
+    const query = document.getElementById('ai-query').value.trim() || activeTicker;
+    await loadAiSidebar(query);
+  });
+
+  trendButton.addEventListener('click', async () => {
+    try {
+      await loadTrendTrades();
+    } catch (error) {
+      renderTrendTradesLocked(error.message || 'Could not load trend trades.');
     }
   });
 }
@@ -291,15 +578,20 @@ function setupUnusualRefresh() {
 }
 
 async function init() {
-  setupPlanToggle();
+  authToken = localStorage.getItem('dumbdollars_token') || '';
+  setupAuthForms();
+  setupAiSidebar();
   setupStockForm();
   setupScanForm();
   setupOptionsForm();
   setupUnusualRefresh();
 
   try {
+    await fetchCurrentUser();
     await refreshBaseline();
     await loadUnusualFeed();
+    await loadAiSidebar(activeTicker);
+    await loadTrendTrades();
     await runScanner(activeTicker, 'llm-sentiment');
   } catch (error) {
     console.error(error);

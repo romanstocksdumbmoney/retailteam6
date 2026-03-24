@@ -11,120 +11,172 @@
       <header class="hero">
         <div class="hero-top">
           <h1>DumbDollars</h1>
-          <span id="plan-badge" class="badge badge--free">FREE ACCESS</span>
+          <span id="plan-badge" class="plan-badge plan-free">FREE ACCESS</span>
         </div>
         <p class="subtitle">DumbDollars helps traders track market flow, stock probabilities, options risk, and earnings momentum in one dashboard.</p>
         <p id="status" class="status">Checking API status...</p>
-        <div class="toolbar">
-          <label>
-            Access tier
-            <select id="plan-select" name="plan">
-              <option value="free">Free</option>
-              <option value="pro">Pro</option>
-            </select>
-          </label>
-          <small>Pro unlocks advanced scanner modes, options calculator, and unusual moves feed.</small>
-        </div>
+
+        <section class="auth-bar">
+          <div class="auth-grid">
+            <form id="signup-form" class="auth-form">
+              <label>
+                Create account
+                <input id="signup-email" type="email" placeholder="email@domain.com" required />
+              </label>
+              <label>
+                Password
+                <input id="signup-password" type="password" placeholder="password (min 8 chars)" required />
+              </label>
+              <button type="submit">Sign up</button>
+            </form>
+            <form id="login-form" class="auth-form">
+              <label>
+                Login email
+                <input id="login-email" type="email" placeholder="email@domain.com" required />
+              </label>
+              <label>
+                Password
+                <input id="login-password" type="password" placeholder="password" required />
+              </label>
+              <button type="submit">Log in</button>
+            </form>
+          </div>
+          <div class="auth-actions">
+            <button id="upgrade-pro-btn" type="button">Upgrade to Pro ($15/mo)</button>
+            <button id="billing-portal-btn" class="btn-secondary" type="button">Manage Billing</button>
+            <button id="logout-btn" class="btn-secondary" type="button">Log out</button>
+          </div>
+          <p id="user-identity" class="small-note">Not signed in</p>
+          <p id="plan-text" class="small-note">Upgrade to Pro ($15/month) to unlock premium tools.</p>
+          <p id="auth-message" class="small-note"></p>
+        </section>
       </header>
 
-      <section class="card">
-        <div class="section-header">
-          <h2>Stock Outlook Search</h2>
-          <span class="chip">Core</span>
-        </div>
-        <form id="stock-form" class="row-form">
-          <label>
-            Ticker
-            <input id="ticker-input" name="ticker" type="text" placeholder="AAPL" required />
-          </label>
-          <button type="submit">Analyze</button>
-        </form>
-        <p class="small-note">
-          Combines analyst sentiment, article sentiment, event pressure, and flow.
-        </p>
-        <div id="stock-results" class="prob-grid"></div>
-      </section>
+      <div class="app-layout">
+        <aside class="sidebar card">
+          <div class="section-header">
+            <h2>AI Discovery</h2>
+            <span class="chip">Free</span>
+          </div>
+          <form id="ai-search-form" class="row-form">
+            <label>
+              Search topic
+              <input id="ai-search-query" type="text" placeholder="NVDA earnings, Fed rates, AI chips" />
+            </label>
+            <button type="submit">Search AI</button>
+          </form>
+          <div id="ai-platform-list" class="stack"></div>
 
-      <section class="card">
-        <div class="section-header">
-          <h2>x.com Scanner + Market Flow</h2>
-          <span class="chip pro">Pro</span>
-        </div>
-        <form id="scan-form" class="row-form">
-          <label>
-            Scan Query
-            <input id="scan-query" name="query" type="text" placeholder="NVDA, Fed, CPI, AI" required />
-          </label>
-          <label>
-            Method
-            <select id="scan-method" name="method">
-              <option value="multi">Multi-AI consensus</option>
-              <option value="llm-sentiment">Sentiment LLM</option>
-              <option value="event-cluster">Event cluster detector</option>
-              <option value="flow-extractor">Flow extractor</option>
-            </select>
-          </label>
-          <button type="submit">Run Scan</button>
-        </form>
-        <div id="scan-results" class="stack"></div>
-      </section>
+          <div class="section-header trend-header">
+            <h2>Trend Trades</h2>
+            <span class="chip pro">Pro</span>
+          </div>
+          <p class="small-note">Top social-media trend trades across TikTok, YouTube, Reels, Spotlight, X.com, and more.</p>
+          <button id="trend-trades-refresh" type="button">Refresh Trend Trades</button>
+          <div id="trend-trades-results" class="stack"></div>
+        </aside>
 
-      <section class="card">
-        <div class="section-header">
-          <h2>Options Calculator + Gamma Exposure</h2>
-          <span class="chip pro">Pro</span>
-        </div>
-        <form id="options-form" class="row-form multi">
-          <label>
-            Symbol
-            <input id="option-symbol" name="symbol" type="text" placeholder="TSLA" required />
-          </label>
-          <label>
-            Spot
-            <input id="spot-price" name="spotPrice" type="number" min="0" step="0.01" value="180" required />
-          </label>
-          <label>
-            Strike
-            <input id="strike-price" name="strikePrice" type="number" min="0" step="0.01" value="185" required />
-          </label>
-          <label>
-            Days to Expiry
-            <input id="days-to-expiry" name="daysToExpiry" type="number" min="1" step="1" value="14" required />
-          </label>
-          <label>
-            IV (decimal)
-            <input id="iv" name="impliedVolatility" type="number" min="0.01" max="3" step="0.01" value="0.42" required />
-          </label>
-          <label>
-            Contract Type
-            <select id="contract-type" name="contractType">
-              <option value="call">Call</option>
-              <option value="put">Put</option>
-            </select>
-          </label>
-          <button type="submit">Calculate</button>
-        </form>
-        <div id="options-results" class="stack"></div>
-      </section>
+        <div class="main-panels">
+          <section class="card">
+            <div class="section-header">
+              <h2>Stock Outlook Search</h2>
+              <span class="chip">Core</span>
+            </div>
+            <form id="stock-form" class="row-form">
+              <label>
+                Ticker
+                <input id="ticker-input" name="ticker" type="text" placeholder="AAPL" required />
+              </label>
+              <button type="submit">Analyze</button>
+            </form>
+            <p class="small-note">
+              Combines analyst sentiment, article sentiment, event pressure, and flow.
+            </p>
+            <div id="stock-results" class="prob-grid"></div>
+          </section>
 
-      <section class="card">
-        <div class="section-header">
-          <h2>Unusual Moves Feed</h2>
-          <span class="chip pro">Pro</span>
-        </div>
-        <p class="small-note">Backdoor connector placeholder for unusual flow providers.</p>
-        <button id="refresh-unusual" type="button">Refresh Feed</button>
-        <div id="unusual-results" class="stack"></div>
-      </section>
+          <section class="card">
+            <div class="section-header">
+              <h2>x.com Scanner + Market Flow</h2>
+              <span class="chip pro">Pro</span>
+            </div>
+            <form id="scan-form" class="row-form">
+              <label>
+                Scan Query
+                <input id="scan-query" name="query" type="text" placeholder="NVDA, Fed, CPI, AI" required />
+              </label>
+              <label>
+                Method
+                <select id="scan-method" name="method">
+                  <option value="multi">Multi-AI consensus</option>
+                  <option value="llm-sentiment">Sentiment LLM</option>
+                  <option value="event-cluster">Event cluster detector</option>
+                  <option value="flow-extractor">Flow extractor</option>
+                </select>
+              </label>
+              <button type="submit">Run Scan</button>
+            </form>
+            <div id="scan-results" class="stack"></div>
+          </section>
 
-      <section class="card">
-        <div class="section-header">
-          <h2>Earnings Gambling</h2>
-          <span class="chip">Core</span>
+          <section class="card">
+            <div class="section-header">
+              <h2>Options Calculator + Gamma Exposure</h2>
+              <span class="chip pro">Pro</span>
+            </div>
+            <form id="options-form" class="row-form multi">
+              <label>
+                Symbol
+                <input id="option-symbol" name="symbol" type="text" placeholder="TSLA" required />
+              </label>
+              <label>
+                Spot
+                <input id="spot-price" name="spotPrice" type="number" min="0" step="0.01" value="180" required />
+              </label>
+              <label>
+                Strike
+                <input id="strike-price" name="strikePrice" type="number" min="0" step="0.01" value="185" required />
+              </label>
+              <label>
+                Days to Expiry
+                <input id="days-to-expiry" name="daysToExpiry" type="number" min="1" step="1" value="14" required />
+              </label>
+              <label>
+                IV (decimal)
+                <input id="iv" name="impliedVolatility" type="number" min="0.01" max="3" step="0.01" value="0.42" required />
+              </label>
+              <label>
+                Contract Type
+                <select id="contract-type" name="contractType">
+                  <option value="call">Call</option>
+                  <option value="put">Put</option>
+                </select>
+              </label>
+              <button type="submit">Calculate</button>
+            </form>
+            <div id="options-results" class="stack"></div>
+          </section>
+
+          <section class="card">
+            <div class="section-header">
+              <h2>Unusual Moves Feed</h2>
+              <span class="chip pro">Pro</span>
+            </div>
+            <p class="small-note">Backdoor connector placeholder for unusual flow providers.</p>
+            <button id="refresh-unusual" type="button">Refresh Feed</button>
+            <div id="unusual-results" class="stack"></div>
+          </section>
+
+          <section class="card">
+            <div class="section-header">
+              <h2>Earnings Gambling</h2>
+              <span class="chip">Core</span>
+            </div>
+            <p class="small-note">Upcoming large-cap earnings and directional probability cards.</p>
+            <div id="earnings-board" class="earnings-grid"></div>
+          </section>
         </div>
-        <p class="small-note">Upcoming large-cap earnings and directional probability cards.</p>
-        <div id="earnings-board" class="earnings-grid"></div>
-      </section>
+      </div>
     </main>
     <script src="./app.js"></script>
   </body>

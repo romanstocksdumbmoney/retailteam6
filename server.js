@@ -5,13 +5,19 @@ const fs = require('fs');
 const newsRoutes = require('./routes/news');
 const earningsRoutes = require('./routes/earnings');
 const marketRoutes = require('./routes/market');
+const authRoutes = require('./routes/auth');
 
 const app = express();
 const buildDir = path.join(__dirname, 'frontend', 'build');
 const hasFrontendBuild = fs.existsSync(path.join(buildDir, 'index.html'));
 
 app.use(cors());
-app.use(express.json());
+app.use((req, res, next) => {
+    if (req.path === '/api/auth/stripe/webhook') {
+        return next();
+    }
+    return express.json()(req, res, next);
+});
 
 app.get('/', (_req, res) => {
     if (hasFrontendBuild) {
@@ -35,6 +41,7 @@ app.get('/health', (_req, res) => {
 app.use('/api/news', newsRoutes);
 app.use('/api/earnings', earningsRoutes);
 app.use('/api/market', marketRoutes);
+app.use('/api/auth', authRoutes);
 
 if (hasFrontendBuild) {
     app.use(express.static(buildDir));
