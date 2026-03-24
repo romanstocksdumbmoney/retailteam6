@@ -253,19 +253,22 @@ router.get('/unusual-moves', requirePro, (_req, res) => {
   });
 });
 
-router.get('/earnings-gambling', (req, res) => {
+router.get('/earnings-gambling', async (req, res) => {
   const limit = Number(req.query.limit || 5);
   const boundedLimit = Number.isFinite(limit) ? Math.max(1, Math.min(8, Math.trunc(limit))) : 5;
-  const raw = buildEarningsGambling(boundedLimit);
-  const boardDate = raw[0]?.earningsDate || null;
+  const board = await buildEarningsGambling(boundedLimit);
+  const raw = board.items || [];
+  const boardDate = board.scheduleDate || null;
 
   return res.json({
+    source: board.source || 'simulated',
     scheduleDate: boardDate,
-    scheduleLabel: boardDate ? `Tomorrow (${boardDate})` : 'Tomorrow',
+    scheduleLabel: board.scheduleLabel || (boardDate ? `Upcoming earnings (${boardDate})` : 'Upcoming earnings'),
     items: raw.map((item) => ({
       ticker: item.symbol,
       reportTimeLabel: item.reportTime,
       eventDate: item.earningsDate,
+      eventDateLabel: item.earningsDateLabel,
       direction: item.predictedDirection,
       volume: item.volume,
       analystPushes: item.analystPushes || [],

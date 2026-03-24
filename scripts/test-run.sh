@@ -2,7 +2,7 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-TEST_PORT="${PORT:-5050}"
+TEST_PORT="${TEST_PORT:-${PORT:-5050}}"
 BASE_URL="${BASE_URL:-http://127.0.0.1:${TEST_PORT}}"
 SERVER_LOG="/tmp/aapp-test-run-server.log"
 SERVER_PID=""
@@ -26,6 +26,13 @@ echo "[3/5] Building frontend..."
 (cd "$ROOT_DIR/frontend" && npm run build)
 
 echo "[4/5] Starting backend with test auth secret on port ${TEST_PORT}..."
+if command -v lsof >/dev/null 2>&1; then
+  EXISTING_PID="$(lsof -ti ":${TEST_PORT}" || true)"
+  if [[ -n "${EXISTING_PID}" ]]; then
+    kill "${EXISTING_PID}" >/dev/null 2>&1 || true
+    sleep 1
+  fi
+fi
 (cd "$ROOT_DIR" && AUTH_SECRET="${AUTH_SECRET:-dumbdollars-dev-secret}" PORT="${TEST_PORT}" node server.js > "$SERVER_LOG" 2>&1) &
 SERVER_PID=$!
 

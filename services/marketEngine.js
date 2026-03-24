@@ -69,45 +69,59 @@ const EARNINGS_VOLUME_BASE = {
 
 const TOMORROW_EARNINGS_CALLS = ['AAPL', 'NVDA', 'TSLA', 'AMD', 'AMZN', 'MSFT', 'META', 'GOOGL'];
 
+const EARNINGS_CALENDAR_LOOKAHEAD_DAYS = 14;
+const EARNINGS_CALENDAR_CACHE_MS = 30 * 60 * 1000;
+const NASDAQ_EARNINGS_HEADERS = {
+  accept: 'application/json, text/plain, */*',
+  'user-agent': 'Mozilla/5.0 (DumbDollars Earnings Bot)',
+  origin: 'https://www.nasdaq.com',
+  referer: 'https://www.nasdaq.com/'
+};
+
+let earningsCalendarCache = {
+  fetchedAt: 0,
+  items: []
+};
+
 const AI_DISCOVERY_PLATFORMS = [
   {
     id: 'x-com',
-    label: 'X.com Pulse',
+    label: 'X.com',
     type: 'social',
-    description: 'Track trader narratives, breaking chatter, and ticker velocity.',
+    description: 'Track trader narratives, breaking chatter, and ticker velocity on X.com.',
     searchTemplate: 'https://x.com/search?q={query}',
     freeAccess: true
   },
   {
-    id: 'openai',
-    label: 'OpenAI',
-    type: 'ai',
-    description: 'General AI research assistant for market context and summaries.',
-    searchTemplate: 'https://chat.openai.com/',
+    id: 'grok',
+    label: 'Grok',
+    type: 'social',
+    description: 'Use Grok for fast social-market context and ticker chatter.',
+    searchTemplate: 'https://grok.com/chat',
     freeAccess: true
   },
   {
-    id: 'claude',
-    label: 'Claude',
+    id: 'chatgpt',
+    label: 'ChatGPT',
+    type: 'ai',
+    description: 'General AI research assistant for market context and summaries.',
+    searchTemplate: 'https://chatgpt.com/',
+    freeAccess: true
+  },
+  {
+    id: 'claude-ai',
+    label: 'Claude AI',
     type: 'ai',
     description: 'Long-form reasoning and synthesis for catalysts and setups.',
     searchTemplate: 'https://claude.ai/',
     freeAccess: true
   },
   {
-    id: 'gemini',
-    label: 'Gemini',
+    id: 'anthropic',
+    label: 'Anthropic',
     type: 'ai',
-    description: 'Fast exploration of market themes and scenario planning.',
-    searchTemplate: 'https://gemini.google.com/',
-    freeAccess: true
-  },
-  {
-    id: 'perplexity',
-    label: 'Perplexity',
-    type: 'research',
-    description: 'Source-linked market research and headline validation.',
-    searchTemplate: 'https://www.perplexity.ai/',
+    description: 'Anthropic platform and product docs for model capabilities and safety.',
+    searchTemplate: 'https://www.anthropic.com/claude/',
     freeAccess: true
   }
 ];
@@ -209,6 +223,144 @@ function minuteBucketSeed() {
   const now = new Date();
   const minuteBucket = Math.floor(now.getUTCMinutes() / 10);
   return `${daySeed()}:${now.getUTCHours()}:${minuteBucket}`;
+}
+
+function formatIsoDate(isoDate) {
+  if (!isoDate) {
+    return 'TBD';
+  }
+  const parsed = new Date(`${isoDate}T00:00:00Z`);
+  if (Number.isNaN(parsed.getTime())) {
+    return isoDate;
+  }
+  return parsed.toLocaleDateString('en-US', {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+    timeZone: 'UTC'
+  });
+}
+
+function parseMarketCapUsd(rawValue) {
+  const text = String(rawValue || '').trim();
+  if (!text) {
+    return 0;
+  }
+  const cleaned = text.replace(/[$,]/g, '');
+  const unit = cleaned.slice(-1).toUpperCase();
+  const hasUnit = ['T', 'B', 'M', 'K'].includes(unit);
+  const numericPortion = hasUnit ? cleaned.slice(0, -1) : cleaned;
+  const numeric = Number.parseFloat(numericPortion);
+  if (!Number.isFinite(numeric)) {
+    return 0;
+  }
+  if (!hasUnit) {
+    return Math.round(numeric);
+  }
+  const multiplier = {
+    T: 1_000_000_000_000,
+    B: 1_000_000_000,
+    M: 1_000_000,
+    K: 1_000
+  }[unit];
+  return Math.round(numeric * multiplier);
+}
+
+function parseNasdaqDate(rawValue) {
+  const text = String(rawValue || '').trim();
+  if (!text) {
+    return null;
+  }
+  const compactDateMatch = text.match(/^(\d{4})(\d{2})(\d{2})$/);
+  if (compactDateMatch) {
+    const year = compactDateMatch[1];
+    const month = compactDateMatch[2];
+    const day = compactDateMatch[3];
+    return `${year}-${month}-${day}`;
+  }
+  const parsed = new Date(text);
+  if (Number.isNaN(parsed.getTime())) {
+    return null;
+  }
+  return parsed.toISOString().slice(0, 10);
+}
+
+function sessionFromNasdaqTimeClass(timeClass) {
+  const normalized = String(timeClass || '').toLowerCase();
+  if (normalized.includes('pre-market') || normalized.includes('before-market')) {
+    return 'Pre-Market';
+  }
+  if (normalized.includes('after-hours') || normalized.includes('after-market')) {
+    return 'After-Hours';
+  }
+  return 'Unknown';
+}
+
+async function safeFetchJson(url, options = {}) {
+  try {
+    const response = await fetch(url, options);
+    if (!response.ok) {
+      return null;
+    }
+    return await response.json();
+  } catch (_error) {
+    return null;
+  }
+}
+
+function normalizeNasdaqRows(rows, fallbackIsoDate) {
+  if (!Array.isArray(rows)) {
+    return [];
+  }
+  return rows
+    .map((row) => {
+      const symbol = normalizeSymbol(row.symbol || row.ticker || row.Symbol || '');
+      if (!symbol) {
+        return null;
+      }
+      const earningsDate = parseNasdaqDate(row.reportDate || row.lastYearRptDt) || fallbackIsoDate;
+      const reportTime = sessionFromNasdaqTimeClass(row.time);
+      return {
+        symbol,
+        earningsDate,
+        reportTime,
+        marketCapUsd: parseMarketCapUsd(row.marketCap)
+      };
+    })
+    .filter((row) => row && row.symbol && row.earningsDate);
+}
+
+async function fetchNasdaqEarningsCalendar() {
+  const now = Date.now();
+  if (now - earningsCalendarCache.fetchedAt < EARNINGS_CALENDAR_CACHE_MS && earningsCalendarCache.items.length > 0) {
+    return earningsCalendarCache.items;
+  }
+
+  const seen = new Set();
+  const items = [];
+  for (let offset = 0; offset < EARNINGS_CALENDAR_LOOKAHEAD_DAYS; offset += 1) {
+    const date = new Date();
+    date.setUTCDate(date.getUTCDate() + offset);
+    const isoDate = date.toISOString().slice(0, 10);
+    const url = `https://api.nasdaq.com/api/calendar/earnings?date=${isoDate}`;
+    const payload = await safeFetchJson(url, { headers: NASDAQ_EARNINGS_HEADERS });
+    const rows = payload?.data?.rows || [];
+    const normalizedRows = normalizeNasdaqRows(rows, isoDate);
+    normalizedRows.forEach((entry) => {
+      const dedupe = `${entry.symbol}:${entry.earningsDate}:${entry.reportTime}`;
+      if (seen.has(dedupe)) {
+        return;
+      }
+      seen.add(dedupe);
+      items.push(entry);
+    });
+  }
+
+  earningsCalendarCache = {
+    fetchedAt: now,
+    items
+  };
+  return items;
 }
 
 function pickWorldEvents(symbol) {
@@ -394,16 +546,16 @@ function getUnusualMoves() {
   return moves;
 }
 
-function estimateEarningsDayVolume(symbol) {
+function estimateEarningsDayVolume(symbol, dateKey = tomorrowSeed()) {
   const base = EARNINGS_VOLUME_BASE[symbol] || 12_000_000;
-  const seed = hashString(`earnings-volume:${symbol}:${tomorrowSeed()}`);
+  const seed = hashString(`earnings-volume:${symbol}:${dateKey}`);
   const multiplier = 0.85 + pseudoRandom(seed) * 1.1;
   const catalystBoost = Math.round(pseudoRandom(seed + 91) * 28_000_000);
   return Math.max(1_500_000, Math.round(base * multiplier + catalystBoost));
 }
 
-function buildEarningsIntel(symbol, volume, up, down, seedOffset) {
-  const seed = hashString(`earnings-intel:${symbol}:${tomorrowSeed()}:${seedOffset}`);
+function buildEarningsIntel(symbol, volume, up, down, seedOffset, earningsDateLabel) {
+  const seed = hashString(`earnings-intel:${symbol}:${earningsDateLabel}:${seedOffset}`);
   const directionalBias = up >= down ? 'bullish' : 'bearish';
   const altDirection = directionalBias === 'bullish' ? 'bearish' : 'bullish';
   const unusualCount = 2 + Math.floor(pseudoRandom(seed + 1) * 3);
@@ -437,7 +589,7 @@ function buildEarningsIntel(symbol, volume, up, down, seedOffset) {
     `${symbol}: median price-target revision ${directionalBias === 'bullish' ? '+' : '-'}${Math.round(
       3 + pseudoRandom(seed + 71) * 11
     )}%.`,
-    `${symbol}: sell-side note volume elevated ahead of tomorrow's print.`
+    `${symbol}: sell-side note volume elevated ahead of the ${earningsDateLabel} print.`
   ];
 
   return {
@@ -451,29 +603,56 @@ function buildEarningsIntel(symbol, volume, up, down, seedOffset) {
   };
 }
 
-function getEarningsGamblingBoard(limit = 5) {
-  const seed = hashString(`earnings:${tomorrowSeed()}`);
+async function getEarningsGamblingBoard(limit = 5) {
+  const seed = hashString(`earnings:${daySeed()}`);
   const boundedLimit = Math.max(1, Math.min(8, Math.trunc(limit)));
-  const scheduleDate = tomorrowIsoDate();
-  const rankedByVolume = TOMORROW_EARNINGS_CALLS.map((symbol) => ({
-    symbol,
-    estimatedVolume: estimateEarningsDayVolume(symbol)
-  }))
+  const calendarRows = await fetchNasdaqEarningsCalendar();
+  const watchlistSet = new Set(EARNINGS_WATCHLIST);
+
+  let rankedByVolume = calendarRows
+    .filter((entry) => watchlistSet.has(entry.symbol))
+    .map((entry) => {
+      const estimatedVolume = estimateEarningsDayVolume(entry.symbol, entry.earningsDate);
+      const marketCapWeight = entry.marketCapUsd > 0 ? Math.round(Math.sqrt(entry.marketCapUsd)) : 0;
+      return {
+        ...entry,
+        estimatedVolume: estimatedVolume + marketCapWeight
+      };
+    })
     .sort((a, b) => b.estimatedVolume - a.estimatedVolume)
     .slice(0, boundedLimit);
 
-  return rankedByVolume.map((entry, index) => {
+  let source = 'nasdaq';
+  let scheduleLabel = 'Confirmed earnings dates (next 14 days)';
+  if (rankedByVolume.length === 0) {
+    const fallbackDate = tomorrowIsoDate();
+    rankedByVolume = TOMORROW_EARNINGS_CALLS.map((symbol) => ({
+      symbol,
+      earningsDate: fallbackDate,
+      reportTime: 'Unknown',
+      estimatedVolume: estimateEarningsDayVolume(symbol, fallbackDate)
+    }))
+      .sort((a, b) => b.estimatedVolume - a.estimatedVolume)
+      .slice(0, boundedLimit);
+    source = 'simulated';
+    scheduleLabel = `Estimated board (no live calendar response) • ${formatIsoDate(fallbackDate)}`;
+  }
+
+  const scheduleDate = rankedByVolume[0]?.earningsDate || null;
+  const items = rankedByVolume.map((entry, index) => {
     const symbol = entry.symbol;
     const up = clamp(Math.round(45 + pseudoRandom(seed + index + 120) * 25), 40, 70);
     const down = 100 - up;
     const predictedDirection = up >= down ? 'up' : 'down';
-    const intel = buildEarningsIntel(symbol, entry.estimatedVolume, up, down, index);
+    const earningsDateLabel = formatIsoDate(entry.earningsDate);
+    const intel = buildEarningsIntel(symbol, entry.estimatedVolume, up, down, index, earningsDateLabel);
 
     return {
       symbol,
       volume: entry.estimatedVolume,
-      earningsDate: scheduleDate,
-      reportTime: index % 2 === 0 ? 'Pre-Market' : 'After-Hours',
+      earningsDate: entry.earningsDate,
+      earningsDateLabel,
+      reportTime: entry.reportTime === 'Unknown' ? (index % 2 === 0 ? 'Pre-Market' : 'After-Hours') : entry.reportTime,
       predictedDirection,
       probabilityUp: up,
       probabilityDown: down,
@@ -487,6 +666,13 @@ function getEarningsGamblingBoard(limit = 5) {
       analystPushes: intel.analystPushes
     };
   });
+
+  return {
+    source,
+    scheduleDate,
+    scheduleLabel,
+    items
+  };
 }
 
 function getAiDiscovery(query = '') {

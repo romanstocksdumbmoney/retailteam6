@@ -137,8 +137,14 @@ function isBillingConfigured() {
 function getBillingPublicInfo() {
   return {
     configured: isBillingConfigured(),
+    provider: 'Stripe',
     currency: 'usd',
-    amountMonthly: 15
+    amountMonthly: 15,
+    recurringInterval: 'month',
+    paymentMethodTypes: ['card'],
+    secureCheckoutUrl: 'https://stripe.com/security',
+    billingTermsUrl: 'https://stripe.com/legal/consumer',
+    cancellationPolicy: 'Cancel anytime from the billing portal. Access remains active until the current period ends.'
   };
 }
 

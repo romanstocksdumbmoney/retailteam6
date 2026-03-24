@@ -38,6 +38,29 @@ router.get('/billing-info', (_req, res) => {
   return res.json(getBillingPublicInfo());
 });
 
+router.get('/billing/checkout-preview', authRequired, (_req, res) => {
+  const billingInfo = getBillingPublicInfo();
+  if (!billingInfo.configured) {
+    return res.status(503).json({
+      error: 'billing_not_configured',
+      message: 'Stripe is not configured. Set STRIPE_SECRET_KEY and STRIPE_PRICE_ID.'
+    });
+  }
+  return res.json({
+    planName: 'DumbDollars Pro',
+    monthlyAmountUsd: billingInfo.amountMonthly,
+    currency: billingInfo.currency,
+    securePaymentProvider: 'Stripe',
+    benefits: [
+      'Unlock Trend Trades (Pro social trend signals)',
+      'Use advanced options calculator + gamma exposure',
+      'Access unusual moves feed and full scanner methods'
+    ],
+    cancellationPolicy: 'Cancel anytime from Manage Billing.',
+    renewalPolicy: 'Recurring monthly subscription until canceled.'
+  });
+});
+
 router.post('/signup', (req, res) => {
   try {
     const email = String(req.body?.email || '').trim().toLowerCase();

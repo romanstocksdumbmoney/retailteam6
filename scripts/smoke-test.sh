@@ -43,7 +43,7 @@ check_auth_status_code() {
   local expected="$2"
   local code
   code="$(curl -sS -o /dev/null -w "%{http_code}" -H "Authorization: Bearer $AUTH_TOKEN" "$BASE_URL$path")"
-  if [[ "$code" == "$expected" ]]; then
+  if [[ "$code" =~ ^($expected)$ ]]; then
     echo "PASS: $path (authed) returned $expected"
   else
     echo "FAIL: $path (authed) returned $code (expected $expected)"
@@ -76,10 +76,12 @@ signup_and_capture_token() {
 }
 
 check_json_contains "/health" "\"status\":\"ok\""
+check_json_contains "/api/auth/billing-info" "\"configured\""
 check_status_code "/api/auth/me" "401"
 signup_and_capture_token
 check_json_contains "/api/market/stock-outlook?ticker=TSLA" "\"ticker\":\"TSLA\""
 check_auth_status_code "/api/auth/me" "200"
+check_auth_status_code "/api/auth/billing/checkout-preview" "503|200"
 check_json_contains "/api/market/scan-x?ticker=TSLA&method=llm-sentiment" "\"isLimited\":true"
 check_auth_status_code "/api/market/options?ticker=TSLA&spot=220&strike=230&daysToExpiry=21&iv=0.42" "403"
 check_json_contains "/api/market/stock-outlook?ticker=TSLA" "\"ticker\":\"TSLA\""

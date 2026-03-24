@@ -23,7 +23,9 @@ body {
 }
 
 .menu-bar {
-  display: none;
+  display: flex;
+  justify-content: center;
+  margin: 0 0 0.8rem;
 }
 
 .diamond-banner {
@@ -41,17 +43,20 @@ body {
 .diamond-icon-wrap {
   display: grid;
   place-items: center;
-  width: 58px;
-  height: 58px;
+  width: 64px;
+  height: 64px;
   border-radius: 14px;
   border: 2px solid #facc15;
   background: #facc15;
   box-shadow: inset 0 -8px 14px rgba(0, 0, 0, 0.2);
+  overflow: hidden;
 }
 
 .diamond-emoji {
-  font-size: 2rem;
+  display: inline-block;
+  font-size: 2.1rem;
   line-height: 1;
+  transform: translateY(1px);
 }
 
 .diamond-kicker {
@@ -77,7 +82,7 @@ body {
 }
 
 .sidebar-menu-toggle {
-  display: none;
+  display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: 0.55rem;
@@ -134,7 +139,57 @@ body {
 }
 
 .sidebar-backdrop {
+  display: block;
+  position: fixed;
+  inset: 0;
+  background: rgba(2, 6, 23, 0.64);
+  z-index: 50;
+}
+
+.sidebar-backdrop.hidden {
   display: none;
+}
+
+.hidden {
+  display: none !important;
+}
+
+.pro-popup-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 120;
+  display: grid;
+  place-items: center;
+  background: rgba(2, 6, 23, 0.7);
+}
+
+.pro-popup {
+  width: min(92vw, 460px);
+  background: linear-gradient(180deg, rgba(15, 23, 42, 0.98), rgba(3, 7, 18, 0.98));
+  border: 1px solid rgba(250, 204, 21, 0.5);
+  border-radius: 14px;
+  box-shadow: 0 24px 52px rgba(0, 0, 0, 0.55);
+  padding: 1rem;
+}
+
+.pro-popup h3 {
+  margin: 0 0 0.4rem;
+  color: #fde047;
+}
+
+.pro-popup p {
+  margin: 0.2rem 0 0.75rem;
+  color: #e2e8f0;
+}
+
+.pro-popup-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.55rem;
+}
+
+body.pro-popup-open {
+  overflow: hidden;
 }
 
 h1 {
@@ -258,6 +313,68 @@ label {
   color: #fca5a5;
 }
 
+.link-button {
+  border: none;
+  background: transparent;
+  color: #fde047;
+  text-decoration: underline;
+  cursor: pointer;
+  padding: 0;
+  font-weight: 700;
+}
+
+.link-button:hover {
+  color: #fef08a;
+}
+
+.billing-sheet {
+  border: 1px solid rgba(250, 204, 21, 0.38);
+  border-radius: 12px;
+  padding: 0.85rem;
+  background: rgba(15, 23, 42, 0.78);
+  margin-top: 0.4rem;
+}
+
+.billing-sheet h4 {
+  margin: 0 0 0.4rem;
+  color: #fde047;
+}
+
+.billing-sheet ul {
+  margin: 0.35rem 0 0.65rem;
+  padding-left: 1.1rem;
+}
+
+.billing-sheet li {
+  margin: 0.2rem 0;
+  color: #e2e8f0;
+}
+
+.billing-sheet .billing-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.55rem;
+}
+
+.billing-safety-card {
+  border: 1px solid rgba(250, 204, 21, 0.35);
+  border-radius: 12px;
+  padding: 0.8rem;
+  background: rgba(15, 23, 42, 0.72);
+}
+
+.billing-safety-card h3 {
+  margin: 0 0 0.35rem;
+  color: #fde047;
+}
+
+.billing-safety-card .billing-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.55rem;
+  margin-top: 0.55rem;
+}
+
 .open-link {
   color: #fde047;
   text-decoration: none;
@@ -270,16 +387,32 @@ label {
 
 .app-layout {
   display: grid;
-  grid-template-columns: 300px minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr);
   gap: 1rem;
   align-items: start;
 }
 
 .sidebar {
-  position: sticky;
-  top: 1rem;
+  position: fixed;
+  top: 1.15rem;
+  left: 50%;
+  width: min(94vw, 720px);
+  max-height: calc(100vh - 2.3rem);
+  overflow: auto;
+  z-index: 60;
+  transform: translate(-50%, -112%);
+  opacity: 0;
+  pointer-events: none;
+  transition: transform 0.22s ease, opacity 0.22s ease;
+  box-shadow: 0 24px 52px rgba(0, 0, 0, 0.56);
   display: grid;
   gap: 1rem;
+}
+
+.sidebar.sidebar-open {
+  transform: translate(-50%, 0);
+  opacity: 1;
+  pointer-events: auto;
 }
 
 .main-panels {
@@ -501,51 +634,8 @@ label {
 }
 
 @media (max-width: 960px) {
-  .menu-bar {
-    display: flex;
-    justify-content: center;
-    margin: 0 0 0.8rem;
-  }
-
-  .app-layout {
-    grid-template-columns: 1fr;
-  }
-
-  .sidebar-menu-toggle {
-    display: inline-flex;
-  }
-
   .sidebar {
-    position: fixed;
-    top: 1.15rem;
-    left: 50%;
-    width: min(94vw, 720px);
-    max-height: calc(100vh - 2.3rem);
-    overflow: auto;
-    z-index: 60;
-    transform: translate(-50%, -112%);
-    opacity: 0;
-    pointer-events: none;
-    transition: transform 0.22s ease, opacity 0.22s ease;
-    box-shadow: 0 24px 52px rgba(0, 0, 0, 0.56);
-  }
-
-  .sidebar.sidebar-open {
-    transform: translate(-50%, 0);
-    opacity: 1;
-    pointer-events: auto;
-  }
-
-  .sidebar-backdrop {
-    display: block;
-    position: fixed;
-    inset: 0;
-    background: rgba(2, 6, 23, 0.64);
-    z-index: 50;
-  }
-
-  .sidebar-backdrop.hidden {
-    display: none;
+    width: min(96vw, 720px);
   }
 
   body.sidebar-menu-open {

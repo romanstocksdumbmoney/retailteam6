@@ -10,6 +10,16 @@ let activeAiPlatform = 'x-com';
 let activeTrendSource = 'all';
 let activePatternFilter = 'all';
 let sidebarOpen = false;
+let billingInfo = null;
+let proPopupVisible = false;
+
+function openExternal(url) {
+  try {
+    window.open(url, '_blank', 'noopener,noreferrer');
+  } catch (_error) {
+    window.location.href = url;
+  }
+}
 
 async function fetchJson(url, options = {}) {
   const response = await fetch(url, options);
@@ -47,6 +57,28 @@ function fmtUsd(value) {
 function renderStatus(text) {
   const status = document.getElementById('status');
   status.textContent = text;
+}
+
+function openProPopup(message = 'Pro access needed. Upgrade to unlock this feature.') {
+  const backdrop = document.getElementById('pro-popup-backdrop');
+  const body = document.getElementById('pro-popup-text');
+  if (!backdrop || !body) {
+    return;
+  }
+  body.textContent = message;
+  backdrop.classList.remove('hidden');
+  document.body.classList.add('pro-popup-open');
+  proPopupVisible = true;
+}
+
+function closeProPopup() {
+  const backdrop = document.getElementById('pro-popup-backdrop');
+  if (!backdrop) {
+    return;
+  }
+  backdrop.classList.add('hidden');
+  document.body.classList.remove('pro-popup-open');
+  proPopupVisible = false;
 }
 
 function closeSidebarMenu() {
@@ -96,6 +128,91 @@ function setAuthMessage(text, isError = false) {
   }
   node.textContent = text;
   node.className = isError ? 'small-note auth-error' : 'small-note';
+}
+
+function formatBillingAmount(info) {
+  if (!info || !Number.isFinite(Number(info.amountMonthly))) {
+    return '$15';
+  }
+  return `$${Number(info.amountMonthly)}`;
+}
+
+function renderBillingInfo(info, checkoutPreview = null) {
+  const planLine = document.getElementById('billing-plan-line');
+  const trustPoints = document.getElementById('billing-trust-points');
+  const continueButton = document.getElementById('billing-safe-continue');
+  if (!planLine || !trustPoints) {
+    return;
+  }
+
+  trustPoints.innerHTML = '';
+  if (!info) {
+    planLine.textContent = 'Billing details are temporarily unavailable.';
+    if (continueButton) {
+      continueButton.disabled = true;
+    }
+    return;
+  }
+
+  const monthly = formatBillingAmount(info);
+  const configured = Boolean(info.configured);
+  planLine.textContent = `Plan: DumbDollars Pro • ${monthly}/${info.recurringInterval || 'month'}`;
+
+  const points = [
+    `${info.provider || 'Stripe'} hosts checkout so card data is not entered on DumbDollars.`,
+    checkoutPreview?.cancellationPolicy || info.cancellationPolicy || 'Cancel anytime from Manage Billing.',
+    checkoutPreview?.renewalPolicy || 'Recurring monthly subscription until canceled.'
+  ];
+  if (Array.isArray(checkoutPreview?.benefits)) {
+    checkoutPreview.benefits.forEach((benefit) => points.push(benefit));
+  }
+  if (info.secureCheckoutUrl) {
+    points.push(`Security: <a class="open-link" href="${info.secureCheckoutUrl}" target="_blank" rel="noopener noreferrer">Stripe security overview</a>`);
+  }
+  if (info.billingTermsUrl) {
+    points.push(`Billing terms: <a class="open-link" href="${info.billingTermsUrl}" target="_blank" rel="noopener noreferrer">Stripe billing terms</a>`);
+  }
+
+  trustPoints.innerHTML = points.map((point) => `<li>${point}</li>`).join('');
+  if (continueButton) {
+    continueButton.disabled = !configured;
+  }
+}
+
+function openAllAiPlatforms(query) {
+  const select = document.getElementById('ai-platform-select');
+  if (!select) {
+    return;
+  }
+  const payload = {
+    query,
+    platforms: Array.from(select.options).map((option) => ({
+      id: option.value,
+      label: option.textContent || option.value
+    }))
+  };
+  fetchJson(`/api/market/ai-discovery?query=${encodeURIComponent(query)}`, {
+    headers: headersWithPlan()
+  })
+    .then((response) => {
+      const platforms = response.platforms || [];
+      platforms.forEach((platform) => {
+        if (platform.searchUrl && platform.searchUrl !== '#') {
+          openExternal(platform.searchUrl);
+        }
+      });
+    })
+    .catch((_error) => {
+      // Fallback: open known source pages if API discovery is unavailable.
+      const fallbackLinks = [
+        'https://x.com/search?q=' + encodeURIComponent(query),
+        'https://grok.com/',
+        'https://chatgpt.com/',
+        'https://claude.ai/',
+        'https://www.anthropic.com/claude/'
+      ];
+      fallbackLinks.forEach((url) => openExternal(url));
+    });
 }
 
 function renderAuthState() {
@@ -211,11 +328,13 @@ function renderUnusualLocked(message) {
 function renderEarningsBoard(payload) {
   const target = document.getElementById('earnings-board');
   target.innerHTML = '';
-  const scheduleLabel = payload.scheduleLabel || 'Tomorrow';
+  const scheduleLabel = payload.scheduleLabel || 'Upcoming earnings';
+  const dataSource = payload.source === 'nasdaq' ? 'Nasdaq calendar' : 'Estimated board';
   payload.items.forEach((item) => {
     const up = Number(item.predictedMove.up || 0);
     const down = Number(item.predictedMove.down || 0);
     const directionClass = up >= down ? 'up' : 'down';
+    const dateLabel = item.eventDateLabel || item.eventDate || scheduleLabel;
     const card = document.createElement('article');
     card.className = `earnings-card earnings-card--${directionClass}`;
     card.setAttribute('role', 'button');
@@ -229,13 +348,19 @@ function renderEarningsBoard(payload) {
     });
     card.innerHTML = `
       <h3>${item.ticker}</h3>
-      <p>${scheduleLabel} • ${item.reportTimeLabel}</p>
+      <p>${dateLabel} • ${item.reportTimeLabel}</p>
       <p><strong>${fmtPct(up)} up</strong> / ${fmtPct(down)} down</p>
       <p class="small-note">Volume: ${Number(item.volume || 0).toLocaleString()}</p>
       <p class="small-note">${directionClass.toUpperCase()} bias</p>
     `;
     target.appendChild(card);
   });
+
+  const detail = document.getElementById('earnings-detail');
+  if (detail) {
+    detail.setAttribute('data-schedule-label', scheduleLabel);
+    detail.setAttribute('data-source-label', dataSource);
+  }
 
   if ((payload.items || []).length > 0) {
     renderEarningsDetail(payload.items[0]);
@@ -252,6 +377,8 @@ function renderEarningsDetail(item) {
   if (!target || !item) {
     return;
   }
+  const scheduleLabel = target.getAttribute('data-schedule-label') || 'Upcoming earnings';
+  const sourceLabel = target.getAttribute('data-source-label') || 'Estimated board';
 
   const fallbackIntel = item.unusualWhalesIntel || item.intel || {};
   const upPct = item.predictedMove?.up ?? item.probabilityUp ?? 0;
@@ -288,7 +415,9 @@ function renderEarningsDetail(item) {
   target.innerHTML = `
     <article class="earnings-detail-card">
       <h3>${item.ticker} Earnings Intel</h3>
+      <p><strong>Date:</strong> ${item.eventDateLabel || item.eventDate || scheduleLabel}</p>
       <p><strong>Session:</strong> ${item.reportTimeLabel || 'Pre-Market'}</p>
+      <p class="small-note"><strong>Calendar source:</strong> ${sourceLabel}</p>
       <p><strong>Direction:</strong> ${item.direction.toUpperCase()} • ${upPct}% up / ${downPct}% down</p>
       <p><strong>Estimated volume:</strong> ${Number(item.volume || 0).toLocaleString()}</p>
       <h4>Analyst Pushes</h4>
@@ -530,6 +659,7 @@ async function loadTrendTrades() {
   } catch (error) {
     if (error.status === 403) {
       renderTrendTradesLocked('Trend Trades is Pro-only. Upgrade to see social trend trading signals.');
+      openProPopup('Pro access needed for Trend Trades. Upgrade to see social trend trading signals.');
       return;
     }
     throw error;
@@ -558,6 +688,7 @@ async function loadUnusualFeed() {
   } catch (error) {
     if (error.status === 403) {
       renderUnusualLocked('Pro feature locked. Upgrade to access unusual moves feed.');
+      openProPopup('Pro access needed for Unusual Moves Feed.');
       return;
     }
     throw error;
@@ -581,6 +712,7 @@ async function calculateOptions(formValues) {
   } catch (error) {
     if (error.status === 403) {
       renderOptionsLocked('Pro feature locked. Upgrade to use options calculator and gamma exposure.');
+      openProPopup('Pro access needed for the Options Calculator + Gamma Exposure.');
       return;
     }
     throw error;
@@ -598,6 +730,15 @@ async function refreshBaseline() {
     loadRealizedPatterns(),
     loadWildTakes()
   ]);
+}
+
+async function fetchBillingInfo() {
+  try {
+    billingInfo = await fetchJson('/api/auth/billing-info');
+  } catch (_error) {
+    billingInfo = null;
+  }
+  renderBillingInfo(billingInfo, null);
 }
 
 async function fetchCurrentUser() {
@@ -650,6 +791,23 @@ function setupAuthForms() {
   const logoutButton = document.getElementById('logout-btn');
   const checkoutButton = document.getElementById('upgrade-pro-btn');
   const billingPortalButton = document.getElementById('billing-portal-btn');
+  const billingCard = document.getElementById('billing-safety-card');
+  const billingCancelButton = document.getElementById('billing-safe-cancel');
+  const billingContinueButton = document.getElementById('billing-safe-continue');
+
+  function closeBillingCard() {
+    if (!billingCard) {
+      return;
+    }
+    billingCard.classList.add('hidden');
+  }
+
+  function openBillingCard() {
+    if (!billingCard) {
+      return;
+    }
+    billingCard.classList.remove('hidden');
+  }
 
   loginForm.addEventListener('submit', async (event) => {
     event.preventDefault();
@@ -681,28 +839,78 @@ function setupAuthForms() {
     authToken = '';
     currentUser = null;
     localStorage.removeItem('dumbdollars_token');
+    closeBillingCard();
     renderAuthState();
     setAuthMessage('Logged out.');
     await Promise.all([refreshBaseline(), loadUnusualFeed(), loadTrendTrades()]);
   });
+
+  if (billingCancelButton) {
+    billingCancelButton.addEventListener('click', closeBillingCard);
+  }
+
+  if (billingContinueButton) {
+    billingContinueButton.addEventListener('click', async () => {
+      if (!currentUser) {
+        setAuthMessage('Please login first.', true);
+        closeBillingCard();
+        return;
+      }
+      if (!billingInfo?.configured) {
+        setAuthMessage('Billing is not configured yet. Try again later.', true);
+        return;
+      }
+
+      try {
+        const payload = await fetchJson('/api/auth/stripe/create-checkout-session', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            ...headersWithPlan()
+          }
+        });
+        closeBillingCard();
+        window.location.href = payload.url;
+      } catch (error) {
+        setAuthMessage(error.message || 'Could not start checkout.', true);
+      }
+    });
+  }
 
   checkoutButton.addEventListener('click', async () => {
     if (!currentUser) {
       setAuthMessage('Please login first.', true);
       return;
     }
-
     try {
-      const payload = await fetchJson('/api/auth/stripe/create-checkout-session', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          ...headersWithPlan()
-        }
+      await fetchBillingInfo();
+      const preview = await fetchJson('/api/auth/billing/checkout-preview', {
+        headers: headersWithPlan()
       });
-      window.location.href = payload.url;
+      renderBillingInfo(billingInfo, preview);
+      openBillingCard();
     } catch (error) {
-      setAuthMessage(error.message || 'Could not start checkout.', true);
+      setAuthMessage(error.message || 'Could not load secure checkout details.', true);
+    }
+  });
+
+  document.addEventListener('click', (event) => {
+    const target = event.target;
+    if (!(target instanceof Element) || !billingCard) {
+      return;
+    }
+    if (!billingCard.classList.contains('hidden') && !billingCard.contains(target) && target !== checkoutButton) {
+      const clickedCheckoutButton = checkoutButton.contains(target);
+      if (!clickedCheckoutButton) {
+        closeBillingCard();
+      }
+    }
+  });
+
+  document.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape') {
+      closeBillingCard();
+      closeProPopup();
     }
   });
 
@@ -734,6 +942,7 @@ function setupAiSidebar() {
   const trendSourceSelect = document.getElementById('trend-source-select');
   const patternTypeSelect = document.getElementById('pattern-type-select');
   const wildTakesButton = document.getElementById('wild-takes-refresh');
+  const searchAllButton = document.getElementById('ai-search-all');
 
   if (!form || !trendForm || !patternForm || !select || !trendSourceSelect || !patternTypeSelect || !wildTakesButton) {
     return;
@@ -765,6 +974,9 @@ function setupAiSidebar() {
       await loadTrendTrades();
     } catch (error) {
       renderTrendTradesLocked(error.message || 'Could not load trend trades.');
+      if (error.status === 403) {
+        openProPopup('Pro access needed for Trend Trades.');
+      }
     }
   });
 
@@ -774,6 +986,9 @@ function setupAiSidebar() {
       await loadTrendTrades();
     } catch (error) {
       renderTrendTradesLocked(error.message || 'Could not load trend trades.');
+      if (error.status === 403) {
+        openProPopup('Pro access needed for Trend Trades.');
+      }
     }
   });
 
@@ -806,6 +1021,13 @@ function setupAiSidebar() {
       target.innerHTML = `<div class="pro-lock">${error.message || 'Could not load wild takes.'}</div>`;
     }
   });
+
+  if (searchAllButton) {
+    searchAllButton.addEventListener('click', () => {
+      const query = document.getElementById('ai-search-query').value.trim() || activeTicker;
+      openAllAiPlatforms(query);
+    });
+  }
 }
 
 function setupSidebarMenu() {
@@ -819,6 +1041,9 @@ function setupSidebarMenu() {
   menuToggle.addEventListener('click', () => {
     toggleSidebarMenu();
   });
+
+  // Keep desktop as a dropdown too, so the menu behavior is consistent.
+  closeSidebarMenu();
 
   document.addEventListener('click', (event) => {
     const target = event.target;
@@ -879,6 +1104,7 @@ function setupScanForm() {
       const target = document.getElementById('scan-results');
       if (error.status === 403) {
         target.innerHTML = `<div class="pro-lock">${error.message}</div>`;
+        openProPopup(`Pro access needed. ${error.message}`);
       } else {
         target.innerHTML = '<div class="pro-lock">Scanner failed. Try again.</div>';
       }
@@ -903,6 +1129,9 @@ function setupOptionsForm() {
     } catch (error) {
       console.error(error);
       renderOptionsLocked('Failed to calculate options. Check inputs and retry.');
+      if (error.status === 403) {
+        openProPopup('Pro access needed for the Options Calculator + Gamma Exposure.');
+      }
     }
   });
 }
@@ -915,13 +1144,49 @@ function setupUnusualRefresh() {
     } catch (error) {
       console.error(error);
       renderUnusualLocked('Failed to refresh unusual moves feed.');
+      if (error.status === 403) {
+        openProPopup('Pro access needed for Unusual Moves Feed.');
+      }
+    }
+  });
+}
+
+function setupProPopup() {
+  const backdrop = document.getElementById('pro-popup-backdrop');
+  const popup = document.getElementById('pro-popup');
+  const upgradeBtn = document.getElementById('pro-popup-upgrade');
+  const closeBtn = document.getElementById('pro-popup-close');
+  if (!backdrop || !popup || !closeBtn) {
+    return;
+  }
+
+  closeBtn.addEventListener('click', closeProPopup);
+  if (upgradeBtn) {
+    upgradeBtn.addEventListener('click', () => {
+      closeProPopup();
+      const checkoutButton = document.getElementById('upgrade-pro-btn');
+      if (checkoutButton) {
+        checkoutButton.click();
+      }
+    });
+  }
+  backdrop.addEventListener('click', (event) => {
+    if (event.target === backdrop) {
+      closeProPopup();
+    }
+  });
+  document.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape' && proPopupVisible) {
+      closeProPopup();
     }
   });
 }
 
 async function init() {
   authToken = localStorage.getItem('dumbdollars_token') || '';
+  await fetchBillingInfo();
   setupAuthForms();
+  setupProPopup();
   setupSidebarMenu();
   setupAiSidebar();
   setupStockForm();

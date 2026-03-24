@@ -72,6 +72,15 @@
             <button id="billing-portal-btn" class="btn-secondary" type="button">Manage Billing</button>
             <button id="logout-btn" class="btn-secondary" type="button">Log out</button>
           </div>
+          <article id="billing-safety-card" class="billing-safety-card hidden" aria-live="polite">
+            <h3>Secure Pro Checkout</h3>
+            <p id="billing-plan-line" class="small-note">Plan: DumbDollars Pro • $15/month</p>
+            <ul id="billing-trust-points" class="detail-list"></ul>
+            <div class="billing-actions">
+              <button id="billing-safe-continue" type="button">Continue to secure checkout</button>
+              <button id="billing-safe-cancel" class="btn-secondary" type="button">Cancel</button>
+            </div>
+          </article>
           <p id="auth-message" class="small-note"></p>
         </section>
       </header>
@@ -92,6 +101,7 @@
               <select id="ai-platform-select"></select>
             </label>
             <button type="submit">Search AI</button>
+            <button id="ai-search-all" class="btn-secondary" type="button">Search All AI Sources</button>
           </form>
           <a id="ai-open-link" class="open-link" href="#" target="_blank" rel="noopener noreferrer">Open selected platform</a>
           <div id="ai-platform-details" class="stack"></div>
@@ -243,13 +253,23 @@
               <h2>Earnings Gambling</h2>
               <span class="chip">Core</span>
             </div>
-            <p class="small-note">Tomorrow's top-volume earnings (pre-market + after-hours) with directional probability cards.</p>
+            <p class="small-note">Top upcoming earnings with confirmed dates/sessions when available and directional probability cards.</p>
             <div id="earnings-board" class="earnings-grid"></div>
             <article id="earnings-detail" class="earnings-detail-card"></article>
           </section>
         </div>
       </div>
     </main>
+    <div id="pro-popup-backdrop" class="pro-popup-backdrop hidden" aria-hidden="true">
+      <article id="pro-popup" class="pro-popup card" role="dialog" aria-modal="true" aria-labelledby="pro-popup-title">
+        <h3 id="pro-popup-title">Pro Access Needed</h3>
+        <p id="pro-popup-text">This feature is part of DumbDollars Pro. Upgrade to unlock it.</p>
+        <div class="pro-popup-actions">
+          <button id="pro-popup-upgrade" type="button">Upgrade to Pro</button>
+          <button id="pro-popup-close" class="btn-secondary" type="button">Close</button>
+        </div>
+      </article>
+    </div>
     <script src="./app.js"></script>
   </body>
 </html>
