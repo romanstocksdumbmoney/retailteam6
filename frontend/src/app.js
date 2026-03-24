@@ -1,6 +1,7 @@
 const PLAN_FREE = 'free';
 const PLAN_PRO = 'pro';
 const PRO_MONTHLY_PRICE = '$15/month';
+const AUTO_PRO_STORAGE_KEY = 'dumbdollars_auto_pro';
 
 let activePlan = PLAN_FREE;
 let activeTicker = 'AAPL';
@@ -12,6 +13,41 @@ let activePatternFilter = 'all';
 let sidebarOpen = false;
 let billingInfo = null;
 let proPopupVisible = false;
+let autoProAccess = false;
+
+function parseAutoProFlag(rawValue) {
+  if (rawValue == null || rawValue === '') {
+    return null;
+  }
+  const value = String(rawValue).trim().toLowerCase();
+  if (['1', 'true', 'pro', 'on', 'yes'].includes(value)) {
+    return true;
+  }
+  if (['0', 'false', 'free', 'off', 'no'].includes(value)) {
+    return false;
+  }
+  return null;
+}
+
+function syncAutoProFromUrl() {
+  const fallback = localStorage.getItem(AUTO_PRO_STORAGE_KEY) === 'true';
+  try {
+    const params = new URLSearchParams(window.location.search || '');
+    const parsed = parseAutoProFlag(params.get('pro'));
+    if (parsed == null) {
+      autoProAccess = fallback;
+      return;
+    }
+    autoProAccess = parsed;
+    if (autoProAccess) {
+      localStorage.setItem(AUTO_PRO_STORAGE_KEY, 'true');
+    } else {
+      localStorage.removeItem(AUTO_PRO_STORAGE_KEY);
+    }
+  } catch (_error) {
+    autoProAccess = fallback;
+  }
+}
 
 function openExternal(url) {
   try {
@@ -42,6 +78,9 @@ function headersWithPlan() {
   const headers = {};
   if (authToken) {
     headers.authorization = `Bearer ${authToken}`;
+  }
+  if (autoProAccess) {
+    headers['x-user-plan'] = PLAN_PRO;
   }
   return headers;
 }
@@ -221,14 +260,16 @@ function renderAuthState() {
   const billingPortalButton = document.getElementById('billing-portal-btn');
   const logoutButton = document.getElementById('logout-btn');
 
-  activePlan = currentUser && currentUser.plan === PLAN_PRO ? PLAN_PRO : PLAN_FREE;
+  activePlan = currentUser && currentUser.plan === PLAN_PRO
+    ? PLAN_PRO
+    : (autoProAccess ? PLAN_PRO : PLAN_FREE);
   planBadge.textContent = activePlan === PLAN_PRO ? 'PRO ACCESS' : 'FREE ACCESS';
   planBadge.className = activePlan === PLAN_PRO ? 'plan-badge plan-pro' : 'plan-badge plan-free';
 
   setAuthMessage(
     currentUser
       ? `${currentUser.email} • ${activePlan === PLAN_PRO ? 'Pro active' : 'Free plan'}`
-      : 'Not logged in'
+      : (autoProAccess ? 'Creator preview mode • Pro access active' : 'Not logged in')
   );
 
   if (checkoutButton) {
@@ -1261,6 +1302,7 @@ function setupProPopup() {
 }
 
 async function init() {
+  syncAutoProFromUrl();
   authToken = localStorage.getItem('dumbdollars_token') || '';
   await fetchBillingInfo();
   setupAuthForms();
