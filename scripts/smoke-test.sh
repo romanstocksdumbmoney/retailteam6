@@ -4,6 +4,7 @@ set -euo pipefail
 
 BASE_URL="${BASE_URL:-http://127.0.0.1:5000}"
 TMP_DIR="/tmp/aapp-smoke"
+AUTH_TOKEN=""
 
 mkdir -p "$TMP_DIR"
 
@@ -37,11 +38,51 @@ check_status_code() {
   fi
 }
 
+check_auth_status_code() {
+  local path="$1"
+  local expected="$2"
+  local code
+  code="$(curl -sS -o /dev/null -w "%{http_code}" -H "Authorization: Bearer $AUTH_TOKEN" "$BASE_URL$path")"
+  if [[ "$code" == "$expected" ]]; then
+    echo "PASS: $path (authed) returned $expected"
+  else
+    echo "FAIL: $path (authed) returned $code (expected $expected)"
+    exit 1
+  fi
+}
+
+signup_and_capture_token() {
+  local email="smoke.$RANDOM.$$.test@example.com"
+  local outfile="$TMP_DIR/signup.json"
+  local code
+  code="$(curl -sS -o "$outfile" -w "%{http_code}" \
+    -H "Content-Type: application/json" \
+    -d "{\"email\":\"$email\",\"password\":\"password123\"}" \
+    "$BASE_URL/api/auth/signup")"
+
+  if [[ "$code" != "201" ]]; then
+    echo "FAIL: signup returned $code"
+    echo "--- response ---"
+    rg "." "$outfile"
+    exit 1
+  fi
+
+  AUTH_TOKEN="$(node -e "const fs=require('fs');const body=JSON.parse(fs.readFileSync(process.argv[1],'utf8'));if(!body.token){process.exit(1);}process.stdout.write(body.token);" "$outfile")"
+  if [[ -z "$AUTH_TOKEN" ]]; then
+    echo "FAIL: signup succeeded but token missing"
+    exit 1
+  fi
+  echo "PASS: signup returned auth token"
+}
+
 check_json_contains "/health" "\"status\":\"ok\""
-check_json_contains "/api/auth/me" "\"plan\":\"free\""
+check_status_code "/api/auth/me" "401"
+signup_and_capture_token
 check_json_contains "/api/market/stock-outlook?ticker=TSLA" "\"ticker\":\"TSLA\""
+check_auth_status_code "/api/auth/me" "200"
 check_json_contains "/api/market/scan-x?ticker=TSLA&method=llm-sentiment" "\"isLimited\":true"
-check_status_code "/api/market/options?ticker=TSLA&spot=220&strike=230&daysToExpiry=21&iv=0.42" "403"
-check_json_contains "/api/market/earnings-gambling" "\"items\""
+check_auth_status_code "/api/market/options?ticker=TSLA&spot=220&strike=230&daysToExpiry=21&iv=0.42" "403"
+check_json_contains "/api/market/stock-outlook?ticker=TSLA" "\"ticker\":\"TSLA\""
+check_json_contains "/api/market/earnings-gambling" "\"volume\""
 
 echo "Smoke test complete."

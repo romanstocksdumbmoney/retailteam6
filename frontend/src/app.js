@@ -48,7 +48,7 @@ function renderStatus(text) {
 }
 
 function setAuthMessage(text, isError = false) {
-  const node = document.getElementById('auth-status');
+  const node = document.getElementById('auth-message');
   if (!node) {
     return;
   }
@@ -172,14 +172,78 @@ function renderEarningsBoard(payload) {
   payload.items.forEach((item) => {
     const card = document.createElement('article');
     card.className = `earnings-card earnings-card--${item.direction}`;
+    card.setAttribute('role', 'button');
+    card.setAttribute('tabindex', '0');
+    card.addEventListener('click', () => renderEarningsDetail(item));
+    card.addEventListener('keydown', (event) => {
+      if (event.key === 'Enter' || event.key === ' ') {
+        event.preventDefault();
+        renderEarningsDetail(item);
+      }
+    });
     card.innerHTML = `
       <h3>${item.ticker}</h3>
       <p>${item.reportTimeLabel}</p>
       <p><strong>${fmtPct(item.predictedMove.up)} up</strong> / ${fmtPct(item.predictedMove.down)} down</p>
+      <p class="small-note">Volume: ${Number(item.volume || 0).toLocaleString()}</p>
       <p class="small-note">${item.direction.toUpperCase()} bias</p>
     `;
     target.appendChild(card);
   });
+
+  if ((payload.items || []).length > 0) {
+    renderEarningsDetail(payload.items[0]);
+  } else {
+    const detail = document.getElementById('earnings-detail');
+    if (detail) {
+      detail.innerHTML = '<div class="pro-lock">No earnings details available.</div>';
+    }
+  }
+}
+
+function renderEarningsDetail(item) {
+  const target = document.getElementById('earnings-detail');
+  if (!target || !item) {
+    return;
+  }
+
+  const fallbackIntel = item.unusualWhalesIntel || item.intel || {};
+  const upPct = item.predictedMove?.up ?? item.probabilityUp ?? 0;
+  const downPct = item.predictedMove?.down ?? item.probabilityDown ?? 0;
+  const plays = item.unusualWhales?.plays || fallbackIntel.unusualPlays || [];
+  const commentary = item.unusualWhales?.commentary || fallbackIntel.notes || [];
+  const growth = item.futureGrowthSignals || fallbackIntel.notes || [];
+  const outlookLines = item.unusualWhales?.futureGrowthOutlook || (fallbackIntel.headline ? [fallbackIntel.headline] : []);
+
+  const playsHtml = plays
+    .map(
+      (play) => {
+        const type = play.type || play.side || 'Flow';
+        const strike = play.strike || play.strikeHint || '?';
+        const expiration = play.expiration || `${play.expiry || '?'}d`;
+        const sentiment = play.sentiment || 'watchlist';
+        return `<li><strong>${type}</strong> ${strike} exp ${expiration} • ${fmtUsd(play.premiumUsd)} • ${sentiment}</li>`;
+      }
+    )
+    .join('');
+  const commentaryHtml = commentary.map((line) => `<li>${line}</li>`).join('');
+  const growthHtml = growth.map((line) => `<li>${line}</li>`).join('');
+  const outlookHtml = outlookLines.map((line) => `<li>${line}</li>`).join('');
+
+  target.innerHTML = `
+    <article class="earnings-detail-card">
+      <h3>${item.ticker} Earnings Intel</h3>
+      <p><strong>Direction:</strong> ${item.direction.toUpperCase()} • ${upPct}% up / ${downPct}% down</p>
+      <p><strong>Estimated volume:</strong> ${Number(item.volume || 0).toLocaleString()}</p>
+      <h4>Unusual Plays (Whales-style)</h4>
+      <ul class="detail-list">${playsHtml || '<li>No unusual plays detected.</li>'}</ul>
+      <h4>Earnings / Future Growth Commentary</h4>
+      <ul class="detail-list">${commentaryHtml || '<li>No commentary available.</li>'}</ul>
+      <ul class="detail-list">${growthHtml || '<li>No growth signals available.</li>'}</ul>
+      <h4>Whale Outlook</h4>
+      <ul class="detail-list">${outlookHtml || '<li>No outlook notes available.</li>'}</ul>
+    </article>
+  `;
 }
 
 function renderAiSidebar(payload) {
@@ -248,7 +312,7 @@ function renderTrendTrades(payload) {
   }
   target.innerHTML = '';
   if (sourceSelect) {
-    const sources = payload.sources || ['all'];
+    const sources = payload.availableSources || payload.sources || ['all'];
     sourceSelect.innerHTML = '';
     sources.forEach((source) => {
       const option = document.createElement('option');
@@ -317,7 +381,7 @@ async function loadTrendTrades() {
     const payload = await fetchJson(
       `/api/market/trend-trades?limit=8&source=${encodeURIComponent(activeTrendSource)}`,
       {
-      headers: headersWithPlan()
+        headers: headersWithPlan()
       }
     );
     renderTrendTrades(payload);

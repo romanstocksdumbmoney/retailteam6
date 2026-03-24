@@ -9,6 +9,15 @@
   <body>
     <main class="container">
       <header class="hero">
+        <div class="diamond-banner">
+          <div class="diamond-icon-wrap" aria-hidden="true">
+            <span class="diamond-icon"></span>
+          </div>
+          <div>
+            <p class="diamond-kicker">Diamond Hands</p>
+            <p class="diamond-text">Snap-style signal banner for whales, flow, and earnings momentum.</p>
+          </div>
+        </div>
         <div class="hero-top">
           <h1>DumbDollars</h1>
           <span id="plan-badge" class="plan-badge plan-free">FREE ACCESS</span>
@@ -63,9 +72,14 @@
               Search topic
               <input id="ai-search-query" type="text" placeholder="NVDA earnings, Fed rates, AI chips" />
             </label>
+            <label>
+              AI platform
+              <select id="ai-platform-select"></select>
+            </label>
             <button type="submit">Search AI</button>
           </form>
-          <div id="ai-platform-list" class="stack"></div>
+          <a id="ai-open-link" class="open-link" href="#" target="_blank" rel="noopener noreferrer">Open selected platform</a>
+          <div id="ai-platform-details" class="stack"></div>
 
           <div class="section-header trend-header">
             <h2>Trend Trades</h2>
@@ -189,6 +203,7 @@
             </div>
             <p class="small-note">Upcoming large-cap earnings and directional probability cards.</p>
             <div id="earnings-board" class="earnings-grid"></div>
+            <article id="earnings-detail" class="earnings-detail-card"></article>
           </section>
         </div>
       </div>

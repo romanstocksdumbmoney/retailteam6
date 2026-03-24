@@ -2,7 +2,8 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-BASE_URL="${BASE_URL:-http://127.0.0.1:5000}"
+TEST_PORT="${PORT:-5050}"
+BASE_URL="${BASE_URL:-http://127.0.0.1:${TEST_PORT}}"
 SERVER_LOG="/tmp/aapp-test-run-server.log"
 SERVER_PID=""
 
@@ -24,8 +25,8 @@ echo "[2/5] Installing frontend dependencies..."
 echo "[3/5] Building frontend..."
 (cd "$ROOT_DIR/frontend" && npm run build)
 
-echo "[4/5] Starting backend with test auth secret..."
-(cd "$ROOT_DIR" && JWT_SECRET="${JWT_SECRET:-dumbdollars-dev-secret}" node server.js > "$SERVER_LOG" 2>&1) &
+echo "[4/5] Starting backend with test auth secret on port ${TEST_PORT}..."
+(cd "$ROOT_DIR" && AUTH_SECRET="${AUTH_SECRET:-dumbdollars-dev-secret}" PORT="${TEST_PORT}" node server.js > "$SERVER_LOG" 2>&1) &
 SERVER_PID=$!
 
 echo "Waiting for backend health endpoint..."

@@ -261,6 +261,10 @@ router.get('/earnings-gambling', (req, res) => {
       ticker: item.symbol,
       reportTimeLabel: item.reportTime,
       direction: item.predictedDirection,
+      volume: item.volume,
+      unusualWhalesIntel: item.unusualWhalesIntel || item.intel,
+      unusualWhales: item.unusualWhales,
+      futureGrowthSignals: item.futureGrowthSignals,
       predictedMove: {
         up: item.probabilityUp,
         down: item.probabilityDown
@@ -287,7 +291,7 @@ router.get('/ai-discovery', (req, res) => {
 });
 
 router.get('/trend-trades-sources', (_req, res) => {
-  const options = getTrendTradesSourceOptions();
+  const options = getTrendTrades(1, 'all').availableSources || ['all'];
   return res.json({ options });
 });
 

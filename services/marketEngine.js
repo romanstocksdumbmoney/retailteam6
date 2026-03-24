@@ -28,6 +28,21 @@ const EARNINGS_WATCHLIST = [
   'UNH'
 ];
 
+const EARNINGS_VOLUME_BASE = {
+  AAPL: 95_000_000,
+  MSFT: 42_000_000,
+  NVDA: 68_000_000,
+  AMZN: 56_000_000,
+  GOOGL: 34_000_000,
+  META: 31_000_000,
+  TSLA: 77_000_000,
+  NFLX: 19_000_000,
+  AMD: 49_000_000,
+  JPM: 16_000_000,
+  BAC: 28_000_000,
+  UNH: 7_000_000
+};
+
 const AI_DISCOVERY_PLATFORMS = [
   {
     id: 'x-com',
@@ -303,32 +318,84 @@ function getUnusualMoves() {
   return moves;
 }
 
-function getEarningsGamblingBoard(limit = 5) {
-  const seed = hashString(`earnings:${daySeed()}`);
-  const selected = [];
-  const seen = new Set();
-  let cursor = 0;
+function estimateEarningsDayVolume(symbol) {
+  const base = EARNINGS_VOLUME_BASE[symbol] || 12_000_000;
+  const seed = hashString(`earnings-volume:${symbol}:${daySeed()}`);
+  const multiplier = 0.75 + pseudoRandom(seed) * 0.9;
+  return Math.max(1_000_000, Math.round(base * multiplier));
+}
 
-  while (selected.length < limit && cursor < 100) {
-    const idx = Math.floor(pseudoRandom(seed + cursor * 5) * EARNINGS_WATCHLIST.length);
-    const symbol = EARNINGS_WATCHLIST[idx];
-    if (!seen.has(symbol)) {
-      selected.push(symbol);
-      seen.add(symbol);
-    }
-    cursor += 1;
+function buildEarningsIntel(symbol, volume, up, down, seedOffset) {
+  const seed = hashString(`earnings-intel:${symbol}:${daySeed()}:${seedOffset}`);
+  const directionalBias = up >= down ? 'bullish' : 'bearish';
+  const altDirection = directionalBias === 'bullish' ? 'bearish' : 'bullish';
+  const unusualCount = 2 + Math.floor(pseudoRandom(seed + 1) * 3);
+  const unusualPlays = [];
+
+  for (let i = 0; i < unusualCount; i += 1) {
+    const callSide = pseudoRandom(seed + 11 + i) > 0.5;
+    unusualPlays.push({
+      side: callSide ? 'CALLS' : 'PUTS',
+      premiumUsd: Math.round((2 + pseudoRandom(seed + 21 + i) * 22) * 1_000_000),
+      strikeHint: Math.round((70 + pseudoRandom(seed + 31 + i) * 240) * 10) / 10,
+      expiry: 7 + Math.floor(pseudoRandom(seed + 41 + i) * 60)
+    });
   }
 
-  return selected.map((symbol, index) => {
-    const moveUp = pseudoRandom(seed + index + 99) > 0.5;
+  const commentary = [
+    `${symbol} unusual flow leans ${directionalBias} heading into earnings with concentrated premium sweeps.`,
+    `Crowd discussion around ${symbol} ${directionalBias === 'bullish' ? 'highlights revenue acceleration' : 'questions near-term margin pressure'}.`,
+    `Future growth narrative is ${directionalBias === 'bullish' ? 'supported by forward guidance optimism' : 'mixed with valuation and execution concerns'}.`,
+    `Volume profile (${volume.toLocaleString()}) suggests elevated participation and faster post-earnings repricing risk.`
+  ];
+
+  const futureGrowthSignals = [
+    `${symbol} guidance watch: management tone on next-quarter demand will likely drive post-print momentum.`,
+    `${symbol} margin path looks ${directionalBias === 'bullish' ? 'constructive if operating leverage holds' : 'fragile if costs remain sticky'}.`,
+    `${symbol} long-range growth outlook remains ${directionalBias === 'bullish' ? 'intact with stronger product pipeline chatter' : 'debated given valuation and competitive pressure'}.`
+  ];
+
+  return {
+    headline: `${symbol} ${directionalBias} setup from unusual activity`,
+    sentiment: directionalBias,
+    opposingSentiment: altDirection,
+    unusualPlays,
+    notes: commentary,
+    futureGrowthSignals
+  };
+}
+
+function getEarningsGamblingBoard(limit = 5) {
+  const seed = hashString(`earnings:${daySeed()}`);
+  const boundedLimit = Math.max(1, Math.min(8, Math.trunc(limit)));
+  const rankedByVolume = EARNINGS_WATCHLIST.map((symbol) => ({
+    symbol,
+    estimatedVolume: estimateEarningsDayVolume(symbol)
+  }))
+    .sort((a, b) => b.estimatedVolume - a.estimatedVolume)
+    .slice(0, boundedLimit);
+
+  return rankedByVolume.map((entry, index) => {
+    const symbol = entry.symbol;
     const up = clamp(Math.round(45 + pseudoRandom(seed + index + 120) * 25), 40, 70);
     const down = 100 - up;
+    const predictedDirection = up >= down ? 'up' : 'down';
+    const intel = buildEarningsIntel(symbol, entry.estimatedVolume, up, down, index);
+
     return {
       symbol,
+      volume: entry.estimatedVolume,
       reportTime: index % 2 === 0 ? 'Before Open' : 'After Close',
-      predictedDirection: moveUp ? 'up' : 'down',
+      predictedDirection,
       probabilityUp: up,
-      probabilityDown: down
+      probabilityDown: down,
+      intel,
+      unusualWhales: {
+        plays: intel.unusualPlays,
+        commentary: intel.notes,
+        futureGrowthOutlook: [intel.headline]
+      },
+      futureGrowthSignals: intel.futureGrowthSignals
     };
   });
 }
