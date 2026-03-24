@@ -14,10 +14,12 @@ async function build() {
   await fs.writeFile(path.join(buildDir, 'index.html'), stampedHtml, 'utf8');
   await fs.copyFile(path.join(srcDir, 'pro.html'), path.join(buildDir, 'pro.html'));
   await fs.copyFile(path.join(srcDir, 'payment.html'), path.join(buildDir, 'payment.html'));
+  await fs.copyFile(path.join(srcDir, 'checkout.html'), path.join(buildDir, 'checkout.html'));
   await fs.copyFile(path.join(srcDir, 'logo-mark.svg'), path.join(buildDir, 'logo-mark.svg'));
   await fs.copyFile(path.join(srcDir, 'app.js'), path.join(buildDir, 'app.js'));
   await fs.copyFile(path.join(srcDir, 'pro.js'), path.join(buildDir, 'pro.js'));
   await fs.copyFile(path.join(srcDir, 'payment.js'), path.join(buildDir, 'payment.js'));
+  await fs.copyFile(path.join(srcDir, 'checkout.js'), path.join(buildDir, 'checkout.js'));
   await fs.copyFile(path.join(srcDir, 'styles.css'), path.join(buildDir, 'styles.css'));
   console.log('Frontend build complete: frontend/build/index.html');
 }
