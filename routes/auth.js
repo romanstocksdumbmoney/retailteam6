@@ -38,7 +38,7 @@ router.get('/billing-info', (_req, res) => {
   return res.json(getBillingPublicInfo());
 });
 
-router.get('/billing/checkout-preview', authRequired, (_req, res) => {
+router.get('/billing/checkout-preview', (_req, res) => {
   const billingInfo = getBillingPublicInfo();
   if (!billingInfo.configured) {
     return res.status(503).json({
@@ -103,9 +103,28 @@ router.get('/me', authRequired, (req, res) => {
   return res.json({ user: req.user });
 });
 
-router.post('/stripe/create-checkout-session', authRequired, async (req, res) => {
+router.post('/stripe/create-checkout-session', async (req, res) => {
   try {
-    const session = await createCheckoutSession(req.user);
+    const parsed = parseAuthToken(req.header('authorization'));
+    const user = parsed.ok ? getUserById(parsed.userId) : null;
+    const customerEmail = String(req.body?.email || '').trim().toLowerCase() || undefined;
+    const session = await createCheckoutSession(user, { customerEmail });
+    return res.json({ url: session.url });
+  } catch (error) {
+    if (String(error.message) === 'billing_not_configured' || String(error.message) === 'stripe_not_configured') {
+      return res.status(503).json({
+        error: 'billing_not_configured',
+        message: 'Stripe is not configured. Set STRIPE_SECRET_KEY and STRIPE_PRICE_ID.'
+      });
+    }
+    return res.status(500).json({ error: 'checkout_failed', message: 'Could not create Stripe checkout session.' });
+  }
+});
+
+router.post('/stripe/create-checkout-session-public', async (req, res) => {
+  try {
+    const customerEmail = String(req.body?.email || '').trim().toLowerCase() || undefined;
+    const session = await createCheckoutSession(null, { customerEmail });
     return res.json({ url: session.url });
   } catch (error) {
     if (String(error.message) === 'billing_not_configured' || String(error.message) === 'stripe_not_configured') {

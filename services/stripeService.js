@@ -51,6 +51,15 @@ async function ensureStripeCustomer(user) {
   return customer.id;
 }
 
+function resolveCheckoutUser(user = {}) {
+  const fallbackEmail = String(process.env.CHECKOUT_GUEST_EMAIL || 'guest-checkout@dumbdollars.local').trim().toLowerCase();
+  return {
+    id: user.id || 'guest-checkout',
+    email: user.email || fallbackEmail,
+    stripeCustomerId: user.stripeCustomerId || null
+  };
+}
+
 async function createCheckoutSession(user) {
   const stripe = getStripe();
   const priceId = getProPriceId();
@@ -58,7 +67,8 @@ async function createCheckoutSession(user) {
     throw new Error('billing_not_configured');
   }
 
-  const customerId = await ensureStripeCustomer(user);
+  const checkoutUser = resolveCheckoutUser(user);
+  const customerId = await ensureStripeCustomer(checkoutUser);
   const base = getAppBaseUrl();
   const session = await stripe.checkout.sessions.create({
     mode: 'subscription',
@@ -67,7 +77,7 @@ async function createCheckoutSession(user) {
     line_items: [{ price: priceId, quantity: 1 }],
     success_url: `${base}/?checkout=success`,
     cancel_url: `${base}/?checkout=cancelled`,
-    metadata: { userId: user.id }
+    metadata: { userId: checkoutUser.id }
   });
 
   return session;

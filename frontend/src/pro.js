@@ -36,21 +36,21 @@ function setStatus(text, isError = false) {
 async function startSecureCheckout() {
   const token = localStorage.getItem('dumbdollars_token') || '';
   const startButton = document.getElementById('pro-page-start');
-  if (!token) {
-    setStatus('Please sign in on the dashboard first.', true);
-    return;
-  }
   try {
     if (startButton) {
       startButton.disabled = true;
     }
     setStatus('Opening secure card checkout...');
-    const session = await fetchJson('/api/auth/stripe/create-checkout-session', {
+    const endpoint = token
+      ? '/api/auth/stripe/create-checkout-session'
+      : '/api/auth/stripe/create-checkout-session-public';
+    const session = await fetchJson(endpoint, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        ...getAuthHeaders()
-      }
+        ...(token ? getAuthHeaders() : {})
+      },
+      body: JSON.stringify({})
     });
     if (!session || typeof session.url !== 'string' || !session.url.startsWith('https://checkout.stripe.com/')) {
       throw new Error('Could not verify secure Stripe checkout URL.');
