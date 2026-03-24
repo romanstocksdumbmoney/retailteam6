@@ -22,6 +22,10 @@ body {
   margin-bottom: 1rem;
 }
 
+.menu-bar {
+  display: none;
+}
+
 .diamond-banner {
   display: flex;
   align-items: center;
@@ -76,14 +80,61 @@ body {
   display: none;
   align-items: center;
   justify-content: center;
-  width: 42px;
-  height: 42px;
-  border-radius: 10px;
+  gap: 0.55rem;
+  min-height: 44px;
+  padding: 0.5rem 0.8rem;
+  border-radius: 11px;
   border: 1px solid #ca8a04;
   background: linear-gradient(180deg, #facc15, #eab308);
-  color: #0f172a;
-  font-size: 1.1rem;
+  color: #111827;
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.24);
+}
+
+.menu-toggle-icon {
+  display: inline-grid;
+  gap: 4px;
+}
+
+.menu-toggle-bar {
+  display: block;
+  width: 18px;
+  height: 2px;
+  border-radius: 999px;
+  background: #1f2937;
+  transition: transform 0.18s ease, opacity 0.18s ease;
+  transform-origin: center;
+}
+
+.menu-toggle-label {
+  font-size: 0.75rem;
   font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}
+
+.sidebar-menu-toggle[aria-expanded='true'] .menu-toggle-bar:nth-child(1) {
+  transform: translateY(6px) rotate(45deg);
+}
+
+.sidebar-menu-toggle[aria-expanded='true'] .menu-toggle-bar:nth-child(2) {
+  opacity: 0;
+}
+
+.sidebar-menu-toggle[aria-expanded='true'] .menu-toggle-bar:nth-child(3) {
+  transform: translateY(-6px) rotate(-45deg);
+}
+
+.sidebar-menu-toggle:hover {
+  filter: brightness(1.04);
+}
+
+.sidebar-menu-toggle:focus-visible {
+  outline: 2px solid #fef08a;
+  outline-offset: 2px;
+}
+
+.sidebar-backdrop {
+  display: none;
 }
 
 h1 {
@@ -450,6 +501,12 @@ label {
 }
 
 @media (max-width: 960px) {
+  .menu-bar {
+    display: flex;
+    justify-content: center;
+    margin: 0 0 0.8rem;
+  }
+
   .app-layout {
     grid-template-columns: 1fr;
   }
@@ -460,32 +517,38 @@ label {
 
   .sidebar {
     position: fixed;
-    top: 0.75rem;
-    left: 0.75rem;
-    right: 0.75rem;
-    max-height: calc(100vh - 1.5rem);
+    top: 1.15rem;
+    left: 50%;
+    width: min(94vw, 720px);
+    max-height: calc(100vh - 2.3rem);
     overflow: auto;
     z-index: 60;
-    transform: translateY(-120%);
+    transform: translate(-50%, -112%);
     opacity: 0;
     pointer-events: none;
-    transition: transform 0.2s ease, opacity 0.2s ease;
+    transition: transform 0.22s ease, opacity 0.22s ease;
+    box-shadow: 0 24px 52px rgba(0, 0, 0, 0.56);
   }
 
   .sidebar.sidebar-open {
-    transform: translateY(0);
+    transform: translate(-50%, 0);
     opacity: 1;
     pointer-events: auto;
   }
 
   .sidebar-backdrop {
+    display: block;
     position: fixed;
     inset: 0;
-    background: rgba(2, 6, 23, 0.58);
+    background: rgba(2, 6, 23, 0.64);
     z-index: 50;
   }
 
   .sidebar-backdrop.hidden {
     display: none;
+  }
+
+  body.sidebar-menu-open {
+    overflow: hidden;
   }
 }
