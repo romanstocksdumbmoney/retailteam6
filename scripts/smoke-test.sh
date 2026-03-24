@@ -19,7 +19,7 @@ check_json_contains() {
   else
     echo "FAIL: $path missing $expected"
     echo "--- response ---"
-    cat "$outfile"
+    rg "." "$outfile"
     exit 1
   fi
 }
