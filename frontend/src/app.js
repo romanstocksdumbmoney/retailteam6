@@ -81,8 +81,8 @@ function closeProPopup() {
 }
 
 function openProPlanScreen() {
-  const targetUrl = '/pro.html';
-  if (window.location.pathname.endsWith('/pro.html')) {
+  const targetUrl = '/payment.html';
+  if (window.location.pathname.endsWith('/payment.html')) {
     return;
   }
   window.location.href = targetUrl;
