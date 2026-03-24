@@ -115,11 +115,33 @@ async function loadPaymentSummary() {
 
 async function beginCheckout() {
   const token = localStorage.getItem('dumbdollars_token') || '';
+  const startButton = document.getElementById(CHECKOUT_BUTTON_ID);
   if (!token) {
     setStatus('Please sign in first.', true);
     return;
   }
-  window.location.href = '/checkout.html';
+  try {
+    if (startButton) {
+      startButton.disabled = true;
+    }
+    setStatus('Opening secure Stripe checkout...');
+    const session = await fetchJson('/api/auth/stripe/create-checkout-session', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...getAuthHeaders()
+      }
+    });
+    if (!session || typeof session.url !== 'string' || !session.url.startsWith('https://checkout.stripe.com/')) {
+      throw new Error('Could not verify secure Stripe checkout URL.');
+    }
+    window.location.href = session.url;
+  } catch (error) {
+    if (startButton) {
+      startButton.disabled = false;
+    }
+    setStatus(error.message || 'Could not start secure checkout.', true);
+  }
 }
 
 function initPaymentPage() {

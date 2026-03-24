@@ -22,7 +22,18 @@ body {
   min-height: 100vh;
 }
 
+.payment-page-body {
+  min-height: 100vh;
+}
+
 .pro-page-shell {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 1.5rem 1rem;
+}
+
+.payment-page-shell {
   min-height: 100vh;
   display: grid;
   place-items: center;
