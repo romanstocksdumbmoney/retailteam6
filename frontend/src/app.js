@@ -8,6 +8,7 @@ let authToken = '';
 let currentUser = null;
 let activeAiPlatform = 'x-com';
 let activeTrendSource = 'all';
+let activePatternFilter = 'all';
 
 async function fetchJson(url, options = {}) {
   const response = await fetch(url, options);
@@ -215,6 +216,7 @@ function renderEarningsDetail(item) {
   const commentary = item.unusualWhales?.commentary || fallbackIntel.notes || [];
   const growth = item.futureGrowthSignals || fallbackIntel.notes || [];
   const outlookLines = item.unusualWhales?.futureGrowthOutlook || (fallbackIntel.headline ? [fallbackIntel.headline] : []);
+  const analystPushes = item.analystPushes || [];
 
   const playsHtml = plays
     .map(
@@ -230,6 +232,9 @@ function renderEarningsDetail(item) {
   const commentaryHtml = commentary.map((line) => `<li>${line}</li>`).join('');
   const growthHtml = growth.map((line) => `<li>${line}</li>`).join('');
   const outlookHtml = outlookLines.map((line) => `<li>${line}</li>`).join('');
+  const analystPushesHtml = analystPushes
+    .map((push) => `<li>${push.firm}: ${push.action} (${push.impact})</li>`)
+    .join('');
 
   target.innerHTML = `
     <article class="earnings-detail-card">
@@ -237,6 +242,8 @@ function renderEarningsDetail(item) {
       <p><strong>Session:</strong> ${item.reportTimeLabel || 'Pre-Market'}</p>
       <p><strong>Direction:</strong> ${item.direction.toUpperCase()} • ${upPct}% up / ${downPct}% down</p>
       <p><strong>Estimated volume:</strong> ${Number(item.volume || 0).toLocaleString()}</p>
+      <h4>Analyst Pushes</h4>
+      <ul class="detail-list">${analystPushesHtml || '<li>No fresh analyst pushes detected.</li>'}</ul>
       <h4>Unusual Plays (Whales-style)</h4>
       <ul class="detail-list">${playsHtml || '<li>No unusual plays detected.</li>'}</ul>
       <h4>Earnings / Future Growth Commentary</h4>
@@ -349,6 +356,90 @@ function renderTrendTradesLocked(message) {
   target.innerHTML = `<div class="pro-lock">${message}</div>`;
 }
 
+function humanizePatternType(type) {
+  const value = String(type || '').toLowerCase();
+  const map = {
+    all: 'All Patterns',
+    candlestick: 'Candlestick',
+    volume_down: 'Volume-Down',
+    volume_down_patterns: 'Volume-Down'
+  };
+  return map[value] || type;
+}
+
+function renderRealizedPatterns(payload) {
+  const target = document.getElementById('patterns-results');
+  const filterSelect = document.getElementById('pattern-type-select');
+  if (!target) {
+    return;
+  }
+  target.innerHTML = '';
+
+  if (filterSelect) {
+    const filters = payload.availableTypes || payload.availableFilters || ['all'];
+    filterSelect.innerHTML = '';
+    filters.forEach((filter) => {
+      const option = document.createElement('option');
+      option.value = filter;
+      option.textContent = humanizePatternType(filter);
+      filterSelect.appendChild(option);
+    });
+    if (!filters.includes(activePatternFilter)) {
+      activePatternFilter = 'all';
+    }
+    filterSelect.value = activePatternFilter;
+  }
+
+  (payload.items || []).forEach((item) => {
+    const card = document.createElement('article');
+    card.className = 'pattern-card';
+    const sessionLabel = item.sessionLabel
+      || (item.session === 'pre-market' ? 'Pre-Market' : item.session === 'after-hours' ? 'After-Hours' : 'Live');
+    const patternTypeLabel = item.patternTypeLabel || humanizePatternType(item.patternType);
+    const triggerAt = item.triggerAt || `${item.targetMovePct || '?'}% target / ${item.invalidationPct || '?'}% invalidation`;
+    const note = item.note || `Confidence ${item.confidence || '?'} • ${item.candleSignal || 'Pattern tracking active'}`;
+    const volume = Number(item.volume || item.estVolume || item.volumeEstimate || 0).toLocaleString();
+    card.innerHTML = `
+      <h4>${item.ticker || item.symbol} • ${item.patternName}</h4>
+      <p><strong>Session:</strong> ${sessionLabel}</p>
+      <p><strong>Type:</strong> ${patternTypeLabel}</p>
+      <p><strong>Trigger:</strong> ${triggerAt}</p>
+      <p><strong>Volume:</strong> ${volume}</p>
+      <p class="small-note">${note}</p>
+    `;
+    target.appendChild(card);
+  });
+
+  if (!payload.items || payload.items.length === 0) {
+    target.innerHTML = '<div class="pro-lock">No active realized patterns right now. Triggered patterns are removed automatically.</div>';
+  }
+}
+
+function renderWildTakes(payload) {
+  const target = document.getElementById('wild-takes-results');
+  if (!target) {
+    return;
+  }
+  target.innerHTML = '';
+  (payload.items || []).forEach((item) => {
+    const card = document.createElement('article');
+    card.className = `wild-take-card wild-take-card--${item.sentiment || item.direction || 'neutral'}`;
+    const title = item.title || `${item.symbol || 'Market'} ${String(item.direction || '').toUpperCase() || 'TAKE'}`;
+    const summary = item.summary || item.text || 'No summary available.';
+    const timeLabel = item.createdAtLabel || item.generatedAtLabel || 'Now';
+    card.innerHTML = `
+      <p><strong>${title}</strong></p>
+      <p>${summary}</p>
+      <p class="small-note">${item.source} • ${timeLabel}</p>
+    `;
+    target.appendChild(card);
+  });
+
+  if (!payload.items || payload.items.length === 0) {
+    target.innerHTML = '<div class="pro-lock">No fresh wild takes right now.</div>';
+  }
+}
+
 async function loadOutlook(ticker) {
   const payload = await fetchJson(`/api/market/stock-outlook?ticker=${encodeURIComponent(ticker)}`, {
     headers: headersWithPlan()
@@ -396,6 +487,21 @@ async function loadTrendTrades() {
   }
 }
 
+async function loadRealizedPatterns() {
+  const payload = await fetchJson(
+    `/api/market/realized-patterns?limit=8&type=${encodeURIComponent(activePatternFilter)}`,
+    { headers: headersWithPlan() }
+  );
+  renderRealizedPatterns(payload);
+}
+
+async function loadWildTakes() {
+  const payload = await fetchJson('/api/market/wild-takes?limit=6', {
+    headers: headersWithPlan()
+  });
+  renderWildTakes(payload);
+}
+
 async function loadUnusualFeed() {
   try {
     const payload = await fetchJson('/api/market/unusual-moves', { headers: headersWithPlan() });
@@ -435,7 +541,14 @@ async function calculateOptions(formValues) {
 async function refreshBaseline() {
   const health = await fetchJson('/health');
   renderStatus(`API status: ${health.status}`);
-  await Promise.all([loadOutlook(activeTicker), loadEarningsBoard(), loadAiSidebar(activeTicker), loadTrendTrades()]);
+  await Promise.all([
+    loadOutlook(activeTicker),
+    loadEarningsBoard(),
+    loadAiSidebar(activeTicker),
+    loadTrendTrades(),
+    loadRealizedPatterns(),
+    loadWildTakes()
+  ]);
 }
 
 async function fetchCurrentUser() {
@@ -567,10 +680,13 @@ function setupAuthForms() {
 function setupAiSidebar() {
   const form = document.getElementById('ai-search-form');
   const trendForm = document.getElementById('trend-trades-form');
+  const patternForm = document.getElementById('patterns-form');
   const select = document.getElementById('ai-platform-select');
   const trendSourceSelect = document.getElementById('trend-source-select');
+  const patternTypeSelect = document.getElementById('pattern-type-select');
+  const wildTakesButton = document.getElementById('wild-takes-refresh');
 
-  if (!form || !trendForm || !select || !trendSourceSelect) {
+  if (!form || !trendForm || !patternForm || !select || !trendSourceSelect || !patternTypeSelect || !wildTakesButton) {
     return;
   }
 
@@ -609,6 +725,36 @@ function setupAiSidebar() {
       await loadTrendTrades();
     } catch (error) {
       renderTrendTradesLocked(error.message || 'Could not load trend trades.');
+    }
+  });
+
+  patternForm.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    activePatternFilter = patternTypeSelect.value || 'all';
+    try {
+      await loadRealizedPatterns();
+    } catch (error) {
+      const target = document.getElementById('patterns-results');
+      target.innerHTML = `<div class="pro-lock">${error.message || 'Could not load realized patterns.'}</div>`;
+    }
+  });
+
+  patternTypeSelect.addEventListener('change', async () => {
+    activePatternFilter = patternTypeSelect.value || 'all';
+    try {
+      await loadRealizedPatterns();
+    } catch (error) {
+      const target = document.getElementById('patterns-results');
+      target.innerHTML = `<div class="pro-lock">${error.message || 'Could not load realized patterns.'}</div>`;
+    }
+  });
+
+  wildTakesButton.addEventListener('click', async () => {
+    try {
+      await loadWildTakes();
+    } catch (error) {
+      const target = document.getElementById('wild-takes-results');
+      target.innerHTML = `<div class="pro-lock">${error.message || 'Could not load wild takes.'}</div>`;
     }
   });
 }
@@ -702,8 +848,6 @@ async function init() {
     await fetchCurrentUser();
     await refreshBaseline();
     await loadUnusualFeed();
-    await loadAiSidebar(activeTicker);
-    await loadTrendTrades();
     await runScanner(activeTicker, 'llm-sentiment');
   } catch (error) {
     console.error(error);

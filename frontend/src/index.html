@@ -55,8 +55,6 @@
             <button id="billing-portal-btn" class="btn-secondary" type="button">Manage Billing</button>
             <button id="logout-btn" class="btn-secondary" type="button">Log out</button>
           </div>
-          <p id="user-identity" class="small-note">Not signed in</p>
-          <p id="plan-text" class="small-note">Upgrade to Pro ($15/month) to unlock premium tools.</p>
           <p id="auth-message" class="small-note"></p>
         </section>
       </header>
@@ -80,6 +78,32 @@
           </form>
           <a id="ai-open-link" class="open-link" href="#" target="_blank" rel="noopener noreferrer">Open selected platform</a>
           <div id="ai-platform-details" class="stack"></div>
+
+          <div class="section-header">
+            <h2>Realized Patterns</h2>
+            <span class="chip">Free</span>
+          </div>
+          <p class="small-note">Track live volume-down and candlestick setups. Filled patterns auto-drop off the board.</p>
+          <form id="patterns-form" class="row-form">
+            <label>
+              Pattern type
+              <select id="pattern-type-select">
+                <option value="all">All patterns</option>
+                <option value="volume_down">Volume Down</option>
+                <option value="candlestick">Candlestick</option>
+              </select>
+            </label>
+            <button id="patterns-refresh" type="submit">Refresh</button>
+          </form>
+          <div id="patterns-results" class="stack"></div>
+
+          <div class="section-header">
+            <h2>Wild Takes</h2>
+            <span class="chip">Core</span>
+          </div>
+          <p class="small-note">Notification-style oddball market takes and aggressive positioning chatter.</p>
+          <button id="wild-takes-refresh" type="button">Refresh Wild Takes</button>
+          <div id="wild-takes-results" class="stack"></div>
 
           <div class="section-header trend-header">
             <h2>Trend Trades</h2>
@@ -191,7 +215,7 @@
               <h2>Unusual Moves Feed</h2>
               <span class="chip pro">Pro</span>
             </div>
-            <p class="small-note">Backdoor connector placeholder for unusual flow providers.</p>
+            <p class="small-note">Live unusual flow feed.</p>
             <button id="refresh-unusual" type="button">Refresh Feed</button>
             <div id="unusual-results" class="stack"></div>
           </section>

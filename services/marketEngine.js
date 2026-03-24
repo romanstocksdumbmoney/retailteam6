@@ -25,7 +25,19 @@ const EARNINGS_WATCHLIST = [
   'AMD',
   'JPM',
   'BAC',
-  'UNH'
+  'UNH',
+  'AVGO',
+  'QCOM',
+  'ORCL',
+  'CRM',
+  'PYPL',
+  'DIS',
+  'INTC',
+  'PFE',
+  'KO',
+  'NKE',
+  'WMT',
+  'COST'
 ];
 
 const EARNINGS_VOLUME_BASE = {
@@ -40,7 +52,19 @@ const EARNINGS_VOLUME_BASE = {
   AMD: 49_000_000,
   JPM: 16_000_000,
   BAC: 28_000_000,
-  UNH: 7_000_000
+  UNH: 7_000_000,
+  AVGO: 22_000_000,
+  QCOM: 15_000_000,
+  ORCL: 11_000_000,
+  CRM: 8_000_000,
+  PYPL: 12_000_000,
+  DIS: 10_000_000,
+  INTC: 33_000_000,
+  PFE: 18_000_000,
+  KO: 14_000_000,
+  NKE: 11_000_000,
+  WMT: 9_000_000,
+  COST: 8_000_000
 };
 
 const AI_DISCOVERY_PLATFORMS = [
@@ -109,6 +133,38 @@ const TREND_TRADE_SYMBOLS = [
   'RBLX'
 ];
 
+const REALIZED_PATTERN_LIBRARY = [
+  { key: 'vol-fade', name: 'Volume Fade Continuation', type: 'volume_down', edge: 'Low-participation drift tends to continue intraday.' },
+  { key: 'vol-compress', name: 'Volume Compression Breakout', type: 'volume_down', edge: 'Compression often resolves with directional expansion.' },
+  { key: 'hammer-reclaim', name: 'Hammer + VWAP Reclaim', type: 'candlestick', edge: 'Reclaim after hammer can trigger short covering.' },
+  { key: 'engulf-reversal', name: 'Bullish/Bearish Engulfing Flip', type: 'candlestick', edge: 'Engulfing around support/resistance can front-run trend change.' },
+  { key: 'inside-break', name: 'Inside Bar Expansion', type: 'candlestick', edge: 'Inside bar break often starts momentum bursts.' },
+  { key: 'quiet-gap-hold', name: 'Quiet Gap Hold', type: 'volume_down', edge: 'Thin volume gap holds can trend while liquidity is light.' }
+];
+
+const REALIZED_PATTERN_TYPES = ['all', 'volume_down', 'candlestick'];
+
+const WILD_TAKE_THEMES = [
+  'AI capex is underpriced for the next two quarters',
+  'Rate-cut optimism is already fully priced in',
+  'Semis are entering a second momentum leg',
+  'Consumer names are setting up for a surprise squeeze',
+  'Index leadership rotation is about to accelerate',
+  'Large-cap defensives are being accumulated quietly'
+];
+
+const WILD_TAKE_AUTHORS = ['TapeRider', 'GammaNomad', 'FlowOracle', 'MacroMaverick', 'RiskOnRex', 'DeltaDiva'];
+
+const WILD_TAKE_SOURCES = ['X.com', 'TikTok', 'YouTube', 'Discord', 'Reddit', 'Telegram'];
+const WILD_TAKE_SYMBOLS = ['AAPL', 'NVDA', 'TSLA', 'AMD', 'META', 'AMZN', 'MSFT', 'SPY', 'QQQ'];
+const WILD_TAKE_HOOKS = [
+  'claims this ticker is setting up for a violent squeeze.',
+  'says the trend is overheated and due for a sharp fade.',
+  'calls this one the most crowded breakout watch of the day.',
+  'thinks options flow is signaling a stealth move soon.',
+  'is betting on a momentum continuation into the close.'
+];
+
 function clamp(value, min, max) {
   return Math.max(min, Math.min(max, value));
 }
@@ -145,6 +201,12 @@ function tomorrowIsoDate() {
   const date = new Date();
   date.setUTCDate(date.getUTCDate() + 1);
   return date.toISOString().slice(0, 10);
+}
+
+function minuteBucketSeed() {
+  const now = new Date();
+  const minuteBucket = Math.floor(now.getUTCMinutes() / 10);
+  return `${daySeed()}:${now.getUTCHours()}:${minuteBucket}`;
 }
 
 function pickWorldEvents(symbol) {
@@ -333,8 +395,9 @@ function getUnusualMoves() {
 function estimateEarningsDayVolume(symbol) {
   const base = EARNINGS_VOLUME_BASE[symbol] || 12_000_000;
   const seed = hashString(`earnings-volume:${symbol}:${tomorrowSeed()}`);
-  const multiplier = 0.75 + pseudoRandom(seed) * 0.9;
-  return Math.max(1_000_000, Math.round(base * multiplier));
+  const multiplier = 0.85 + pseudoRandom(seed) * 1.1;
+  const catalystBoost = Math.round(pseudoRandom(seed + 91) * 28_000_000);
+  return Math.max(1_500_000, Math.round(base * multiplier + catalystBoost));
 }
 
 function buildEarningsIntel(symbol, volume, up, down, seedOffset) {
@@ -367,13 +430,22 @@ function buildEarningsIntel(symbol, volume, up, down, seedOffset) {
     `${symbol} long-range growth outlook remains ${directionalBias === 'bullish' ? 'intact with stronger product pipeline chatter' : 'debated given valuation and competitive pressure'}.`
   ];
 
+  const analystPushes = [
+    `${symbol}: ${2 + Math.floor(pseudoRandom(seed + 61) * 4)} desk pushes leaning ${directionalBias}.`,
+    `${symbol}: median price-target revision ${directionalBias === 'bullish' ? '+' : '-'}${Math.round(
+      3 + pseudoRandom(seed + 71) * 11
+    )}%.`,
+    `${symbol}: sell-side note volume elevated ahead of tomorrow's print.`
+  ];
+
   return {
     headline: `${symbol} ${directionalBias} setup from unusual activity`,
     sentiment: directionalBias,
     opposingSentiment: altDirection,
     unusualPlays,
     notes: commentary,
-    futureGrowthSignals
+    futureGrowthSignals,
+    analystPushes
   };
 }
 
@@ -409,7 +481,8 @@ function getEarningsGamblingBoard(limit = 5) {
         commentary: intel.notes,
         futureGrowthOutlook: [intel.headline]
       },
-      futureGrowthSignals: intel.futureGrowthSignals
+      futureGrowthSignals: intel.futureGrowthSignals,
+      analystPushes: intel.analystPushes
     };
   });
 }
@@ -475,6 +548,88 @@ function getTrendTrades(limit = 8, sourceFilter = 'all') {
   };
 }
 
+function getRealizedPatterns(limit = 8, patternType = 'all') {
+  const seed = hashString(`realized-patterns:${minuteBucketSeed()}`);
+  const normalizedType = String(patternType || 'all').trim().toLowerCase();
+  const selectedType = REALIZED_PATTERN_TYPES.includes(normalizedType) ? normalizedType : 'all';
+  const total = Math.max(1, Math.min(20, Math.trunc(limit)));
+  const items = [];
+  const uniqueKey = new Set();
+
+  for (let i = 0; i < total * 4; i += 1) {
+    const pattern = REALIZED_PATTERN_LIBRARY[Math.floor(pseudoRandom(seed + i * 3) * REALIZED_PATTERN_LIBRARY.length)];
+    if (selectedType !== 'all' && pattern.type !== selectedType) {
+      continue;
+    }
+
+    const ticker = EARNINGS_WATCHLIST[Math.floor(pseudoRandom(seed + i * 5 + 1) * EARNINGS_WATCHLIST.length)];
+    const dedupe = `${ticker}:${pattern.key}`;
+    if (uniqueKey.has(dedupe)) {
+      continue;
+    }
+    uniqueKey.add(dedupe);
+
+    // Once a pattern "hits", it drops off this board.
+    const hasTriggered = pseudoRandom(seed + i * 7 + 2) > 0.74;
+    if (hasTriggered) {
+      continue;
+    }
+
+    const volume = Math.max(1_000_000, Math.round(estimateEarningsDayVolume(ticker) * (0.4 + pseudoRandom(seed + i * 11 + 3) * 0.8)));
+    const triggerMinute = Math.floor(pseudoRandom(seed + i * 13 + 4) * 59);
+    const session = i % 2 === 0 ? 'pre-market' : 'after-hours';
+    const triggerAt = session === 'pre-market' ? `09:${String(triggerMinute).padStart(2, '0')} ET` : `16:${String(triggerMinute).padStart(2, '0')} ET`;
+
+    items.push({
+      id: `${dedupe}:${i}`,
+      ticker,
+      patternName: pattern.name,
+      patternType: pattern.type,
+      patternTypeLabel: pattern.type === 'volume_down' ? 'Volume Down' : 'Candlestick',
+      session,
+      sessionLabel: session === 'pre-market' ? 'Pre-Market' : 'After-Hours',
+      triggerAt,
+      volume,
+      note: pattern.edge
+    });
+  }
+
+  return {
+    generatedAt: new Date().toISOString(),
+    availableFilters: REALIZED_PATTERN_TYPES,
+    selectedFilter: selectedType,
+    items: items.slice(0, total)
+  };
+}
+
+function getWildTakes(limit = 8) {
+  const seed = hashString(`wild-takes:${minuteBucketSeed()}`);
+  const total = Math.max(1, Math.min(20, Math.trunc(limit)));
+  const items = [];
+  for (let i = 0; i < total; i += 1) {
+    const symbol = WILD_TAKE_SYMBOLS[Math.floor(pseudoRandom(seed + i * 5) * WILD_TAKE_SYMBOLS.length)];
+    const source = WILD_TAKE_SOURCES[Math.floor(pseudoRandom(seed + i * 7 + 1) * WILD_TAKE_SOURCES.length)];
+    const hook = WILD_TAKE_HOOKS[Math.floor(pseudoRandom(seed + i * 11 + 2) * WILD_TAKE_HOOKS.length)];
+    const theme = WILD_TAKE_THEMES[Math.floor(pseudoRandom(seed + i * 13 + 3) * WILD_TAKE_THEMES.length)];
+    const author = WILD_TAKE_AUTHORS[Math.floor(pseudoRandom(seed + i * 17 + 4) * WILD_TAKE_AUTHORS.length)];
+    const sentiment = pseudoRandom(seed + i * 19 + 5) > 0.5 ? 'bullish' : 'bearish';
+    const minutesAgo = Math.floor(pseudoRandom(seed + i * 23 + 6) * 55) + 1;
+
+    items.push({
+      id: `${source}:${symbol}:${i}`,
+      title: `${symbol} • ${sentiment.toUpperCase()} wild take`,
+      summary: `${author} on ${source}: ${theme} — ${symbol} ${hook}`,
+      source,
+      sentiment,
+      createdAtLabel: `${minutesAgo}m ago`
+    });
+  }
+  return {
+    generatedAt: new Date().toISOString(),
+    items
+  };
+}
+
 module.exports = {
   SCANNER_METHODS,
   AI_ENGINES,
@@ -491,5 +646,7 @@ module.exports = {
   getEarningsGamblingBoard,
   buildEarningsGambling: getEarningsGamblingBoard,
   getAiDiscovery,
-  getTrendTrades
+  getTrendTrades,
+  getRealizedPatterns,
+  getWildTakes
 };

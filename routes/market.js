@@ -7,7 +7,9 @@ const {
   buildSocialScan,
   buildUnusualMoves,
   getAiDiscovery,
-  getTrendTrades
+  getTrendTrades,
+  getRealizedPatterns,
+  getWildTakes
 } = require('../services/marketEngine');
 const { parseAuthToken } = require('../services/authService');
 const { getUserById } = require('../services/userStore');
@@ -264,9 +266,9 @@ router.get('/earnings-gambling', (req, res) => {
       ticker: item.symbol,
       reportTimeLabel: item.reportTime,
       eventDate: item.earningsDate,
-      schedule: item.schedule,
       direction: item.predictedDirection,
       volume: item.volume,
+      analystPushes: item.analystPushes || [],
       unusualWhalesIntel: item.unusualWhalesIntel || item.intel,
       unusualWhales: item.unusualWhales,
       futureGrowthSignals: item.futureGrowthSignals,
@@ -305,6 +307,19 @@ router.get('/trend-trades', requirePro, (req, res) => {
   const boundedLimit = Number.isFinite(limit) ? Math.max(1, Math.min(20, Math.trunc(limit))) : 8;
   const source = String(req.query.source || 'all');
   return res.json(getTrendTrades(boundedLimit, source));
+});
+
+router.get('/realized-patterns', (req, res) => {
+  const limit = Number(req.query.limit || 8);
+  const boundedLimit = Number.isFinite(limit) ? Math.max(1, Math.min(20, Math.trunc(limit))) : 8;
+  const patternType = String(req.query.type || 'all');
+  return res.json(getRealizedPatterns(boundedLimit, patternType));
+});
+
+router.get('/wild-takes', (req, res) => {
+  const limit = Number(req.query.limit || 10);
+  const boundedLimit = Number.isFinite(limit) ? Math.max(1, Math.min(30, Math.trunc(limit))) : 10;
+  return res.json(getWildTakes(boundedLimit));
 });
 
 router.get('/stock-outlook', stockOutlookHandler);
