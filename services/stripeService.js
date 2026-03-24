@@ -1,9 +1,20 @@
 const Stripe = require('stripe');
 const { getUserById, updateUser } = require('./userStore');
 
+function isPlaceholderValue(value) {
+  const normalized = String(value || '').toLowerCase();
+  return (
+    !normalized ||
+    normalized.includes('your_key_here') ||
+    normalized.includes('your_webhook_secret_here') ||
+    normalized.includes('your_monthly_pro_price_id') ||
+    normalized.includes('placeholder')
+  );
+}
+
 function getStripe() {
-  const secretKey = process.env.STRIPE_SECRET_KEY;
-  if (!secretKey || !secretKey.startsWith('sk_')) {
+  const secretKey = String(process.env.STRIPE_SECRET_KEY || '').trim();
+  if (!/^sk_(test|live)_/.test(secretKey) || isPlaceholderValue(secretKey)) {
     return null;
   }
   return new Stripe(secretKey, { apiVersion: '2024-06-20' });
@@ -14,7 +25,11 @@ function getAppBaseUrl() {
 }
 
 function getProPriceId() {
-  return process.env.STRIPE_PRICE_ID || '';
+  const priceId = String(process.env.STRIPE_PRICE_ID || '').trim();
+  if (!priceId.startsWith('price_') || isPlaceholderValue(priceId)) {
+    return '';
+  }
+  return priceId;
 }
 
 async function ensureStripeCustomer(user) {
