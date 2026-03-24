@@ -12,7 +12,7 @@ const CREATOR_EMAILS = new Set(
     .map((email) => String(email || '').trim().toLowerCase())
     .filter(Boolean)
 );
-const FIRST_SIGNUP_IS_CREATOR = String(process.env.FIRST_SIGNUP_IS_CREATOR || 'true').toLowerCase() !== 'false';
+const FIRST_SIGNUP_IS_CREATOR = String(process.env.FIRST_SIGNUP_IS_CREATOR || 'false').toLowerCase() === 'true';
 
 function normalizeEmail(email) {
   return String(email || '')
