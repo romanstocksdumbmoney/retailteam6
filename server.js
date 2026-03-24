@@ -4,6 +4,7 @@ const path = require('path');
 const fs = require('fs');
 const newsRoutes = require('./routes/news');
 const earningsRoutes = require('./routes/earnings');
+const marketRoutes = require('./routes/market');
 
 const app = express();
 const buildDir = path.join(__dirname, 'frontend', 'build');
@@ -32,6 +33,7 @@ app.get('/health', (_req, res) => {
 
 app.use('/api/news', newsRoutes);
 app.use('/api/earnings', earningsRoutes);
+app.use('/api/market', marketRoutes);
 
 if (hasFrontendBuild) {
     app.use(express.static(buildDir));
