@@ -33,6 +33,10 @@ body {
   width: min(94vw, 760px);
 }
 
+.payment-page-card {
+  width: min(94vw, 760px);
+}
+
 .pro-page-card h1 {
   margin: 0 0 0.35rem;
   text-align: center;
@@ -292,6 +296,11 @@ body {
 }
 
 #pro-plan-start {
+  margin-top: 0.85rem;
+  width: 100%;
+}
+
+#payment-start-checkout {
   margin-top: 0.85rem;
   width: 100%;
 }

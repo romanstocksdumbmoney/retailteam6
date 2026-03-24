@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>DumbDollars Secure Payment</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body class="payment-page-body">
+    <main class="payment-page-shell">
+      <article class="payment-page-card card" role="main" aria-labelledby="payment-page-title">
+        <a class="open-link" href="/pro.html">Back to Pro Plan</a>
+        <div class="pro-plan-logo-wrap" aria-hidden="true">
+          <span class="pro-plan-emoji">💎🙌⌚</span>
+        </div>
+        <h1 id="payment-page-title">Secure Payment</h1>
+        <p class="pro-plan-subtitle">Confirm your Pro plan details, then continue to secure Stripe checkout.</p>
+        <div class="pro-plan-box">
+          <p id="payment-plan-line" class="pro-plan-price">$15/month</p>
+          <h2>Pro Plan Includes</h2>
+          <ul id="payment-benefits" class="detail-list">
+            <li>Trend Trades across social platforms</li>
+            <li>High IV Tracker with IV rank + expected move</li>
+            <li>Options calculator + gamma exposure</li>
+            <li>Unusual moves feed and advanced scanner methods</li>
+            <li>Priority access to Pro market modules</li>
+          </ul>
+          <h3>Billing and Safety</h3>
+          <ul id="payment-trust-points" class="detail-list"></ul>
+          <button id="payment-start" type="button">Continue to Secure Checkout</button>
+          <p id="payment-status" class="small-note"></p>
+        </div>
+      </article>
+    </main>
+    <script src="./payment.js"></script>
+  </body>
+</html>
