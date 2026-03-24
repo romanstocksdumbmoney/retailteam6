@@ -1,8 +1,8 @@
 {
-  "name": "a-app",
+  "name": "dumbdollars",
   "version": "1.0.0",
   "private": true,
-  "description": "A app foundation with Express API and static frontend.",
+  "description": "DumbDollars is a market intelligence dashboard for stock outlook probabilities, scanner signals, options analytics, and earnings momentum.",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",

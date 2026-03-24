@@ -1,6 +1,8 @@
-# A app
+# DumbDollars
 
-Market intelligence MVP with:
+DumbDollars is a market intelligence platform for active traders and options-focused investors. It combines stock outlook probabilities, flow-aware scanning, options analytics, and an earnings momentum board into one dashboard so users can quickly assess directional risk and opportunity.
+
+Core focus areas:
 - Express backend API (`server.js`)
 - Frontend dashboard (`frontend/src`) for stock outlook, scanner, options, and earnings board
 - Static build output to `frontend/build` (compatible with existing GitHub Pages workflow)

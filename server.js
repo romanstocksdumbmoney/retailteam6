@@ -19,8 +19,9 @@ app.get('/', (_req, res) => {
     }
 
     return res.json({
-        name: 'A app',
+        name: 'DumbDollars',
         status: 'running',
+        description: 'DumbDollars is a market intelligence dashboard for stock outlook probabilities, flow scanning, earnings signals, and pro-level options tools.',
         message: 'Frontend build not found. Run: cd frontend && npm run build'
     });
 });

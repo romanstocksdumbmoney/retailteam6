@@ -7,8 +7,8 @@ router.get('/', (_req, res) => {
     items: [
       {
         id: 1,
-        title: 'Welcome to A app',
-        summary: 'This is a starter news payload from the API.'
+        title: 'Welcome to DumbDollars',
+        summary: 'DumbDollars tracks market flow, probabilities, and earnings setups in one dashboard.'
       }
     ]
   });
