@@ -51,9 +51,3 @@ curl -s "http://localhost:5000/api/market/options?ticker=TSLA&spot=220&strike=23
 ```
 
 Expected on free: `403`.
-
-```bash
-curl -s -H "x-user-plan: pro" "http://localhost:5000/api/market/options?ticker=TSLA&spot=220&strike=230&daysToExpiry=21&iv=0.42"
-```
-
-Expected on pro header: full JSON result.

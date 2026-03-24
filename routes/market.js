@@ -19,13 +19,7 @@ const router = express.Router();
 const FREE_SCAN_METHODS = new Set(['llm-sentiment']);
 
 function parsePlan(req) {
-  if (req.user) {
-    return req.user.plan === 'pro' ? 'pro' : 'free';
-  }
-  const raw = String(
-    req.header('x-user-plan') || req.header('x-plan') || req.header('x-access-tier') || req.query.plan || 'free'
-  ).toLowerCase();
-  return raw === 'pro' ? 'pro' : 'free';
+  return req.user && req.user.plan === 'pro' ? 'pro' : 'free';
 }
 
 function isPro(req) {
