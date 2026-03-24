@@ -71,6 +71,7 @@ const TOMORROW_EARNINGS_CALLS = ['AAPL', 'NVDA', 'TSLA', 'AMD', 'AMZN', 'MSFT', 
 
 const EARNINGS_CALENDAR_LOOKAHEAD_DAYS = 14;
 const EARNINGS_CALENDAR_CACHE_MS = 30 * 60 * 1000;
+const MARKET_TIME_ZONE = 'America/New_York';
 const NASDAQ_EARNINGS_HEADERS = {
   accept: 'application/json, text/plain, */*',
   'user-agent': 'Mozilla/5.0 (DumbDollars Earnings Bot)',
@@ -233,8 +234,24 @@ function normalizeSymbol(symbol) {
   return (symbol || '').toUpperCase().replace(/[^A-Z.]/g, '').slice(0, 10) || 'AAPL';
 }
 
+function isoDateInTimeZone(date = new Date(), timeZone = MARKET_TIME_ZONE) {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit'
+  }).formatToParts(date);
+  const year = parts.find((part) => part.type === 'year')?.value;
+  const month = parts.find((part) => part.type === 'month')?.value;
+  const day = parts.find((part) => part.type === 'day')?.value;
+  if (!year || !month || !day) {
+    return date.toISOString().slice(0, 10);
+  }
+  return `${year}-${month}-${day}`;
+}
+
 function todayIsoDate() {
-  return new Date().toISOString().slice(0, 10);
+  return isoDateInTimeZone(new Date(), MARKET_TIME_ZONE);
 }
 
 function daySeed() {
@@ -706,9 +723,11 @@ async function getEarningsGamblingBoard(limit = 5) {
   const boundedLimit = Math.max(1, Math.min(8, Math.trunc(limit)));
   const calendarRows = await fetchNasdaqEarningsCalendar();
   const requestedDate = todayIsoDate();
+  const availableDates = [...new Set(calendarRows.map((entry) => entry.earningsDate).filter(Boolean))].sort();
+  const selectedDate = availableDates.find((isoDate) => isoDate >= requestedDate) || availableDates[0] || requestedDate;
 
   let rankedByVolume = calendarRows
-    .filter((entry) => entry.earningsDate === requestedDate)
+    .filter((entry) => entry.earningsDate === selectedDate)
     .map((entry) => {
       const estimatedVolume = estimateEarningsDayVolume(entry.symbol, entry.earningsDate);
       const marketCapWeight = entry.marketCapUsd > 0 ? Math.round(Math.sqrt(entry.marketCapUsd)) : 0;
@@ -719,7 +738,10 @@ async function getEarningsGamblingBoard(limit = 5) {
     });
 
   let source = 'nasdaq';
-  let scheduleLabel = `Today's earnings (${formatIsoDate(requestedDate)})`;
+  let scheduleDate = selectedDate;
+  let scheduleLabel = selectedDate === requestedDate
+    ? `Today's earnings (${formatIsoDate(selectedDate)} ET)`
+    : `Next live earnings day (${formatIsoDate(selectedDate)} ET)`;
   if (rankedByVolume.length === 0) {
     const fallbackDate = requestedDate;
     rankedByVolume = TOMORROW_EARNINGS_CALLS.map((symbol) => ({
@@ -730,12 +752,15 @@ async function getEarningsGamblingBoard(limit = 5) {
     }))
       .sort((a, b) => b.estimatedVolume - a.estimatedVolume);
     source = 'simulated';
-    scheduleLabel = `Today's estimated earnings board (${formatIsoDate(fallbackDate)})`;
+    scheduleDate = fallbackDate;
+    scheduleLabel = `Estimated earnings board (${formatIsoDate(fallbackDate)} ET)`;
   }
 
   rankedByVolume = rankedByVolume.sort((a, b) => b.estimatedVolume - a.estimatedVolume).slice(0, boundedLimit);
 
-  const scheduleDate = rankedByVolume[0]?.earningsDate || null;
+  if (!scheduleDate) {
+    scheduleDate = rankedByVolume[0]?.earningsDate || null;
+  }
   const items = await Promise.all(rankedByVolume.map(async (entry, index) => {
     const symbol = entry.symbol;
     const up = clamp(Math.round(45 + pseudoRandom(seed + index + 120) * 25), 40, 70);

@@ -1092,23 +1092,20 @@ function setupAiSidebar() {
       openAllAiPlatforms(query);
     });
   }
-}
 
-function setupHighIvRefresh() {
-  const button = document.getElementById('high-iv-refresh');
-  if (!button) {
-    return;
-  }
-  button.addEventListener('click', async () => {
-    try {
-      await loadHighIvTracker();
-    } catch (error) {
-      renderHighIvLocked(error.message || 'Could not load High IV Tracker.');
-      if (error.status === 403) {
-        openProPopup('Pro access needed for High IV Tracker.');
+  const highIvButton = document.getElementById('high-iv-refresh');
+  if (highIvButton) {
+    highIvButton.addEventListener('click', async () => {
+      try {
+        await loadHighIvTracker();
+      } catch (error) {
+        renderHighIvLocked(error.message || 'Could not load High IV Tracker.');
+        if (error.status === 403) {
+          openProPopup('Pro access needed for High IV Tracker.');
+        }
       }
-    }
-  });
+    });
+  }
 }
 
 function setupSidebarMenu() {
@@ -1274,7 +1271,6 @@ async function init() {
   setupScanForm();
   setupOptionsForm();
   setupUnusualRefresh();
-  setupHighIvRefresh();
 
   try {
     await fetchCurrentUser();
