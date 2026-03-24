@@ -1,8 +1,9 @@
 # A app
 
-Simple starter application with:
+Minimal full-stack starter application:
 - Express backend API (`server.js`)
-- Static frontend build in `frontend/build` (compatible with the existing GitHub Pages workflow)
+- Static frontend (`frontend/src`) that calls backend endpoints
+- Build output to `frontend/build` (compatible with existing GitHub Pages workflow)
 
 ## Prerequisites
 - Node.js 18 or newer
@@ -17,32 +18,37 @@ Simple starter application with:
    ```bash
    cd frontend
    npm install
+   cd ..
    ```
 
-## Usage
-### Run backend
-```bash
-npm start
-```
+## Run the app locally
+1. Build frontend assets:
+   ```bash
+   cd frontend
+   npm run build
+   cd ..
+   ```
+2. Start backend (serves API and frontend build):
+   ```bash
+   npm start
+   ```
+3. Open:
+   - `http://localhost:5000/` for the app UI
+   - `http://localhost:5000/health` for health
 
-Backend endpoints:
-- `GET /` - app status
-- `GET /health` - health check
+## API Endpoints
 - `GET /api/news` - sample news payload
 - `GET /api/earnings` - sample earnings payload
+- `GET /health` - backend health check
 
-### Build frontend
+## Frontend scripts
 From the `frontend` directory:
-```bash
-npm run build
-```
-
-This generates:
-- `frontend/build/index.html`
+- `npm run build` - writes `frontend/build/index.html`, `app.js`, and `styles.css`
+- `npm start` - simple static dev server on `http://localhost:3000`
 
 ## Troubleshooting
-- If `npm install` fails, ensure your Node.js version is 18+.
-- If port `5000` is busy, start with another port:
+- Ensure Node.js is 18+ if install/build fails.
+- If port `5000` is busy:
   ```bash
   PORT=5050 npm start
   ```
