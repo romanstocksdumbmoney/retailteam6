@@ -11,6 +11,7 @@ let activePatternFilter = 'all';
 let sidebarOpen = false;
 let billingInfo = null;
 let proPopupVisible = false;
+let proPlanVisible = false;
 
 function openExternal(url) {
   try {
@@ -78,6 +79,26 @@ function closeProPopup() {
   backdrop.classList.add('hidden');
   document.body.classList.remove('pro-popup-open');
   proPopupVisible = false;
+}
+
+function openProPlanScreen() {
+  const backdrop = document.getElementById('pro-plan-backdrop');
+  if (!backdrop) {
+    return;
+  }
+  backdrop.classList.remove('hidden');
+  document.body.classList.add('pro-plan-open');
+  proPlanVisible = true;
+}
+
+function closeProPlanScreen() {
+  const backdrop = document.getElementById('pro-plan-backdrop');
+  if (!backdrop) {
+    return;
+  }
+  backdrop.classList.add('hidden');
+  document.body.classList.remove('pro-plan-open');
+  proPlanVisible = false;
 }
 
 function closeSidebarMenu() {
@@ -175,6 +196,36 @@ function renderBillingInfo(info, checkoutPreview = null) {
   trustPoints.innerHTML = points.map((point) => `<li>${point}</li>`).join('');
   if (continueButton) {
     continueButton.disabled = !configured;
+  }
+}
+
+async function beginProCheckoutFlow() {
+  if (!currentUser) {
+    setAuthMessage('Please login first.', true);
+    return;
+  }
+  try {
+    await fetchBillingInfo();
+    const preview = await fetchJson('/api/auth/billing/checkout-preview', {
+      headers: headersWithPlan()
+    });
+    renderBillingInfo(billingInfo, preview);
+    const continueButton = document.getElementById('billing-safe-continue');
+    if (!billingInfo?.configured || continueButton?.disabled) {
+      setAuthMessage('Billing is not configured yet. Try again later.', true);
+      return;
+    }
+    const payload = await fetchJson('/api/auth/stripe/create-checkout-session', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...headersWithPlan()
+      }
+    });
+    closeProPlanScreen();
+    window.location.href = payload.url;
+  } catch (error) {
+    setAuthMessage(error.message || 'Could not start checkout.', true);
   }
 }
 
@@ -945,16 +996,7 @@ function setupAuthForms() {
       setAuthMessage('Please login first.', true);
       return;
     }
-    try {
-      await fetchBillingInfo();
-      const preview = await fetchJson('/api/auth/billing/checkout-preview', {
-        headers: headersWithPlan()
-      });
-      renderBillingInfo(billingInfo, preview);
-      openBillingCard();
-    } catch (error) {
-      setAuthMessage(error.message || 'Could not load secure checkout details.', true);
-    }
+    openProPlanScreen();
   });
 
   document.addEventListener('click', (event) => {
@@ -1241,10 +1283,7 @@ function setupProPopup() {
   if (upgradeBtn) {
     upgradeBtn.addEventListener('click', () => {
       closeProPopup();
-      const checkoutButton = document.getElementById('upgrade-pro-btn');
-      if (checkoutButton) {
-        checkoutButton.click();
-      }
+      openProPlanScreen();
     });
   }
   backdrop.addEventListener('click', (event) => {
@@ -1259,11 +1298,35 @@ function setupProPopup() {
   });
 }
 
+function setupProPlanScreen() {
+  const backdrop = document.getElementById('pro-plan-backdrop');
+  const closeBtn = document.getElementById('pro-plan-close');
+  const continueBtn = document.getElementById('pro-plan-start');
+  if (!backdrop || !closeBtn || !continueBtn) {
+    return;
+  }
+  closeBtn.addEventListener('click', closeProPlanScreen);
+  continueBtn.addEventListener('click', async () => {
+    await beginProCheckoutFlow();
+  });
+  backdrop.addEventListener('click', (event) => {
+    if (event.target === backdrop) {
+      closeProPlanScreen();
+    }
+  });
+  document.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape' && proPlanVisible) {
+      closeProPlanScreen();
+    }
+  });
+}
+
 async function init() {
   authToken = localStorage.getItem('dumbdollars_token') || '';
   await fetchBillingInfo();
   setupAuthForms();
   setupProPopup();
+  setupProPlanScreen();
   setupSidebarMenu();
   setupAiSidebar();
   setupStockForm();

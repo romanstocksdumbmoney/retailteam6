@@ -188,7 +188,90 @@ body {
   gap: 0.55rem;
 }
 
-body.pro-popup-open {
+.pro-plan-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 130;
+  display: grid;
+  place-items: center;
+  background: rgba(2, 6, 23, 0.82);
+}
+
+.pro-plan-modal {
+  width: min(94vw, 760px);
+  max-height: calc(100vh - 2.4rem);
+  overflow: auto;
+  border-radius: 16px;
+  border: 1px solid rgba(250, 204, 21, 0.55);
+  background: linear-gradient(180deg, rgba(15, 23, 42, 0.98), rgba(3, 7, 18, 0.98));
+  box-shadow: 0 28px 60px rgba(0, 0, 0, 0.6);
+  padding: 1.1rem;
+}
+
+.pro-plan-logo-wrap {
+  display: grid;
+  place-items: center;
+  margin-bottom: 0.6rem;
+}
+
+.pro-plan-emoji {
+  width: 92px;
+  height: 92px;
+  border-radius: 20px;
+  display: grid;
+  place-items: center;
+  border: 2px solid #facc15;
+  background: #facc15;
+  color: #0f172a;
+  font-size: 2rem;
+  line-height: 1;
+  box-shadow: inset 0 -10px 16px rgba(0, 0, 0, 0.2);
+}
+
+.pro-plan-modal h3 {
+  margin: 0 0 0.35rem;
+  text-align: center;
+  color: #fde047;
+}
+
+.pro-plan-subtitle {
+  margin: 0 0 0.9rem;
+  text-align: center;
+  color: #e2e8f0;
+}
+
+.pro-plan-box {
+  border: 1px solid rgba(250, 204, 21, 0.45);
+  border-radius: 12px;
+  background: rgba(2, 6, 23, 0.72);
+  padding: 0.9rem;
+}
+
+.pro-plan-box h4 {
+  margin: 0;
+  color: #fde68a;
+}
+
+.pro-plan-price {
+  margin: 0;
+  color: #fef08a;
+  font-weight: 800;
+  margin-bottom: 0.45rem;
+}
+
+.pro-plan-close {
+  margin-left: auto;
+  display: block;
+  margin-bottom: 0.65rem;
+}
+
+#pro-plan-start {
+  margin-top: 0.85rem;
+  width: 100%;
+}
+
+body.pro-popup-open,
+body.pro-plan-open {
   overflow: hidden;
 }
 
