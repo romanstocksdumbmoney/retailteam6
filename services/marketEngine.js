@@ -337,7 +337,9 @@ function normalizeNasdaqRows(rows, fallbackIsoDate) {
       if (!symbol) {
         return null;
       }
-      const earningsDate = parseNasdaqDate(row.reportDate || row.lastYearRptDt) || fallbackIsoDate;
+      // Use the requested calendar date as the source of truth.
+      // Some rows expose historical report fields that can be misleading.
+      const earningsDate = fallbackIsoDate;
       const reportTime = sessionFromNasdaqTimeClass(row.time);
       return {
         symbol,
