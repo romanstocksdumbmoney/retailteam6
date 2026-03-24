@@ -82,11 +82,12 @@ body {
   overflow: hidden;
 }
 
-.diamond-emoji {
-  display: inline-block;
-  font-size: 2.1rem;
-  line-height: 1;
-  transform: translateY(1px);
+.diamond-logo-image {
+  width: 60px;
+  height: 60px;
+  display: block;
+  object-fit: contain;
+  filter: drop-shadow(0 8px 16px rgba(0, 0, 0, 0.32));
 }
 
 .diamond-kicker {
