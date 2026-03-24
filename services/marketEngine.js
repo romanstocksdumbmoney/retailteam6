@@ -346,10 +346,11 @@ function getAiDiscovery(query = '') {
   };
 }
 
-function getTrendTrades(limit = 8) {
+function getTrendTrades(limit = 8, sourceFilter = 'all') {
   const seed = hashString(`trend-trades:${daySeed()}`);
   const total = Math.max(1, Math.min(20, Math.trunc(limit)));
   const rows = [];
+  const normalizedFilter = String(sourceFilter || 'all').trim().toLowerCase();
 
   for (let i = 0; i < total; i += 1) {
     const source = TREND_TRADE_SOURCES[Math.floor(pseudoRandom(seed + i * 3) * TREND_TRADE_SOURCES.length)];
@@ -374,11 +375,22 @@ function getTrendTrades(limit = 8) {
     });
   }
 
-  rows.sort((a, b) => b.trendScore - a.trendScore);
+  const sourceOptions = ['all', ...TREND_TRADE_SOURCES];
+  const selectedFilter = sourceOptions.some((source) => source.toLowerCase() === normalizedFilter)
+    ? normalizedFilter
+    : 'all';
+
+  const filtered = selectedFilter === 'all'
+    ? rows
+    : rows.filter((row) => row.source.toLowerCase() === selectedFilter);
+
+  filtered.sort((a, b) => b.trendScore - a.trendScore);
 
   return {
     generatedAt: new Date().toISOString(),
-    items: rows
+    sourceFilter: selectedFilter,
+    availableSources: sourceOptions,
+    items: filtered
   };
 }
 

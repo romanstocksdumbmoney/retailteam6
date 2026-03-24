@@ -72,7 +72,22 @@
             <span class="chip pro">Pro</span>
           </div>
           <p class="small-note">Top social-media trend trades across TikTok, YouTube, Reels, Spotlight, X.com, and more.</p>
-          <button id="trend-trades-refresh" type="button">Refresh Trend Trades</button>
+          <form id="trend-trades-form" class="row-form">
+            <label>
+              Trend source
+              <select id="trend-source-select">
+                <option value="all">All sources</option>
+                <option value="TikTok">TikTok</option>
+                <option value="YouTube Shorts">YouTube Shorts</option>
+                <option value="youtube">YouTube</option>
+                <option value="Snapchat Spotlight">Snapchat Spotlight</option>
+                <option value="Instagram Reels">Instagram Reels</option>
+                <option value="Facebook">Facebook</option>
+                <option value="X.com">X.com</option>
+              </select>
+            </label>
+            <button id="trend-trades-refresh" type="submit">Apply</button>
+          </form>
           <div id="trend-trades-results" class="stack"></div>
         </aside>
 

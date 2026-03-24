@@ -7,6 +7,7 @@ let activeTicker = 'AAPL';
 let authToken = '';
 let currentUser = null;
 let activeAiPlatform = 'x-com';
+let activeTrendSource = 'all';
 
 async function fetchJson(url, options = {}) {
   const response = await fetch(url, options);
@@ -57,7 +58,7 @@ function setAuthMessage(text, isError = false) {
 
 function renderAuthState() {
   const planBadge = document.getElementById('plan-badge');
-  const checkoutButton = document.getElementById('upgrade-btn');
+  const checkoutButton = document.getElementById('upgrade-pro-btn');
   const billingPortalButton = document.getElementById('billing-portal-btn');
   const logoutButton = document.getElementById('logout-btn');
 
@@ -224,12 +225,42 @@ function renderAiSidebar(payload) {
   select.value = activeAiPlatform;
 }
 
+function humanizeSource(source) {
+  const value = String(source || '').toLowerCase();
+  const map = {
+    all: 'All sources',
+    tiktok: 'TikTok',
+    youtube_shorts: 'YouTube Shorts',
+    youtube: 'YouTube',
+    snapchat_spotlight: 'Snapchat Spotlight',
+    instagram_reels: 'Instagram Reels',
+    facebook: 'Facebook',
+    x_com: 'X.com'
+  };
+  return map[value] || source;
+}
+
 function renderTrendTrades(payload) {
   const target = document.getElementById('trend-trades-results');
+  const sourceSelect = document.getElementById('trend-source-select');
   if (!target) {
     return;
   }
   target.innerHTML = '';
+  if (sourceSelect) {
+    const sources = payload.sources || ['all'];
+    sourceSelect.innerHTML = '';
+    sources.forEach((source) => {
+      const option = document.createElement('option');
+      option.value = source;
+      option.textContent = humanizeSource(source);
+      sourceSelect.appendChild(option);
+    });
+    if (!sources.includes(activeTrendSource)) {
+      activeTrendSource = 'all';
+    }
+    sourceSelect.value = activeTrendSource;
+  }
   (payload.items || []).forEach((item) => {
     const card = document.createElement('article');
     card.className = `trend-card trend-card--${item.momentum}`;
@@ -283,9 +314,12 @@ async function loadAiSidebar(query = '') {
 
 async function loadTrendTrades() {
   try {
-    const payload = await fetchJson('/api/market/trend-trades?limit=8', {
+    const payload = await fetchJson(
+      `/api/market/trend-trades?limit=8&source=${encodeURIComponent(activeTrendSource)}`,
+      {
       headers: headersWithPlan()
-    });
+      }
+    );
     renderTrendTrades(payload);
   } catch (error) {
     if (error.status === 403) {
@@ -386,7 +420,7 @@ function setupAuthForms() {
   const loginForm = document.getElementById('login-form');
   const signupForm = document.getElementById('signup-form');
   const logoutButton = document.getElementById('logout-btn');
-  const checkoutButton = document.getElementById('upgrade-btn');
+  const checkoutButton = document.getElementById('upgrade-pro-btn');
   const billingPortalButton = document.getElementById('billing-portal-btn');
 
   loginForm.addEventListener('submit', async (event) => {
@@ -466,16 +500,17 @@ function setupAuthForms() {
 
 function setupAiSidebar() {
   const form = document.getElementById('ai-search-form');
-  const trendButton = document.getElementById('trend-trades-refresh');
+  const trendForm = document.getElementById('trend-trades-form');
   const select = document.getElementById('ai-platform-select');
+  const trendSourceSelect = document.getElementById('trend-source-select');
 
-  if (!form || !trendButton || !select) {
+  if (!form || !trendForm || !select || !trendSourceSelect) {
     return;
   }
 
   form.addEventListener('submit', async (event) => {
     event.preventDefault();
-    const query = document.getElementById('ai-query').value.trim() || activeTicker;
+    const query = document.getElementById('ai-search-query').value.trim() || activeTicker;
     try {
       activeAiPlatform = select.value || activeAiPlatform;
       await loadAiSidebar(query);
@@ -488,11 +523,22 @@ function setupAiSidebar() {
 
   select.addEventListener('change', async () => {
     activeAiPlatform = select.value || 'x-com';
-    const query = document.getElementById('ai-query').value.trim() || activeTicker;
+    const query = document.getElementById('ai-search-query').value.trim() || activeTicker;
     await loadAiSidebar(query);
   });
 
-  trendButton.addEventListener('click', async () => {
+  trendForm.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    activeTrendSource = trendSourceSelect.value || 'all';
+    try {
+      await loadTrendTrades();
+    } catch (error) {
+      renderTrendTradesLocked(error.message || 'Could not load trend trades.');
+    }
+  });
+
+  trendSourceSelect.addEventListener('change', async () => {
+    activeTrendSource = trendSourceSelect.value || 'all';
     try {
       await loadTrendTrades();
     } catch (error) {

@@ -338,6 +338,18 @@ label {
   border-color: rgba(239, 68, 68, 0.38);
 }
 
+.trend-dropdown-row {
+  display: grid;
+  grid-template-columns: minmax(120px, 1fr) auto;
+  gap: 0.5rem;
+  align-items: end;
+  margin-bottom: 0.5rem;
+}
+
+.trend-dropdown-row label {
+  margin: 0;
+}
+
 .trend-list {
   list-style: none;
   margin: 0;

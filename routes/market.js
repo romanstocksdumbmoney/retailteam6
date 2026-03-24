@@ -286,10 +286,16 @@ router.get('/ai-discovery', (req, res) => {
   return res.json(getAiDiscovery(query));
 });
 
+router.get('/trend-trades-sources', (_req, res) => {
+  const options = getTrendTradesSourceOptions();
+  return res.json({ options });
+});
+
 router.get('/trend-trades', requirePro, (req, res) => {
   const limit = Number(req.query.limit || 8);
   const boundedLimit = Number.isFinite(limit) ? Math.max(1, Math.min(20, Math.trunc(limit))) : 8;
-  return res.json(getTrendTrades(boundedLimit));
+  const source = String(req.query.source || 'all');
+  return res.json(getTrendTrades(boundedLimit, source));
 });
 
 router.get('/stock-outlook', stockOutlookHandler);
