@@ -199,7 +199,10 @@ async function refreshBaseline() {
 }
 
 function setupPlanToggle() {
-  const toggle = document.getElementById('plan-toggle');
+  const toggle = document.getElementById('plan-select');
+  if (!toggle) {
+    return;
+  }
   toggle.addEventListener('change', async (event) => {
     activePlan = event.target.value === PLAN_PRO ? PLAN_PRO : PLAN_FREE;
     try {
