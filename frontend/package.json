@@ -1,0 +1,10 @@
+{
+  "name": "a-app-frontend",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Frontend for A app",
+  "scripts": {
+    "build": "node scripts/build.js",
+    "start": "node scripts/dev.js"
+  }
+}
