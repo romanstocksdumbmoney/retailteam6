@@ -255,11 +255,16 @@ router.get('/earnings-gambling', (req, res) => {
   const limit = Number(req.query.limit || 5);
   const boundedLimit = Number.isFinite(limit) ? Math.max(1, Math.min(8, Math.trunc(limit))) : 5;
   const raw = buildEarningsGambling(boundedLimit);
+  const boardDate = raw[0]?.earningsDate || null;
 
   return res.json({
+    scheduleDate: boardDate,
+    scheduleLabel: boardDate ? `Tomorrow (${boardDate})` : 'Tomorrow',
     items: raw.map((item) => ({
       ticker: item.symbol,
       reportTimeLabel: item.reportTime,
+      eventDate: item.earningsDate,
+      schedule: item.schedule,
       direction: item.predictedDirection,
       volume: item.volume,
       unusualWhalesIntel: item.unusualWhalesIntel || item.intel,

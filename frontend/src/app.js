@@ -169,6 +169,7 @@ function renderUnusualLocked(message) {
 function renderEarningsBoard(payload) {
   const target = document.getElementById('earnings-board');
   target.innerHTML = '';
+  const scheduleLabel = payload.scheduleLabel || 'Tomorrow';
   payload.items.forEach((item) => {
     const card = document.createElement('article');
     card.className = `earnings-card earnings-card--${item.direction}`;
@@ -183,7 +184,7 @@ function renderEarningsBoard(payload) {
     });
     card.innerHTML = `
       <h3>${item.ticker}</h3>
-      <p>${item.reportTimeLabel}</p>
+      <p>${scheduleLabel} • ${item.reportTimeLabel}</p>
       <p><strong>${fmtPct(item.predictedMove.up)} up</strong> / ${fmtPct(item.predictedMove.down)} down</p>
       <p class="small-note">Volume: ${Number(item.volume || 0).toLocaleString()}</p>
       <p class="small-note">${item.direction.toUpperCase()} bias</p>
@@ -233,6 +234,7 @@ function renderEarningsDetail(item) {
   target.innerHTML = `
     <article class="earnings-detail-card">
       <h3>${item.ticker} Earnings Intel</h3>
+      <p><strong>Session:</strong> ${item.reportTimeLabel || 'Pre-Market'}</p>
       <p><strong>Direction:</strong> ${item.direction.toUpperCase()} • ${upPct}% up / ${downPct}% down</p>
       <p><strong>Estimated volume:</strong> ${Number(item.volume || 0).toLocaleString()}</p>
       <h4>Unusual Plays (Whales-style)</h4>

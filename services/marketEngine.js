@@ -135,6 +135,18 @@ function daySeed() {
   return `${now.getUTCFullYear()}-${now.getUTCMonth() + 1}-${now.getUTCDate()}`;
 }
 
+function tomorrowSeed() {
+  const date = new Date();
+  date.setUTCDate(date.getUTCDate() + 1);
+  return `${date.getUTCFullYear()}-${date.getUTCMonth() + 1}-${date.getUTCDate()}`;
+}
+
+function tomorrowIsoDate() {
+  const date = new Date();
+  date.setUTCDate(date.getUTCDate() + 1);
+  return date.toISOString().slice(0, 10);
+}
+
 function pickWorldEvents(symbol) {
   const seed = hashString(`${symbol}:${daySeed()}`);
   const picked = [];
@@ -320,13 +332,13 @@ function getUnusualMoves() {
 
 function estimateEarningsDayVolume(symbol) {
   const base = EARNINGS_VOLUME_BASE[symbol] || 12_000_000;
-  const seed = hashString(`earnings-volume:${symbol}:${daySeed()}`);
+  const seed = hashString(`earnings-volume:${symbol}:${tomorrowSeed()}`);
   const multiplier = 0.75 + pseudoRandom(seed) * 0.9;
   return Math.max(1_000_000, Math.round(base * multiplier));
 }
 
 function buildEarningsIntel(symbol, volume, up, down, seedOffset) {
-  const seed = hashString(`earnings-intel:${symbol}:${daySeed()}:${seedOffset}`);
+  const seed = hashString(`earnings-intel:${symbol}:${tomorrowSeed()}:${seedOffset}`);
   const directionalBias = up >= down ? 'bullish' : 'bearish';
   const altDirection = directionalBias === 'bullish' ? 'bearish' : 'bullish';
   const unusualCount = 2 + Math.floor(pseudoRandom(seed + 1) * 3);
@@ -366,8 +378,9 @@ function buildEarningsIntel(symbol, volume, up, down, seedOffset) {
 }
 
 function getEarningsGamblingBoard(limit = 5) {
-  const seed = hashString(`earnings:${daySeed()}`);
+  const seed = hashString(`earnings:${tomorrowSeed()}`);
   const boundedLimit = Math.max(1, Math.min(8, Math.trunc(limit)));
+  const scheduleDate = tomorrowIsoDate();
   const rankedByVolume = EARNINGS_WATCHLIST.map((symbol) => ({
     symbol,
     estimatedVolume: estimateEarningsDayVolume(symbol)
@@ -385,7 +398,8 @@ function getEarningsGamblingBoard(limit = 5) {
     return {
       symbol,
       volume: entry.estimatedVolume,
-      reportTime: index % 2 === 0 ? 'Before Open' : 'After Close',
+      earningsDate: scheduleDate,
+      reportTime: index % 2 === 0 ? 'Pre-Market' : 'After-Hours',
       predictedDirection,
       probabilityUp: up,
       probabilityDown: down,
