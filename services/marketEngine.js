@@ -150,6 +150,36 @@ const TREND_TRADE_SYMBOLS = [
   'RBLX'
 ];
 
+const HIGH_IV_UNIVERSE = [
+  'TSLA',
+  'NVDA',
+  'AMD',
+  'SMCI',
+  'COIN',
+  'MSTR',
+  'RIVN',
+  'PLTR',
+  'SPY',
+  'QQQ',
+  'IWM',
+  'AAPL',
+  'AMZN',
+  'META',
+  'NFLX',
+  'SNOW'
+];
+
+const HIGH_IV_CATALYSTS = [
+  'Earnings window and guidance uncertainty',
+  'Heavy short-dated options positioning',
+  'Macro data sensitivity this session',
+  'Sector rotation and momentum crowding',
+  'Whale-sized sweep activity',
+  'Event headline risk in the next 48 hours',
+  'Dealer gamma imbalance into close',
+  'Elevated retail options participation'
+];
+
 const REALIZED_PATTERN_LIBRARY = [
   { key: 'vol-fade', name: 'Volume Fade Continuation', type: 'volume_down', edge: 'Low-participation drift tends to continue intraday.' },
   { key: 'vol-compress', name: 'Volume Compression Breakout', type: 'volume_down', edge: 'Compression often resolves with directional expansion.' },
@@ -201,6 +231,10 @@ function pseudoRandom(seed) {
 
 function normalizeSymbol(symbol) {
   return (symbol || '').toUpperCase().replace(/[^A-Z.]/g, '').slice(0, 10) || 'AAPL';
+}
+
+function todayIsoDate() {
+  return new Date().toISOString().slice(0, 10);
 }
 
 function daySeed() {
@@ -671,10 +705,10 @@ async function getEarningsGamblingBoard(limit = 5) {
   const seed = hashString(`earnings:${daySeed()}`);
   const boundedLimit = Math.max(1, Math.min(8, Math.trunc(limit)));
   const calendarRows = await fetchNasdaqEarningsCalendar();
-  const watchlistSet = new Set(EARNINGS_WATCHLIST);
+  const requestedDate = todayIsoDate();
 
   let rankedByVolume = calendarRows
-    .filter((entry) => watchlistSet.has(entry.symbol))
+    .filter((entry) => entry.earningsDate === requestedDate)
     .map((entry) => {
       const estimatedVolume = estimateEarningsDayVolume(entry.symbol, entry.earningsDate);
       const marketCapWeight = entry.marketCapUsd > 0 ? Math.round(Math.sqrt(entry.marketCapUsd)) : 0;
@@ -685,9 +719,9 @@ async function getEarningsGamblingBoard(limit = 5) {
     });
 
   let source = 'nasdaq';
-  let scheduleLabel = 'Confirmed earnings dates (next 14 days)';
+  let scheduleLabel = `Today's earnings (${formatIsoDate(requestedDate)})`;
   if (rankedByVolume.length === 0) {
-    const fallbackDate = tomorrowIsoDate();
+    const fallbackDate = requestedDate;
     rankedByVolume = TOMORROW_EARNINGS_CALLS.map((symbol) => ({
       symbol,
       earningsDate: fallbackDate,
@@ -696,16 +730,7 @@ async function getEarningsGamblingBoard(limit = 5) {
     }))
       .sort((a, b) => b.estimatedVolume - a.estimatedVolume);
     source = 'simulated';
-    scheduleLabel = `Estimated board (no live calendar response) • ${formatIsoDate(fallbackDate)}`;
-  } else {
-    const earliestDate = rankedByVolume
-      .map((entry) => entry.earningsDate)
-      .filter(Boolean)
-      .sort()[0];
-    if (earliestDate) {
-      rankedByVolume = rankedByVolume.filter((entry) => entry.earningsDate === earliestDate);
-      scheduleLabel = `Upcoming earnings for ${formatIsoDate(earliestDate)}`;
-    }
+    scheduleLabel = `Today's estimated earnings board (${formatIsoDate(fallbackDate)})`;
   }
 
   rankedByVolume = rankedByVolume.sort((a, b) => b.estimatedVolume - a.estimatedVolume).slice(0, boundedLimit);
@@ -810,6 +835,50 @@ function getTrendTrades(limit = 8, sourceFilter = 'all') {
   };
 }
 
+function getHighIvTracker(limit = 8) {
+  const seed = hashString(`high-iv:${minuteBucketSeed()}`);
+  const total = Math.max(1, Math.min(20, Math.trunc(limit)));
+  const used = new Set();
+  const items = [];
+
+  for (let i = 0; i < total * 5 && items.length < total; i += 1) {
+    const symbol = HIGH_IV_UNIVERSE[Math.floor(pseudoRandom(seed + i * 5) * HIGH_IV_UNIVERSE.length)];
+    if (used.has(symbol)) {
+      continue;
+    }
+    used.add(symbol);
+
+    const impliedVolatility = Number((0.42 + pseudoRandom(seed + i * 7 + 1) * 0.95).toFixed(3));
+    const ivRank = clamp(Math.round(65 + pseudoRandom(seed + i * 11 + 2) * 34), 60, 99);
+    const ivPercentile = clamp(Math.round(70 + pseudoRandom(seed + i * 13 + 3) * 30), 70, 100);
+    const expectedMovePct = Number((3.2 + pseudoRandom(seed + i * 17 + 4) * 14.8).toFixed(1));
+    const premiumBias = pseudoRandom(seed + i * 19 + 5) > 0.5 ? 'Calls richer than puts' : 'Puts richer than calls';
+    const sessionFocus = i % 2 === 0 ? 'Pre-Market focus' : 'After-Hours focus';
+    const catalystA = HIGH_IV_CATALYSTS[Math.floor(pseudoRandom(seed + i * 23 + 6) * HIGH_IV_CATALYSTS.length)];
+    const catalystB = HIGH_IV_CATALYSTS[Math.floor(pseudoRandom(seed + i * 29 + 7) * HIGH_IV_CATALYSTS.length)];
+    const catalysts = catalystA === catalystB ? [catalystA] : [catalystA, catalystB];
+
+    items.push({
+      symbol,
+      impliedVolatility,
+      ivRank,
+      ivPercentile,
+      expectedMovePct,
+      premiumBias,
+      sessionFocus,
+      catalysts
+    });
+  }
+
+  items.sort((a, b) => b.ivRank - a.ivRank || b.impliedVolatility - a.impliedVolatility);
+
+  return {
+    generatedAt: new Date().toISOString(),
+    baselineIv: 0.35,
+    items
+  };
+}
+
 function getRealizedPatterns(limit = 8, patternType = 'all') {
   const seed = hashString(`realized-patterns:${minuteBucketSeed()}`);
   const normalizedType = String(patternType || 'all').trim().toLowerCase();
@@ -909,6 +978,7 @@ module.exports = {
   buildEarningsGambling: getEarningsGamblingBoard,
   getAiDiscovery,
   getTrendTrades,
+  getHighIvTracker,
   getRealizedPatterns,
   getWildTakes
 };

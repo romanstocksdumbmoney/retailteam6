@@ -43,6 +43,7 @@ Core focus areas:
 - x.com scanner with multiple scan methods (free + pro-gated methods)
 - Options calculator + gamma exposure (Pro)
 - Unusual moves feed (Pro)
+- High IV tracker for elevated implied volatility names (Pro)
 - "Earnings Gambling" board with green/red directional cards
 
 ## Authentication + billing (Stripe)
@@ -84,6 +85,7 @@ Required env vars:
 ### Pro endpoints (requires authenticated user with active Stripe Pro subscription)
 - `GET /api/market/options?ticker=TSLA&spot=220&strike=230&daysToExpiry=21&iv=0.42&type=call`
 - `GET /api/market/unusual-moves`
+- `GET /api/market/high-iv?limit=8`
 - `GET /api/market/scan-x?ticker=TSLA&method=multi` (and other non-free methods)
 
 If account is not Pro, locked endpoints return `403` with an upgrade message.

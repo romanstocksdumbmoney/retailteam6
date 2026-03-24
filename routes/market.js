@@ -8,6 +8,7 @@ const {
   buildUnusualMoves,
   getAiDiscovery,
   getTrendTrades,
+  getHighIvTracker,
   getRealizedPatterns,
   getWildTakes
 } = require('../services/marketEngine');
@@ -291,7 +292,8 @@ router.get('/pro-status', (req, res) => {
     proFeatures: [
       'x.com multi-method scanner',
       'advanced options calculator + gamma exposure',
-      'unusual moves feed'
+      'unusual moves feed',
+      'high iv tracker'
     ]
   });
 });
@@ -311,6 +313,12 @@ router.get('/trend-trades', requirePro, (req, res) => {
   const boundedLimit = Number.isFinite(limit) ? Math.max(1, Math.min(20, Math.trunc(limit))) : 8;
   const source = String(req.query.source || 'all');
   return res.json(getTrendTrades(boundedLimit, source));
+});
+
+router.get('/high-iv', requirePro, (req, res) => {
+  const limit = Number(req.query.limit || 8);
+  const boundedLimit = Number.isFinite(limit) ? Math.max(1, Math.min(20, Math.trunc(limit))) : 8;
+  return res.json(getHighIvTracker(boundedLimit));
 });
 
 router.get('/realized-patterns', (req, res) => {

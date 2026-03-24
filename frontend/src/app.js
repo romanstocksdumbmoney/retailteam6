@@ -325,6 +325,42 @@ function renderUnusualLocked(message) {
   target.innerHTML = `<div class="pro-lock">${message}</div>`;
 }
 
+function renderHighIv(payload) {
+  const target = document.getElementById('high-iv-results');
+  if (!target) {
+    return;
+  }
+  target.innerHTML = '';
+  (payload.items || []).forEach((item) => {
+    const card = document.createElement('article');
+    card.className = 'high-iv-card';
+    card.innerHTML = `
+      <h4>${item.symbol}</h4>
+      <p><strong>IV:</strong> ${(Number(item.impliedVolatility || 0) * 100).toFixed(1)}%</p>
+      <p><strong>IV Rank:</strong> ${item.ivRank} • <strong>IV Percentile:</strong> ${item.ivPercentile}</p>
+      <p><strong>Expected Move:</strong> ±${Number(item.expectedMovePct || 0).toFixed(1)}%</p>
+      <p><strong>Premium Bias:</strong> ${item.premiumBias || 'N/A'}</p>
+      <p><strong>Session:</strong> ${item.sessionFocus || 'Mixed'}</p>
+      <ul class="detail-list">
+        ${(item.catalysts || []).map((catalyst) => `<li>${catalyst}</li>`).join('')}
+      </ul>
+    `;
+    target.appendChild(card);
+  });
+
+  if (!payload.items || payload.items.length === 0) {
+    target.innerHTML = '<div class="pro-lock">No elevated IV names are available right now.</div>';
+  }
+}
+
+function renderHighIvLocked(message) {
+  const target = document.getElementById('high-iv-results');
+  if (!target) {
+    return;
+  }
+  target.innerHTML = `<div class="pro-lock">${message}</div>`;
+}
+
 function renderEarningsBoard(payload) {
   const target = document.getElementById('earnings-board');
   target.innerHTML = '';
@@ -706,6 +742,22 @@ async function loadUnusualFeed() {
   }
 }
 
+async function loadHighIvTracker() {
+  try {
+    const payload = await fetchJson('/api/market/high-iv?limit=8', {
+      headers: headersWithPlan()
+    });
+    renderHighIv(payload);
+  } catch (error) {
+    if (error.status === 403) {
+      renderHighIvLocked('High IV Tracker is Pro-only. Upgrade to unlock elevated IV monitoring.');
+      openProPopup('Pro access needed for High IV Tracker.');
+      return;
+    }
+    throw error;
+  }
+}
+
 async function calculateOptions(formValues) {
   const query = new URLSearchParams({
     ticker: formValues.symbol,
@@ -739,7 +791,8 @@ async function refreshBaseline() {
     loadAiSidebar(activeTicker),
     loadTrendTrades(),
     loadRealizedPatterns(),
-    loadWildTakes()
+    loadWildTakes(),
+    loadHighIvTracker()
   ]);
 }
 
@@ -1041,6 +1094,23 @@ function setupAiSidebar() {
   }
 }
 
+function setupHighIvRefresh() {
+  const button = document.getElementById('high-iv-refresh');
+  if (!button) {
+    return;
+  }
+  button.addEventListener('click', async () => {
+    try {
+      await loadHighIvTracker();
+    } catch (error) {
+      renderHighIvLocked(error.message || 'Could not load High IV Tracker.');
+      if (error.status === 403) {
+        openProPopup('Pro access needed for High IV Tracker.');
+      }
+    }
+  });
+}
+
 function setupSidebarMenu() {
   const menuToggle = document.getElementById('sidebar-menu-toggle');
   const sidebar = document.getElementById('sidebar-panel');
@@ -1204,11 +1274,12 @@ async function init() {
   setupScanForm();
   setupOptionsForm();
   setupUnusualRefresh();
+  setupHighIvRefresh();
 
   try {
     await fetchCurrentUser();
     await refreshBaseline();
-    await loadUnusualFeed();
+    await Promise.all([loadUnusualFeed(), loadHighIvTracker()]);
     await runScanner(activeTicker, 'llm-sentiment');
   } catch (error) {
     console.error(error);
