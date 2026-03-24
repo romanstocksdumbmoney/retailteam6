@@ -82,6 +82,7 @@ let earningsCalendarCache = {
   fetchedAt: 0,
   items: []
 };
+let newsCache = new Map();
 
 const AI_DISCOVERY_PLATFORMS = [
   {
@@ -298,11 +299,29 @@ function sessionFromNasdaqTimeClass(timeClass) {
 
 async function safeFetchJson(url, options = {}) {
   try {
-    const response = await fetch(url, options);
+    const response = await fetch(url, {
+      ...options,
+      signal: AbortSignal.timeout(2500)
+    });
     if (!response.ok) {
       return null;
     }
     return await response.json();
+  } catch (_error) {
+    return null;
+  }
+}
+
+async function safeFetchText(url, options = {}) {
+  try {
+    const response = await fetch(url, {
+      ...options,
+      signal: AbortSignal.timeout(2500)
+    });
+    if (!response.ok) {
+      return null;
+    }
+    return await response.text();
   } catch (_error) {
     return null;
   }
@@ -361,6 +380,49 @@ async function fetchNasdaqEarningsCalendar() {
     items
   };
   return items;
+}
+
+function extractRssItems(xmlText) {
+  if (!xmlText) {
+    return [];
+  }
+  const items = [];
+  const itemMatches = xmlText.match(/<item>([\s\S]*?)<\/item>/gi) || [];
+  itemMatches.forEach((itemXml) => {
+    const titleMatch = itemXml.match(/<title><!\[CDATA\[([\s\S]*?)\]\]><\/title>/i) || itemXml.match(/<title>([\s\S]*?)<\/title>/i);
+    const linkMatch = itemXml.match(/<link>([\s\S]*?)<\/link>/i);
+    const pubDateMatch = itemXml.match(/<pubDate>([\s\S]*?)<\/pubDate>/i);
+    const title = titleMatch ? String(titleMatch[1]).trim() : '';
+    const link = linkMatch ? String(linkMatch[1]).trim() : '';
+    const publishedAt = pubDateMatch ? String(pubDateMatch[1]).trim() : '';
+    if (!title || !link) {
+      return;
+    }
+    items.push({
+      title,
+      url: link,
+      publishedAt
+    });
+  });
+  return items;
+}
+
+async function fetchTickerNews(symbol, limit = 3) {
+  const cacheKey = `${symbol}:${Math.max(1, Math.trunc(limit))}`;
+  const now = Date.now();
+  const cached = newsCache.get(cacheKey);
+  if (cached && now - cached.fetchedAt < 15 * 60 * 1000) {
+    return cached.items;
+  }
+
+  const rssUrl = `https://feeds.finance.yahoo.com/rss/2.0/headline?s=${encodeURIComponent(symbol)}&region=US&lang=en-US`;
+  const xml = await safeFetchText(rssUrl);
+  const parsed = extractRssItems(xml).slice(0, Math.max(1, Math.trunc(limit)));
+  newsCache.set(cacheKey, {
+    fetchedAt: now,
+    items: parsed
+  });
+  return parsed;
 }
 
 function pickWorldEvents(symbol) {
@@ -618,9 +680,7 @@ async function getEarningsGamblingBoard(limit = 5) {
         ...entry,
         estimatedVolume: estimatedVolume + marketCapWeight
       };
-    })
-    .sort((a, b) => b.estimatedVolume - a.estimatedVolume)
-    .slice(0, boundedLimit);
+    });
 
   let source = 'nasdaq';
   let scheduleLabel = 'Confirmed earnings dates (next 14 days)';
@@ -632,20 +692,31 @@ async function getEarningsGamblingBoard(limit = 5) {
       reportTime: 'Unknown',
       estimatedVolume: estimateEarningsDayVolume(symbol, fallbackDate)
     }))
-      .sort((a, b) => b.estimatedVolume - a.estimatedVolume)
-      .slice(0, boundedLimit);
+      .sort((a, b) => b.estimatedVolume - a.estimatedVolume);
     source = 'simulated';
     scheduleLabel = `Estimated board (no live calendar response) • ${formatIsoDate(fallbackDate)}`;
+  } else {
+    const earliestDate = rankedByVolume
+      .map((entry) => entry.earningsDate)
+      .filter(Boolean)
+      .sort()[0];
+    if (earliestDate) {
+      rankedByVolume = rankedByVolume.filter((entry) => entry.earningsDate === earliestDate);
+      scheduleLabel = `Upcoming earnings for ${formatIsoDate(earliestDate)}`;
+    }
   }
 
+  rankedByVolume = rankedByVolume.sort((a, b) => b.estimatedVolume - a.estimatedVolume).slice(0, boundedLimit);
+
   const scheduleDate = rankedByVolume[0]?.earningsDate || null;
-  const items = rankedByVolume.map((entry, index) => {
+  const items = await Promise.all(rankedByVolume.map(async (entry, index) => {
     const symbol = entry.symbol;
     const up = clamp(Math.round(45 + pseudoRandom(seed + index + 120) * 25), 40, 70);
     const down = 100 - up;
     const predictedDirection = up >= down ? 'up' : 'down';
     const earningsDateLabel = formatIsoDate(entry.earningsDate);
     const intel = buildEarningsIntel(symbol, entry.estimatedVolume, up, down, index, earningsDateLabel);
+    const recentNews = await fetchTickerNews(symbol, 3);
 
     return {
       symbol,
@@ -663,9 +734,10 @@ async function getEarningsGamblingBoard(limit = 5) {
         futureGrowthOutlook: [intel.headline]
       },
       futureGrowthSignals: intel.futureGrowthSignals,
-      analystPushes: intel.analystPushes
+      analystPushes: intel.analystPushes,
+      recentNews
     };
-  });
+  }));
 
   return {
     source,

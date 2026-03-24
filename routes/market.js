@@ -271,6 +271,7 @@ router.get('/earnings-gambling', async (req, res) => {
       eventDateLabel: item.earningsDateLabel,
       direction: item.predictedDirection,
       volume: item.volume,
+      recentNews: item.recentNews || [],
       analystPushes: item.analystPushes || [],
       unusualWhalesIntel: item.unusualWhalesIntel || item.intel,
       unusualWhales: item.unusualWhales,

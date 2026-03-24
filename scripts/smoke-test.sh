@@ -87,6 +87,7 @@ check_auth_status_code "/api/market/options?ticker=TSLA&spot=220&strike=230&days
 check_json_contains "/api/market/stock-outlook?ticker=TSLA" "\"ticker\":\"TSLA\""
 check_json_contains "/api/market/earnings-gambling" "\"reportTimeLabel\":\"Pre-Market\"|\"reportTimeLabel\":\"After-Hours\""
 check_json_contains "/api/market/earnings-gambling" "\"analystPushes\""
+check_json_contains "/api/market/earnings-gambling" "\"recentNews\""
 check_json_contains "/api/market/realized-patterns" "\"items\""
 check_json_contains "/api/market/wild-takes" "\"items\""
 

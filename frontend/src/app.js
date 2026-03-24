@@ -388,6 +388,7 @@ function renderEarningsDetail(item) {
   const growth = item.futureGrowthSignals || fallbackIntel.notes || [];
   const outlookLines = item.unusualWhales?.futureGrowthOutlook || (fallbackIntel.headline ? [fallbackIntel.headline] : []);
   const analystPushes = item.analystPushes || [];
+  const recentNews = item.recentNews || [];
 
   const playsHtml = plays
     .map(
@@ -411,6 +412,14 @@ function renderEarningsDetail(item) {
       return `<li>${push.firm}: ${push.action} (${push.impact})</li>`;
     })
     .join('');
+  const recentNewsHtml = recentNews
+    .map((headline) => {
+      const title = headline.title || 'Headline';
+      const url = headline.url || '#';
+      const publishedAt = headline.publishedAt ? ` • ${headline.publishedAt}` : '';
+      return `<li><a class="open-link" href="${url}" target="_blank" rel="noopener noreferrer">${title}</a>${publishedAt}</li>`;
+    })
+    .join('');
 
   target.innerHTML = `
     <article class="earnings-detail-card">
@@ -422,6 +431,8 @@ function renderEarningsDetail(item) {
       <p><strong>Estimated volume:</strong> ${Number(item.volume || 0).toLocaleString()}</p>
       <h4>Analyst Pushes</h4>
       <ul class="detail-list">${analystPushesHtml || '<li>No fresh analyst pushes detected.</li>'}</ul>
+      <h4>Recent News</h4>
+      <ul class="detail-list">${recentNewsHtml || '<li>No recent headlines available.</li>'}</ul>
       <h4>Unusual Plays (Whales-style)</h4>
       <ul class="detail-list">${playsHtml || '<li>No unusual plays detected.</li>'}</ul>
       <h4>Earnings / Future Growth Commentary</h4>
