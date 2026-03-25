@@ -1035,7 +1035,10 @@ async function getEarningsGamblingBoard(limit = 5, options = {}) {
     }
   }
 
-  selectedRows = filterCompletedEarnings(selectedRows);
+  const includeCompleted = Boolean(options.includeCompleted);
+  if (!includeCompleted) {
+    selectedRows = filterCompletedEarnings(selectedRows);
+  }
 
   if (selectedRows.length === 0 && calendarRows.length > 0) {
     const availableDates = [...new Set(calendarRows.map((entry) => entry.earningsDate).filter(Boolean))].sort();
@@ -1045,6 +1048,9 @@ async function getEarningsGamblingBoard(limit = 5, options = {}) {
       || availableDates[0]
       || requestedDate;
     selectedRows = calendarRows.filter((entry) => entry.earningsDate === selectedDate);
+    if (!includeCompleted) {
+      selectedRows = filterCompletedEarnings(selectedRows);
+    }
     scheduleDate = selectedDate;
     scheduleLabel = humanizeEarningsScheduleLabel(requestedDate, selectedDate);
     source = 'nasdaq';

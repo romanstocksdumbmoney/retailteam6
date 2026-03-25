@@ -12,6 +12,7 @@ let sidebarOpen = false;
 let billingInfo = null;
 let proPopupVisible = false;
 let earningsRefreshIntervalId = null;
+const SAVED_EMAIL_KEY = 'dumbdollars_saved_email';
 
 function isSecureCheckoutUrl(url) {
   if (typeof url !== 'string' || !url) {
@@ -78,6 +79,18 @@ function headersWithPlan() {
     headers.authorization = `Bearer ${authToken}`;
   }
   return headers;
+}
+
+function savePreferredEmail(email) {
+  const normalized = String(email || '').trim().toLowerCase();
+  if (!normalized) {
+    return;
+  }
+  localStorage.setItem(SAVED_EMAIL_KEY, normalized);
+}
+
+function loadPreferredEmail() {
+  return String(localStorage.getItem(SAVED_EMAIL_KEY) || '').trim().toLowerCase();
 }
 
 function fmtPct(value) {
@@ -511,7 +524,8 @@ function renderEarningsBoard(payload) {
   const scheduleLabel = payload.scheduleLabel || 'Upcoming earnings';
   const dataSource = payload.source === 'nasdaq' ? 'Nasdaq calendar' : 'Estimated board';
   const activeItems = (payload.items || []).filter((item) => isEarningsItemStillActive(item));
-  activeItems.forEach((item) => {
+  const displayItems = activeItems.length > 0 ? activeItems : (payload.items || []);
+  displayItems.forEach((item) => {
     const up = Number(item.predictedMove.up || 0);
     const down = Number(item.predictedMove.down || 0);
     const directionClass = up >= down ? 'up' : 'down';
@@ -551,8 +565,8 @@ function renderEarningsBoard(payload) {
     detail.setAttribute('data-source-label', dataSource);
   }
 
-  if (activeItems.length > 0) {
-    renderEarningsDetail(activeItems[0]);
+  if (displayItems.length > 0) {
+    renderEarningsDetail(displayItems[0]);
   } else {
     const detail = document.getElementById('earnings-detail');
     if (detail) {
@@ -826,9 +840,20 @@ async function loadOutlook(ticker) {
 }
 
 async function loadEarningsBoard() {
-  const payload = await fetchJson('/api/market/earnings-gambling?targetDate=today', {
-    headers: headersWithPlan()
-  });
+  let payload;
+  try {
+    payload = await fetchJson('/api/market/earnings-gambling?targetDate=today', {
+      headers: headersWithPlan()
+    });
+  } catch (_error) {
+    payload = null;
+  }
+  const hasTodayItems = payload && Array.isArray(payload.items) && payload.items.length > 0;
+  if (!hasTodayItems) {
+    payload = await fetchJson('/api/market/earnings-gambling?targetDate=today&includeCompleted=true', {
+      headers: headersWithPlan()
+    });
+  }
   renderEarningsBoard(payload);
 }
 
@@ -1032,6 +1057,7 @@ function setupAuthForms() {
     const password = document.getElementById('login-password').value;
     try {
       await login(email, password);
+      savePreferredEmail(email);
       setAuthMessage('Logged in successfully.');
       await Promise.all([refreshBaseline(), loadUnusualFeed(), loadTrendTrades()]);
     } catch (error) {
@@ -1045,6 +1071,7 @@ function setupAuthForms() {
     const password = document.getElementById('signup-password').value;
     try {
       await signup(email, password);
+      savePreferredEmail(email);
       setAuthMessage('Account created and logged in.');
       await Promise.all([refreshBaseline(), loadUnusualFeed(), loadTrendTrades()]);
     } catch (error) {
@@ -1420,6 +1447,17 @@ function setupProPopup() {
 
 async function init() {
   authToken = localStorage.getItem('dumbdollars_token') || '';
+  const rememberedEmail = loadPreferredEmail();
+  if (rememberedEmail) {
+    const loginEmail = document.getElementById('login-email');
+    const signupEmail = document.getElementById('signup-email');
+    if (loginEmail instanceof HTMLInputElement) {
+      loginEmail.value = rememberedEmail;
+    }
+    if (signupEmail instanceof HTMLInputElement) {
+      signupEmail.value = rememberedEmail;
+    }
+  }
   await fetchBillingInfo();
   setupAuthForms();
   setupProPopup();

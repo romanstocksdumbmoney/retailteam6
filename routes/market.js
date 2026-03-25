@@ -270,7 +270,8 @@ router.get('/earnings-gambling', async (req, res) => {
   const limit = Number(req.query.limit || 5);
   const boundedLimit = Number.isFinite(limit) ? Math.max(1, Math.min(8, Math.trunc(limit))) : 5;
   const targetDate = String(req.query.targetDate || '').trim();
-  const board = await buildEarningsGambling(boundedLimit, { targetDate });
+  const includeCompleted = String(req.query.includeCompleted || '').trim().toLowerCase() === 'true';
+  const board = await buildEarningsGambling(boundedLimit, { targetDate, includeCompleted });
   const raw = board.items || [];
   const boardDate = board.scheduleDate || null;
 
