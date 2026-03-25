@@ -11,6 +11,7 @@ let activePatternFilter = 'all';
 let sidebarOpen = false;
 let billingInfo = null;
 let proPopupVisible = false;
+let earningsRefreshIntervalId = null;
 
 function isSecureCheckoutUrl(url) {
   if (typeof url !== 'string' || !url) {
@@ -85,6 +86,69 @@ function fmtPct(value) {
 
 function fmtUsd(value) {
   return `$${Number(value || 0).toLocaleString()}`;
+}
+
+function toEtNow() {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'America/New_York',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false
+  }).formatToParts(new Date());
+  const get = (type) => parts.find((part) => part.type === type)?.value || '00';
+  return {
+    year: Number(get('year')),
+    month: Number(get('month')),
+    day: Number(get('day')),
+    hour: Number(get('hour')),
+    minute: Number(get('minute'))
+  };
+}
+
+function parseEventDateParts(isoDate) {
+  const text = String(isoDate || '').trim();
+  const match = text.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!match) {
+    return null;
+  }
+  return {
+    year: Number(match[1]),
+    month: Number(match[2]),
+    day: Number(match[3])
+  };
+}
+
+function parseSessionCutoffMinutes(reportTimeLabel) {
+  const value = String(reportTimeLabel || '').toLowerCase();
+  if (value.includes('pre-market')) {
+    return 9 * 60 + 30;
+  }
+  if (value.includes('after-hours')) {
+    return 16 * 60 + 30;
+  }
+  return 16 * 60 + 30;
+}
+
+function isEarningsItemStillActive(item) {
+  const dateParts = parseEventDateParts(item.eventDate || item.eventDateLabel || '');
+  if (!dateParts) {
+    return true;
+  }
+  const now = toEtNow();
+  const eventKey = dateParts.year * 10000 + dateParts.month * 100 + dateParts.day;
+  const nowKey = now.year * 10000 + now.month * 100 + now.day;
+  if (eventKey > nowKey) {
+    return true;
+  }
+  if (eventKey < nowKey) {
+    return false;
+  }
+  const nowMinutes = now.hour * 60 + now.minute;
+  const cutoffMinutes = parseSessionCutoffMinutes(item.reportTimeLabel);
+  return nowMinutes < cutoffMinutes;
 }
 
 function renderStatus(text) {
@@ -446,13 +510,18 @@ function renderEarningsBoard(payload) {
   target.innerHTML = '';
   const scheduleLabel = payload.scheduleLabel || 'Upcoming earnings';
   const dataSource = payload.source === 'nasdaq' ? 'Nasdaq calendar' : 'Estimated board';
-  payload.items.forEach((item) => {
+  const activeItems = (payload.items || []).filter((item) => isEarningsItemStillActive(item));
+  activeItems.forEach((item) => {
     const up = Number(item.predictedMove.up || 0);
     const down = Number(item.predictedMove.down || 0);
     const directionClass = up >= down ? 'up' : 'down';
+    const spread = Math.abs(up - down);
     const dateLabel = item.eventDateLabel || item.eventDate || scheduleLabel;
+    const volumeSourceLabel = String(item.volumeSource || '').includes('yahoo')
+      ? 'live vol'
+      : 'est vol';
     const card = document.createElement('article');
-    card.className = `earnings-card earnings-card--${directionClass}`;
+    card.className = `earnings-card earnings-card--${directionClass} earnings-card--strength-${spread >= 14 ? 'high' : spread >= 7 ? 'mid' : 'low'}`;
     card.setAttribute('role', 'button');
     card.setAttribute('tabindex', '0');
     card.addEventListener('click', () => renderEarningsDetail(item));
@@ -465,8 +534,12 @@ function renderEarningsBoard(payload) {
     card.innerHTML = `
       <h3>${item.ticker}</h3>
       <p>${dateLabel} • ${item.reportTimeLabel}</p>
-      <p><strong>${fmtPct(up)} up</strong> / ${fmtPct(down)} down</p>
-      <p class="small-note">Volume: ${Number(item.volume || 0).toLocaleString()}</p>
+      <p>
+        <span class="earnings-up-pct">${fmtPct(up)} up</span>
+        /
+        <span class="earnings-down-pct">${fmtPct(down)} down</span>
+      </p>
+      <p class="small-note">Volume: ${Number(item.volume || 0).toLocaleString()} <span class="earnings-volume-source">(${volumeSourceLabel})</span></p>
       <p class="small-note">${directionClass.toUpperCase()} bias</p>
     `;
     target.appendChild(card);
@@ -478,12 +551,12 @@ function renderEarningsBoard(payload) {
     detail.setAttribute('data-source-label', dataSource);
   }
 
-  if ((payload.items || []).length > 0) {
-    renderEarningsDetail(payload.items[0]);
+  if (activeItems.length > 0) {
+    renderEarningsDetail(activeItems[0]);
   } else {
     const detail = document.getElementById('earnings-detail');
     if (detail) {
-      detail.innerHTML = '<div class="pro-lock">No earnings details available.</div>';
+      detail.innerHTML = '<div class="pro-lock">No active earnings sessions right now. The board will auto-refresh for the next session.</div>';
     }
   }
 }
@@ -753,7 +826,7 @@ async function loadOutlook(ticker) {
 }
 
 async function loadEarningsBoard() {
-  const payload = await fetchJson('/api/market/earnings-gambling', {
+  const payload = await fetchJson('/api/market/earnings-gambling?targetDate=today', {
     headers: headersWithPlan()
   });
   renderEarningsBoard(payload);
@@ -1366,6 +1439,15 @@ async function init() {
     console.error(error);
     renderStatus('Failed to initialize dashboard.');
   }
+
+  if (earningsRefreshIntervalId) {
+    clearInterval(earningsRefreshIntervalId);
+  }
+  earningsRefreshIntervalId = window.setInterval(() => {
+    loadEarningsBoard().catch((error) => {
+      console.error(error);
+    });
+  }, 90_000);
 }
 
 init();

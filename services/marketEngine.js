@@ -295,6 +295,72 @@ function resolveEarningsTargetDate(rawTargetDate) {
   return addDaysToIsoDate(todayIsoDate(), 1);
 }
 
+function humanizeEarningsScheduleLabel(targetDate, effectiveDate) {
+  const target = String(targetDate || '').trim();
+  const effective = String(effectiveDate || '').trim();
+  const today = todayIsoDate();
+  const tomorrow = addDaysToIsoDate(today, 1);
+  if (effective === today) {
+    return `Today's earnings (${formatIsoDate(effective)} ET)`;
+  }
+  if (effective === tomorrow) {
+    return `Tomorrow's earnings (${formatIsoDate(effective)} ET)`;
+  }
+  if (target && effective === target) {
+    return `Earnings board (${formatIsoDate(effective)} ET)`;
+  }
+  return `Next live earnings day (${formatIsoDate(effective)} ET)`;
+}
+
+function getEtNowClock() {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: MARKET_TIME_ZONE,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false
+  }).formatToParts(new Date());
+  const year = parts.find((part) => part.type === 'year')?.value || '1970';
+  const month = parts.find((part) => part.type === 'month')?.value || '01';
+  const day = parts.find((part) => part.type === 'day')?.value || '01';
+  const hour = Number(parts.find((part) => part.type === 'hour')?.value || 0);
+  const minute = Number(parts.find((part) => part.type === 'minute')?.value || 0);
+  return {
+    isoDate: `${year}-${month}-${day}`,
+    minutesIntoDay: hour * 60 + minute
+  };
+}
+
+function earningsSessionCutoffMinutes(reportTimeLabel) {
+  const label = String(reportTimeLabel || '').toLowerCase();
+  if (label.includes('pre-market') || label.includes('before-market')) {
+    return 9 * 60 + 30;
+  }
+  if (label.includes('after-hours') || label.includes('after-market')) {
+    return 16 * 60 + 30;
+  }
+  return 16 * 60 + 30;
+}
+
+function filterCompletedEarnings(rows) {
+  const nowEt = getEtNowClock();
+  return rows.filter((entry) => {
+    const eventDate = String(entry.earningsDate || '').trim();
+    if (!eventDate) {
+      return false;
+    }
+    if (eventDate > nowEt.isoDate) {
+      return true;
+    }
+    if (eventDate < nowEt.isoDate) {
+      return false;
+    }
+    return nowEt.minutesIntoDay < earningsSessionCutoffMinutes(entry.reportTime);
+  });
+}
+
 function daySeed() {
   const now = new Date();
   return `${now.getUTCFullYear()}-${now.getUTCMonth() + 1}-${now.getUTCDate()}`;
@@ -958,10 +1024,7 @@ async function getEarningsGamblingBoard(limit = 5, options = {}) {
 
   let source = 'nasdaq';
   let scheduleDate = requestedDate;
-  const todayDate = todayIsoDate();
-  let scheduleLabel = requestedDate === todayDate
-    ? `Today's earnings (${formatIsoDate(requestedDate)} ET)`
-    : `Tomorrow's earnings (${formatIsoDate(requestedDate)} ET)`;
+  let scheduleLabel = humanizeEarningsScheduleLabel(requestedDate, requestedDate);
 
   let selectedRows = calendarRows.filter((entry) => entry.earningsDate === requestedDate);
   if (selectedRows.length === 0) {
@@ -972,14 +1035,18 @@ async function getEarningsGamblingBoard(limit = 5, options = {}) {
     }
   }
 
+  selectedRows = filterCompletedEarnings(selectedRows);
+
   if (selectedRows.length === 0 && calendarRows.length > 0) {
     const availableDates = [...new Set(calendarRows.map((entry) => entry.earningsDate).filter(Boolean))].sort();
-    const selectedDate = availableDates.find((isoDate) => isoDate >= requestedDate) || availableDates[0] || requestedDate;
+    const nowEtDate = todayIsoDate();
+    const selectedDate = availableDates.find((isoDate) => isoDate > nowEtDate)
+      || availableDates.find((isoDate) => isoDate >= requestedDate)
+      || availableDates[0]
+      || requestedDate;
     selectedRows = calendarRows.filter((entry) => entry.earningsDate === selectedDate);
     scheduleDate = selectedDate;
-    scheduleLabel = selectedDate === requestedDate
-      ? `Tomorrow's earnings (${formatIsoDate(selectedDate)} ET)`
-      : `Next live earnings day (${formatIsoDate(selectedDate)} ET)`;
+    scheduleLabel = humanizeEarningsScheduleLabel(requestedDate, selectedDate);
     source = 'nasdaq';
   }
 

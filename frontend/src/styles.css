@@ -999,7 +999,7 @@ label {
   padding: 0.72rem;
   border: 1px solid #334155;
   cursor: pointer;
-  transition: transform 0.12s ease, box-shadow 0.12s ease;
+  transition: transform 0.12s ease, box-shadow 0.12s ease, border-color 0.12s ease, background 0.12s ease;
 }
 
 .earnings-card h3 {
@@ -1017,13 +1017,42 @@ label {
 }
 
 .earnings-card--up {
-  background: rgba(16, 185, 129, 0.16);
-  border-color: rgba(16, 185, 129, 0.52);
+  background: linear-gradient(180deg, rgba(16, 185, 129, 0.26), rgba(6, 78, 59, 0.22));
+  border-color: rgba(52, 211, 153, 0.85);
+  box-shadow: inset 0 0 0 1px rgba(16, 185, 129, 0.3);
 }
 
 .earnings-card--down {
-  background: rgba(239, 68, 68, 0.16);
-  border-color: rgba(239, 68, 68, 0.52);
+  background: linear-gradient(180deg, rgba(239, 68, 68, 0.24), rgba(127, 29, 29, 0.22));
+  border-color: rgba(248, 113, 113, 0.85);
+  box-shadow: inset 0 0 0 1px rgba(239, 68, 68, 0.28);
+}
+
+.earnings-card--strength-high {
+  box-shadow: inset 0 0 0 2px rgba(250, 204, 21, 0.42), 0 12px 24px rgba(0, 0, 0, 0.28);
+}
+
+.earnings-card--strength-mid {
+  box-shadow: inset 0 0 0 1px rgba(250, 204, 21, 0.24), 0 8px 18px rgba(0, 0, 0, 0.24);
+}
+
+.earnings-card--strength-low {
+  box-shadow: inset 0 0 0 1px rgba(148, 163, 184, 0.16), 0 6px 14px rgba(0, 0, 0, 0.2);
+}
+
+.earnings-up-pct {
+  color: #86efac;
+  font-weight: 800;
+}
+
+.earnings-down-pct {
+  color: #fca5a5;
+  font-weight: 800;
+}
+
+.earnings-volume-source {
+  color: #fde68a;
+  font-weight: 700;
 }
 
 .earnings-detail-card {
