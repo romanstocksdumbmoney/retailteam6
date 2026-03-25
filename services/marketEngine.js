@@ -1575,6 +1575,85 @@ function buildAiAnalyzerReview(model, score, direction, timeframe, symbol) {
   return `${model}: setup quality is weak for a ${direction} ${timeframe} ${symbol} trade; tighter confirmation is needed.`;
 }
 
+function getAiAnalyzerPatternCatalog(direction) {
+  const isLong = direction === 'long';
+  return [
+    {
+      name: 'Bull Flag',
+      type: 'continuation',
+      bias: 'bullish',
+      isDirectionalMatch: isLong
+    },
+    {
+      name: 'Bear Flag',
+      type: 'continuation',
+      bias: 'bearish',
+      isDirectionalMatch: !isLong
+    },
+    {
+      name: 'Ascending Triangle',
+      type: 'breakout',
+      bias: 'bullish',
+      isDirectionalMatch: isLong
+    },
+    {
+      name: 'Descending Triangle',
+      type: 'breakdown',
+      bias: 'bearish',
+      isDirectionalMatch: !isLong
+    },
+    {
+      name: 'Cup and Handle',
+      type: 'reversal',
+      bias: 'bullish',
+      isDirectionalMatch: isLong
+    },
+    {
+      name: 'Head and Shoulders',
+      type: 'reversal',
+      bias: 'bearish',
+      isDirectionalMatch: !isLong
+    },
+    {
+      name: 'Double Bottom',
+      type: 'reversal',
+      bias: 'bullish',
+      isDirectionalMatch: isLong
+    },
+    {
+      name: 'Double Top',
+      type: 'reversal',
+      bias: 'bearish',
+      isDirectionalMatch: !isLong
+    }
+  ];
+}
+
+function getPossibleActivePatterns({ seed, direction, timeframe, symbol }) {
+  const catalog = getAiAnalyzerPatternCatalog(direction);
+  const scored = catalog.map((pattern, index) => {
+    const confidence = clamp(
+      Math.round(42 + pseudoRandom(seed + 101 + index * 29) * 52 + (pattern.isDirectionalMatch ? 7 : -5)),
+      28,
+      96
+    );
+    const status = confidence >= 72 ? 'active' : confidence >= 58 ? 'forming' : 'watch';
+    const rationale = pattern.isDirectionalMatch
+      ? `${pattern.name} aligns with the ${direction} ${timeframe} flow seen in ${symbol}.`
+      : `${pattern.name} is a secondary path if price rejects current ${direction} pressure.`;
+    return {
+      pattern: pattern.name,
+      type: pattern.type,
+      bias: pattern.bias,
+      confidencePct: confidence,
+      status,
+      rationale
+    };
+  });
+  scored.sort((a, b) => b.confidencePct - a.confidencePct);
+  return scored.slice(0, 4);
+}
+
 function analyzeAiTradeScreenshot({
   symbol = 'SPY',
   timeframe = 'intraday',
@@ -1675,6 +1754,12 @@ function analyzeAiTradeScreenshot({
     'Define a take-profit and stop-loss before sending the order.',
     'Use smaller size when volatility expands quickly.'
   ];
+  const possiblePatterns = getPossibleActivePatterns({
+    seed,
+    direction: normalizedDirection,
+    timeframe: normalizedTimeframe,
+    symbol: normalizedSymbol
+  });
 
   return {
     generatedAt: new Date().toISOString(),
@@ -1699,6 +1784,7 @@ function analyzeAiTradeScreenshot({
       realized: realizedScore
     },
     modelReviews,
+    possiblePatterns,
     strengths,
     risks,
     improvements

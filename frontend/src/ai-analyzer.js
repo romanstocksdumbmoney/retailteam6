@@ -94,6 +94,29 @@ function renderModelReviews(reviews) {
   }
 }
 
+function renderPatterns(patterns) {
+  const target = document.getElementById('ai-analyzer-patterns');
+  if (!target) {
+    return;
+  }
+  target.innerHTML = '';
+  const rows = Array.isArray(patterns) ? patterns : [];
+  rows.forEach((pattern) => {
+    const row = document.createElement('article');
+    row.className = `ai-trade-vote ai-trade-vote--${pattern.bias === 'bullish' ? 'up' : 'down'}`;
+    row.innerHTML = `
+      <h4>${pattern.name}</h4>
+      <p><strong>${String(pattern.bias || '').toUpperCase()}</strong> • ${Number(pattern.confidencePct || 0)}% confidence</p>
+      <p class="small-note">${pattern.status || ''}</p>
+      <p class="small-note">${pattern.summary || ''}</p>
+    `;
+    target.appendChild(row);
+  });
+  if (!rows.length) {
+    target.innerHTML = '<div class="pro-lock">No active patterns detected right now.</div>';
+  }
+}
+
 function renderResult(payload) {
   const resultsSection = document.getElementById('ai-analyzer-results');
   const summary = document.getElementById('ai-analyzer-summary');
@@ -120,6 +143,7 @@ function renderResult(payload) {
     <li>Realized: ${payload.subscores?.realized ?? 0}/100</li>
   `;
 
+  renderPatterns(payload.possiblePatterns || []);
   renderModelReviews(payload.modelReviews || []);
   renderList('ai-analyzer-strengths', payload.strengths, 'No strengths captured.');
   renderList('ai-analyzer-risks', payload.risks, 'No risk notes captured.');
