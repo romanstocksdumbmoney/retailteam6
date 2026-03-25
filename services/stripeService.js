@@ -56,7 +56,11 @@ function getHostedCheckoutFallbackUrl() {
   ).trim();
 
   if (!fallbackUrl || isPlaceholderValue(fallbackUrl)) {
-    return `${getAppBaseUrl()}/hosted-checkout.html`;
+    return '/hosted-checkout.html';
+  }
+
+  if (fallbackUrl.startsWith('/')) {
+    return fallbackUrl;
   }
 
   try {
