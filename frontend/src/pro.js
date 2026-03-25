@@ -33,6 +33,30 @@ function setStatus(text, isError = false) {
   statusNode.className = isError ? 'small-note auth-error' : 'small-note';
 }
 
+function isSecureHostedCheckoutUrl(url) {
+  if (typeof url !== 'string') {
+    return false;
+  }
+  try {
+    const parsed = new URL(url);
+    const isHttps = parsed.protocol === 'https:';
+    const isLocalHttp = parsed.protocol === 'http:' && ['localhost', '127.0.0.1'].includes(parsed.hostname);
+    if (!isHttps && !isLocalHttp) {
+      return false;
+    }
+    const host = parsed.hostname.toLowerCase();
+    return (
+      host === 'checkout.stripe.com'
+      || host.endsWith('.stripe.com')
+      || host.endsWith('.shopify.com')
+      || host === 'localhost'
+      || host === '127.0.0.1'
+    );
+  } catch (_error) {
+    return false;
+  }
+}
+
 async function startSecureCheckout() {
   const token = localStorage.getItem('dumbdollars_token') || '';
   const startButton = document.getElementById('pro-page-start');
@@ -52,7 +76,7 @@ async function startSecureCheckout() {
       },
       body: JSON.stringify({})
     });
-    if (!session || typeof session.url !== 'string' || !session.url.startsWith('https://checkout.stripe.com/')) {
+    if (!session || !isSecureHostedCheckoutUrl(session.url)) {
       throw new Error('Could not verify secure Stripe checkout URL.');
     }
     window.location.href = session.url;

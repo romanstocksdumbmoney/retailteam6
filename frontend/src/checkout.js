@@ -24,6 +24,29 @@ function getAuthHeaders() {
   };
 }
 
+function isSecureCheckoutUrl(url) {
+  if (typeof url !== 'string') {
+    return false;
+  }
+  try {
+    const parsed = new URL(url);
+    const protocol = parsed.protocol.toLowerCase();
+    const isHttps = protocol === 'https:';
+    const isLocalHttp = protocol === 'http:' && ['localhost', '127.0.0.1'].includes(parsed.hostname.toLowerCase());
+    if (!isHttps && !isLocalHttp) {
+      return false;
+    }
+    const host = parsed.hostname.toLowerCase();
+    return host === 'checkout.stripe.com'
+      || host.endsWith('.stripe.com')
+      || host.endsWith('.shopify.com')
+      || host === 'localhost'
+      || host === '127.0.0.1';
+  } catch (_error) {
+    return false;
+  }
+}
+
 function setStatus(text, isError = false) {
   const statusNode = document.getElementById('checkout-status');
   if (!statusNode) {
@@ -34,25 +57,24 @@ function setStatus(text, isError = false) {
 }
 
 async function startSecureCheckout() {
-  const token = localStorage.getItem('dumbdollars_token') || '';
   const startButton = document.getElementById('checkout-open-stripe');
-  if (!token) {
-    setStatus('Please sign in on the dashboard first.', true);
-    return;
-  }
   try {
     if (startButton) {
       startButton.disabled = true;
     }
     setStatus('Opening secure Stripe checkout...');
-    const session = await fetchJson('/api/auth/stripe/create-checkout-session', {
+    const token = localStorage.getItem('dumbdollars_token') || '';
+    const endpoint = token
+      ? '/api/auth/stripe/create-checkout-session'
+      : '/api/auth/stripe/create-checkout-session-public';
+    const session = await fetchJson(endpoint, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        ...getAuthHeaders()
+        ...(token ? getAuthHeaders() : {})
       }
     });
-    if (!session || typeof session.url !== 'string' || !session.url.startsWith('https://checkout.stripe.com/')) {
+    if (!session || !isSecureCheckoutUrl(session.url)) {
       throw new Error('Could not verify secure Stripe checkout URL.');
     }
     window.location.href = session.url;
@@ -69,13 +91,7 @@ async function initializeCheckoutPage() {
   if (!startButton) {
     return;
   }
-  const token = localStorage.getItem('dumbdollars_token') || '';
-  if (!token) {
-    setStatus('Sign in on the dashboard first, then return to finish checkout.', true);
-    startButton.disabled = true;
-  } else {
-    setStatus('Ready for secure Stripe checkout.');
-  }
+  setStatus('Ready for secure Stripe checkout.');
   startButton.addEventListener('click', async () => {
     await startSecureCheckout();
   });

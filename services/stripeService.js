@@ -1,5 +1,5 @@
 const Stripe = require('stripe');
-const { getUserById, updateUser } = require('./userStore');
+const { updateUser } = require('./userStore');
 
 function isPlaceholderValue(value) {
   const normalized = String(value || '').toLowerCase();
@@ -21,7 +21,23 @@ function getStripe() {
 }
 
 function getAppBaseUrl() {
-  return process.env.APP_BASE_URL || `http://localhost:${process.env.PORT || 5000}`;
+  const configured = String(process.env.APP_BASE_URL || '').trim();
+  const runtimePort = String(process.env.PORT || '').trim();
+
+  if (configured) {
+    try {
+      const parsed = new URL(configured);
+      const isLocalHost = ['localhost', '127.0.0.1'].includes(parsed.hostname);
+      if (isLocalHost && runtimePort && parsed.port && parsed.port !== runtimePort) {
+        parsed.port = runtimePort;
+      }
+      return parsed.toString().replace(/\/$/, '');
+    } catch (_error) {
+      // Fall through to runtime-derived localhost URL.
+    }
+  }
+
+  return `http://localhost:${runtimePort || 5000}`;
 }
 
 function getProPriceId() {
@@ -30,6 +46,30 @@ function getProPriceId() {
     return '';
   }
   return priceId;
+}
+
+function getHostedCheckoutFallbackUrl() {
+  const fallbackUrl = String(
+    process.env.PAYMENT_CHECKOUT_FALLBACK_URL
+      || process.env.CHECKOUT_FALLBACK_URL
+      || ''
+  ).trim();
+
+  if (!fallbackUrl || isPlaceholderValue(fallbackUrl)) {
+    return `${getAppBaseUrl()}/hosted-checkout.html`;
+  }
+
+  try {
+    const parsed = new URL(fallbackUrl);
+    const isHttps = parsed.protocol === 'https:';
+    const isLocalHttp = parsed.protocol === 'http:' && ['localhost', '127.0.0.1'].includes(parsed.hostname);
+    if (!isHttps && !isLocalHttp) {
+      return '';
+    }
+    return parsed.toString();
+  } catch (_error) {
+    return '';
+  }
 }
 
 async function ensureStripeCustomer(user) {
@@ -64,6 +104,12 @@ async function createCheckoutSession(user) {
   const stripe = getStripe();
   const priceId = getProPriceId();
   if (!stripe || !priceId) {
+    const hostedFallbackUrl = getHostedCheckoutFallbackUrl();
+    if (hostedFallbackUrl) {
+      return {
+        url: hostedFallbackUrl
+      };
+    }
     throw new Error('billing_not_configured');
   }
 
@@ -81,6 +127,16 @@ async function createCheckoutSession(user) {
   });
 
   return session;
+}
+
+function createHostedCheckoutSession() {
+  const hostedFallbackUrl = getHostedCheckoutFallbackUrl();
+  if (!hostedFallbackUrl) {
+    throw new Error('hosted_checkout_not_configured');
+  }
+  return {
+    url: hostedFallbackUrl
+  };
 }
 
 async function createBillingPortalSession(user) {
@@ -156,25 +212,38 @@ async function processWebhookEvent(rawBody, signature) {
 }
 
 function isBillingConfigured() {
-  return Boolean(getStripe() && getProPriceId());
+  return Boolean((getStripe() && getProPriceId()) || getHostedCheckoutFallbackUrl());
 }
 
 function getBillingPublicInfo() {
+  const hasStripeApiCheckout = Boolean(getStripe() && getProPriceId());
+  const hostedCheckoutUrl = getHostedCheckoutFallbackUrl();
+  const checkoutMode = hasStripeApiCheckout
+    ? 'stripe_api'
+    : hostedCheckoutUrl
+      ? 'hosted_url'
+      : 'unconfigured';
+
   return {
     configured: isBillingConfigured(),
-    provider: 'Stripe',
+    provider: hasStripeApiCheckout ? 'Stripe' : hostedCheckoutUrl ? 'DumbDollars Hosted Checkout' : 'Stripe',
     currency: 'usd',
     amountMonthly: 15,
     recurringInterval: 'month',
     paymentMethodTypes: ['card'],
-    secureCheckoutUrl: 'https://stripe.com/security',
-    billingTermsUrl: 'https://stripe.com/legal/consumer',
-    cancellationPolicy: 'Cancel anytime from the billing portal. Access remains active until the current period ends.'
+    secureCheckoutUrl: hasStripeApiCheckout ? 'https://stripe.com/security' : hostedCheckoutUrl || '',
+    billingTermsUrl: hasStripeApiCheckout ? 'https://stripe.com/legal/consumer' : '',
+    checkoutMode,
+    checkoutHostedUrl: hostedCheckoutUrl || '',
+    cancellationPolicy: hasStripeApiCheckout
+      ? 'Cancel anytime from the billing portal. Access remains active until the current period ends.'
+      : 'Cancel policy is managed by the hosted checkout provider.'
   };
 }
 
 module.exports = {
   createCheckoutSession,
+  createHostedCheckoutSession,
   createBillingPortalSession,
   processWebhookEvent,
   getBillingPublicInfo,

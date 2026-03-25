@@ -49,18 +49,49 @@ function setStatus(text, isError = false) {
   statusNode.className = isError ? 'small-note auth-error' : 'small-note';
 }
 
+function isSecureHostedCheckoutUrl(url) {
+  if (typeof url !== 'string' || !url) {
+    return false;
+  }
+  try {
+    const parsed = new URL(url);
+    const host = parsed.hostname.toLowerCase();
+    const protocolOk = parsed.protocol === 'https:'
+      || (parsed.protocol === 'http:' && ['localhost', '127.0.0.1'].includes(host));
+    if (!protocolOk) {
+      return false;
+    }
+    const isTrustedProvider = host === 'checkout.stripe.com' || host.endsWith('.stripe.com') || host.endsWith('.shopify.com');
+    const isLocalHosted = ['localhost', '127.0.0.1'].includes(host);
+    return isTrustedProvider || isLocalHosted;
+  } catch (_error) {
+    return false;
+  }
+}
+
+function displayCheckoutProviderName(billingInfo) {
+  if (!billingInfo) {
+    return 'Checkout';
+  }
+  if (billingInfo.checkoutMode === 'hosted_url') {
+    return billingInfo.provider || 'Hosted Checkout';
+  }
+  return billingInfo.provider || 'Stripe';
+}
+
 function renderTrustPoints(preview, billingInfo) {
   const trustPoints = document.getElementById('payment-trust-points');
   if (!trustPoints) {
     return;
   }
   if (!preview || !billingInfo) {
-    trustPoints.innerHTML = '<li>Login required to view payment details.</li>';
+    trustPoints.innerHTML = '<li>Checkout details are loading.</li>';
     return;
   }
 
+  const providerName = displayCheckoutProviderName(billingInfo);
   const rows = [
-    `${billingInfo.provider || 'Stripe'} hosts checkout so card data is not entered on DumbDollars.`,
+    `${providerName} hosts checkout so card data is not entered on DumbDollars.`,
     preview.cancellationPolicy || billingInfo.cancellationPolicy || 'Cancel anytime from Manage Billing.',
     preview.renewalPolicy || 'Recurring monthly subscription until canceled.'
   ];
@@ -112,7 +143,12 @@ async function loadPaymentSummary() {
     if (checkoutButton) {
       checkoutButton.disabled = !Boolean(billingInfo?.configured);
     }
-    setStatus(billingInfo?.configured ? 'Secure checkout is ready.' : 'Stripe is not configured yet.');
+    if (billingInfo?.configured) {
+      const provider = displayCheckoutProviderName(billingInfo);
+      setStatus(`Secure checkout is ready via ${provider}.`);
+    } else {
+      setStatus('Checkout is not configured yet.', true);
+    }
   } catch (error) {
     renderPlanAndBenefits(null);
     renderTrustPoints(null, null);
@@ -129,7 +165,7 @@ async function beginCheckout() {
     if (startButton) {
       startButton.disabled = true;
     }
-    setStatus('Opening secure Stripe checkout...');
+    setStatus('Opening secure checkout...');
     const token = localStorage.getItem('dumbdollars_token') || '';
     const guestCheckoutId = getGuestCheckoutId();
     let session;
@@ -165,7 +201,7 @@ async function beginCheckout() {
       });
     }
 
-    if (!session || typeof session.url !== 'string' || !session.url.startsWith('https://checkout.stripe.com/')) {
+    if (!session || !isSecureHostedCheckoutUrl(session.url)) {
       throw new Error('Could not verify secure Stripe checkout URL.');
     }
     window.location.href = session.url;

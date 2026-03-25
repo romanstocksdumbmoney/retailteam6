@@ -50,7 +50,7 @@ router.get('/billing/checkout-preview', (_req, res) => {
     planName: 'DumbDollars Pro',
     monthlyAmountUsd: billingInfo.amountMonthly,
     currency: billingInfo.currency,
-    securePaymentProvider: 'Stripe',
+    securePaymentProvider: billingInfo.provider,
     benefits: [
       'Unlock Trend Trades (Pro social trend signals)',
       'Use advanced options calculator + gamma exposure',
@@ -130,7 +130,7 @@ router.post('/stripe/create-checkout-session-public', async (req, res) => {
     if (String(error.message) === 'billing_not_configured' || String(error.message) === 'stripe_not_configured') {
       return res.status(503).json({
         error: 'billing_not_configured',
-        message: 'Stripe is not configured. Set STRIPE_SECRET_KEY and STRIPE_PRICE_ID.'
+        message: 'Stripe is not configured. Set STRIPE_SECRET_KEY and STRIPE_PRICE_ID, or set PAYMENT_CHECKOUT_FALLBACK_URL.'
       });
     }
     return res.status(500).json({ error: 'checkout_failed', message: 'Could not create Stripe checkout session.' });

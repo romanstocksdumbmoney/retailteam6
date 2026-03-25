@@ -48,6 +48,20 @@ body {
   width: min(94vw, 760px);
 }
 
+.hosted-checkout-page-card {
+  width: min(94vw, 760px);
+}
+
+.checkout-form-grid {
+  display: grid;
+  gap: 0.75rem;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+}
+
+.checkout-form-grid .field-full {
+  grid-column: 1 / -1;
+}
+
 .pro-page-card h1 {
   margin: 0 0 0.35rem;
   text-align: center;
