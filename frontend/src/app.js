@@ -1185,20 +1185,12 @@ function setupAiSidebar() {
 
   if (aiTradeButton) {
     aiTradeButton.addEventListener('click', async () => {
-      if (activePlan !== PLAN_PRO) {
-        openProPopup('Pro access needed for AI Trade pattern analysis.');
-        return;
-      }
       window.location.href = '/ai-trade.html';
     });
   }
 
   if (autoTraderButton) {
     autoTraderButton.addEventListener('click', () => {
-      if (activePlan !== PLAN_PRO) {
-        openProPopup('Pro access needed for AI Auto Trader.');
-        return;
-      }
       openAutoTraderPage();
     });
   }

@@ -57,6 +57,16 @@ function requirePro(req, res, next) {
   return next();
 }
 
+function requireSignedIn(req, res, next) {
+  if (!req.user) {
+    return res.status(401).json({
+      error: 'unauthorized',
+      message: 'Login required.'
+    });
+  }
+  return next();
+}
+
 function estimateSpotPrice(ticker) {
   const source = normalizeTicker(ticker);
   let sum = 0;
@@ -336,7 +346,7 @@ router.get('/wild-takes', (req, res) => {
   return res.json(getWildTakes(boundedLimit));
 });
 
-router.post('/ai-trade/analyze', requirePro, (req, res) => {
+router.post('/ai-trade/analyze', requireSignedIn, (req, res) => {
   try {
     const imageDataUrl = String(req.body?.imageDataUrl || '');
     const symbol = String(req.body?.symbol || '');
@@ -361,13 +371,13 @@ router.post('/ai-trade/analyze', requirePro, (req, res) => {
   }
 });
 
-router.get('/auto-trader/sectors', requirePro, (_req, res) => {
+router.get('/auto-trader/sectors', requireSignedIn, (_req, res) => {
   return res.json({
     sectors: listAutoTraderSectors()
   });
 });
 
-router.post('/auto-trader/bot', requirePro, (req, res) => {
+router.post('/auto-trader/bot', requireSignedIn, (req, res) => {
   try {
     const payload = configureAutoTrader(req.user, req.body || {});
     return res.status(201).json(payload);
@@ -389,12 +399,12 @@ router.post('/auto-trader/bot', requirePro, (req, res) => {
   }
 });
 
-router.get('/auto-trader/bot', requirePro, (req, res) => {
+router.get('/auto-trader/bot', requireSignedIn, (req, res) => {
   const payload = getAutoTraderStatus(req.user);
   return res.json(payload);
 });
 
-router.post('/auto-trader/run', requirePro, (req, res) => {
+router.post('/auto-trader/run', requireSignedIn, (req, res) => {
   try {
     const cycle = runAutoTraderCycle(req.user, req.body || {});
     const bot = getAutoTraderStatus(req.user);
@@ -429,7 +439,7 @@ router.post('/auto-trader/run', requirePro, (req, res) => {
   }
 });
 
-router.post('/auto-trader/bot/pause', requirePro, (req, res) => {
+router.post('/auto-trader/bot/pause', requireSignedIn, (req, res) => {
   try {
     const payload = setBotActive(req.user, false);
     return res.json(payload);
@@ -447,7 +457,7 @@ router.post('/auto-trader/bot/pause', requirePro, (req, res) => {
   }
 });
 
-router.post('/auto-trader/bot/resume', requirePro, (req, res) => {
+router.post('/auto-trader/bot/resume', requireSignedIn, (req, res) => {
   try {
     const payload = setBotActive(req.user, true);
     return res.json(payload);

@@ -321,7 +321,7 @@ function setupForm() {
 async function init() {
   const token = localStorage.getItem('dumbdollars_token') || '';
   if (!token) {
-    setStatus('Please log in with a Pro account to use AI Bot Trader.', true);
+    setStatus('Please log in to use AI Bot Trader.', true);
     return;
   }
   setupForm();
@@ -329,8 +329,8 @@ async function init() {
     await loadBotState();
     setStatus('AI Bot Trader ready.');
   } catch (error) {
-    if (error.status === 403) {
-      setStatus('Pro access needed for AI Bot Trader.', true);
+    if (error.status === 401) {
+      setStatus('Please log in to use AI Bot Trader.', true);
       return;
     }
     if (error.status === 404) {

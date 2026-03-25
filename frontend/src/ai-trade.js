@@ -154,7 +154,7 @@ function setupAiTradeForm() {
 
       const token = localStorage.getItem('dumbdollars_token') || '';
       if (!token) {
-        throw new Error('Please log in with a Pro account to use AI Trade.');
+        throw new Error('Please log in to use AI Trade.');
       }
 
       const symbolInput = String(document.getElementById('ai-trade-symbol')?.value || '').trim().toUpperCase();
