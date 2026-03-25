@@ -174,6 +174,142 @@ body {
   background: rgba(2, 6, 23, 0.9);
 }
 
+.ai-bot-grid {
+  display: grid;
+  gap: 0.75rem;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+}
+
+.ai-bot-form {
+  display: grid;
+  gap: 0.8rem;
+}
+
+.field-full {
+  grid-column: 1 / -1;
+}
+
+.ai-bot-grid textarea {
+  width: 100%;
+  min-height: 90px;
+  resize: vertical;
+}
+
+.ai-bot-sector-grid {
+  display: grid;
+  gap: 0.5rem;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+}
+
+.ai-bot-sector-grid label {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.42rem 0.52rem;
+  border-radius: 8px;
+  border: 1px solid rgba(250, 204, 21, 0.25);
+  background: rgba(2, 6, 23, 0.6);
+}
+
+.ai-bot-sector-grid input[type='checkbox'] {
+  width: 16px;
+  height: 16px;
+  margin: 0;
+}
+
+.ai-bot-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.55rem;
+}
+
+.ai-bot-layout {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 0.7rem;
+  margin-top: 0.8rem;
+}
+
+.ai-bot-sectors {
+  border: 1px solid rgba(250, 204, 21, 0.28);
+  border-radius: 10px;
+  padding: 0.75rem;
+  display: grid;
+  gap: 0.55rem;
+  grid-template-columns: repeat(auto-fit, minmax(165px, 1fr));
+  background: rgba(2, 6, 23, 0.58);
+}
+
+.ai-bot-sectors legend {
+  padding: 0 0.35rem;
+  color: #fde68a;
+  font-weight: 700;
+}
+
+.ai-bot-sectors label {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+}
+
+.ai-bot-sectors input[type='checkbox'] {
+  width: 16px;
+  height: 16px;
+  margin: 0;
+}
+
+.bot-position-card {
+  border-radius: 10px;
+  border: 1px solid rgba(250, 204, 21, 0.24);
+  background: rgba(2, 6, 23, 0.8);
+  padding: 0.68rem;
+}
+
+.bot-position-card h4 {
+  margin: 0 0 0.32rem;
+  color: #fde68a;
+}
+
+.bot-position-card p {
+  margin: 0.24rem 0;
+  font-size: 0.86rem;
+}
+
+.ai-bot-status-chip {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  padding: 0.24rem 0.56rem;
+  font-size: 0.75rem;
+  font-weight: 800;
+  border: 1px solid rgba(148, 163, 184, 0.5);
+  background: rgba(15, 23, 42, 0.75);
+  color: #cbd5e1;
+}
+
+.ai-bot-status-chip--running {
+  border-color: rgba(16, 185, 129, 0.55);
+  color: #86efac;
+  background: rgba(16, 185, 129, 0.13);
+}
+
+.ai-bot-status-chip--stopped {
+  border-color: rgba(148, 163, 184, 0.5);
+  color: #cbd5e1;
+  background: rgba(15, 23, 42, 0.75);
+}
+
+.ai-bot-status-chip--error {
+  border-color: rgba(239, 68, 68, 0.55);
+  color: #fca5a5;
+  background: rgba(239, 68, 68, 0.12);
+}
+
+.ai-bot-stack {
+  display: grid;
+  gap: 0.6rem;
+}
+
 .checkout-form-grid {
   display: grid;
   gap: 0.75rem;

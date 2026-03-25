@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>DumbDollars AI Bot Trader</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body class="payment-page-body">
+    <main class="ai-trade-page-shell">
+      <article class="ai-trade-page-card card" role="main" aria-labelledby="ai-bot-title">
+        <a class="open-link" href="/">Back to dashboard</a>
+        <div class="pro-plan-logo-wrap" aria-hidden="true">
+          <img class="pro-plan-logo-image" src="./logo-mark.svg" alt="" />
+        </div>
+        <h1 id="ai-bot-title">AI Bot Trader (Pro)</h1>
+        <p class="pro-plan-subtitle">Set prompt, risk limits, sectors, and portfolio allocation. The bot generates and tracks paper-trade style orders with risk controls.</p>
+
+        <form id="ai-bot-config-form" class="pro-plan-box ai-bot-form" novalidate>
+          <label>
+            Strategy prompt
+            <textarea id="ai-bot-prompt" rows="4" placeholder="Trade momentum breakouts with strict risk control, avoid earnings-day names, focus on liquid large caps." required></textarea>
+          </label>
+          <div class="ai-bot-grid">
+            <label>
+              Capital ($)
+              <input id="ai-bot-capital" type="number" min="100" step="100" value="10000" required />
+            </label>
+            <label>
+              Max risk per trade (%)
+              <input id="ai-bot-risk-pct" type="number" min="0.1" max="10" step="0.1" value="1.5" required />
+            </label>
+            <label>
+              Target holdings
+              <input id="ai-bot-target-holdings" type="number" min="1" max="25" step="1" value="6" required />
+            </label>
+            <label>
+              Max sector exposure (%)
+              <input id="ai-bot-max-sector-exposure-pct" type="number" min="5" max="100" step="1" value="35" required />
+            </label>
+            <label>
+              Max gross exposure (%)
+              <input id="ai-bot-max-gross-exposure-pct" type="number" min="10" max="200" step="1" value="100" required />
+            </label>
+            <label>
+              Timeframe
+              <select id="ai-bot-timeframe">
+                <option value="intraday" selected>Intraday</option>
+                <option value="swing">Swing</option>
+                <option value="position">Position</option>
+              </select>
+            </label>
+          </div>
+          <fieldset class="ai-bot-sectors">
+            <legend>Sectors to trade</legend>
+            <label><input type="checkbox" value="Technology" checked /> Technology</label>
+            <label><input type="checkbox" value="Semiconductors" checked /> Semiconductors</label>
+            <label><input type="checkbox" value="Financials" checked /> Financials</label>
+            <label><input type="checkbox" value="Energy" /> Energy</label>
+            <label><input type="checkbox" value="Healthcare" checked /> Healthcare</label>
+            <label><input type="checkbox" value="Consumer Discretionary" checked /> Consumer Discretionary</label>
+            <label><input type="checkbox" value="Industrials" /> Industrials</label>
+            <label><input type="checkbox" value="Communication Services" checked /> Communication Services</label>
+          </fieldset>
+          <button id="ai-bot-save" type="submit">Save Bot Configuration</button>
+        </form>
+
+        <p id="ai-bot-status" class="small-note"></p>
+
+        <section class="ai-bot-actions">
+          <button id="ai-bot-run-cycle" type="button">Run Bot Cycle</button>
+          <button id="ai-bot-refresh" class="btn-secondary" type="button">Refresh Bot State</button>
+          <button id="ai-bot-pause" class="btn-secondary" type="button">Pause Bot</button>
+          <button id="ai-bot-resume" class="btn-secondary" type="button">Resume Bot</button>
+        </section>
+
+        <section class="ai-bot-layout">
+          <article class="ai-trade-consensus">
+            <h3>Bot Summary</h3>
+            <div id="ai-bot-summary"></div>
+          </article>
+          <article class="ai-trade-consensus">
+            <h3>Current Plan</h3>
+            <div id="ai-bot-plan"></div>
+          </article>
+        </section>
+
+        <section class="ai-trade-consensus">
+          <h3>Proposed Orders</h3>
+          <div id="ai-bot-orders" class="stack"></div>
+        </section>
+
+        <section class="ai-trade-consensus">
+          <h3>Recent Cycle Logs</h3>
+          <div id="ai-bot-logs" class="stack"></div>
+        </section>
+
+        <p class="small-note">Note: this module currently generates simulated/paper-trade style execution plans and risk-managed orders; it does not place live broker orders.</p>
+      </article>
+    </main>
+    <script src="./ai-bot-trader.js"></script>
+  </body>
+</html>

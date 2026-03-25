@@ -13,6 +13,13 @@ const {
   getWildTakes,
   analyzeAiTradePattern
 } = require('../services/marketEngine');
+const {
+  configureAutoTrader,
+  getAutoTraderStatus,
+  runAutoTraderCycle,
+  listAutoTraderSectors,
+  setBotActive
+} = require('../services/autoTraderService');
 const { parseAuthToken } = require('../services/authService');
 const { getUserById } = require('../services/userStore');
 
@@ -350,6 +357,110 @@ router.post('/ai-trade/analyze', requirePro, (req, res) => {
     return res.status(400).json({
       error: 'invalid_request',
       message: 'Could not analyze this pattern image.'
+    });
+  }
+});
+
+router.get('/auto-trader/sectors', requirePro, (_req, res) => {
+  return res.json({
+    sectors: listAutoTraderSectors()
+  });
+});
+
+router.post('/auto-trader/bot', requirePro, (req, res) => {
+  try {
+    const payload = configureAutoTrader(req.user, req.body || {});
+    return res.status(201).json(payload);
+  } catch (error) {
+    const message = String(error.message || '');
+    if (message === 'invalid_capital') {
+      return res.status(400).json({ error: 'invalid_capital', message: 'Capital must be between $100 and $10,000,000.' });
+    }
+    if (message === 'invalid_risk_pct') {
+      return res.status(400).json({ error: 'invalid_risk_pct', message: 'Risk percent must be between 0.25 and 20.' });
+    }
+    if (message === 'invalid_chase_pct') {
+      return res.status(400).json({ error: 'invalid_chase_pct', message: 'Chase percent must be between 0 and 100.' });
+    }
+    if (message === 'invalid_sectors') {
+      return res.status(400).json({ error: 'invalid_sectors', message: 'Choose at least one valid sector.' });
+    }
+    return res.status(400).json({ error: 'invalid_request', message: 'Could not create AI Auto Trader bot.' });
+  }
+});
+
+router.get('/auto-trader/bot', requirePro, (req, res) => {
+  const payload = getAutoTraderStatus(req.user);
+  return res.json(payload);
+});
+
+router.post('/auto-trader/run', requirePro, (req, res) => {
+  try {
+    const cycle = runAutoTraderCycle(req.user, req.body || {});
+    const bot = getAutoTraderStatus(req.user);
+    return res.json({
+      bot,
+      cycle
+    });
+  } catch (error) {
+    const code = String(error.message || '');
+    if (code === 'bot_not_configured') {
+      return res.status(400).json({
+        error: 'bot_not_configured',
+        message: 'Configure the AI Auto Trader first.'
+      });
+    }
+    if (code === 'bot_paused') {
+      return res.status(400).json({
+        error: 'bot_paused',
+        message: 'AI Auto Trader is paused. Resume it first.'
+      });
+    }
+    if (code === 'insufficient_cash') {
+      return res.status(400).json({
+        error: 'insufficient_cash',
+        message: 'No available cash. Update capital and save configuration.'
+      });
+    }
+    return res.status(400).json({
+      error: 'invalid_request',
+      message: 'Could not run AI Auto Trader cycle.'
+    });
+  }
+});
+
+router.post('/auto-trader/bot/pause', requirePro, (req, res) => {
+  try {
+    const payload = setBotActive(req.user, false);
+    return res.json(payload);
+  } catch (error) {
+    if (String(error.message || '') === 'bot_not_configured') {
+      return res.status(400).json({
+        error: 'bot_not_configured',
+        message: 'Configure the AI Auto Trader first.'
+      });
+    }
+    return res.status(400).json({
+      error: 'invalid_request',
+      message: 'Could not pause AI Auto Trader.'
+    });
+  }
+});
+
+router.post('/auto-trader/bot/resume', requirePro, (req, res) => {
+  try {
+    const payload = setBotActive(req.user, true);
+    return res.json(payload);
+  } catch (error) {
+    if (String(error.message || '') === 'bot_not_configured') {
+      return res.status(400).json({
+        error: 'bot_not_configured',
+        message: 'Configure the AI Auto Trader first.'
+      });
+    }
+    return res.status(400).json({
+      error: 'invalid_request',
+      message: 'Could not resume AI Auto Trader.'
     });
   }
 });

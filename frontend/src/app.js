@@ -122,6 +122,10 @@ function openProPlanScreen() {
   window.location.href = targetUrl;
 }
 
+function openAutoTraderPage() {
+  window.location.href = '/ai-bot-trader.html';
+}
+
 function closeSidebarMenu() {
   const sidebar = document.getElementById('sidebar-panel');
   const backdrop = document.getElementById('sidebar-backdrop');
@@ -1165,6 +1169,7 @@ function setupAiSidebar() {
 
   const highIvButton = document.getElementById('high-iv-refresh');
   const aiTradeButton = document.getElementById('open-ai-trade');
+  const autoTraderButton = document.getElementById('open-ai-auto-trader');
   if (highIvButton) {
     highIvButton.addEventListener('click', async () => {
       try {
@@ -1185,6 +1190,16 @@ function setupAiSidebar() {
         return;
       }
       window.location.href = '/ai-trade.html';
+    });
+  }
+
+  if (autoTraderButton) {
+    autoTraderButton.addEventListener('click', () => {
+      if (activePlan !== PLAN_PRO) {
+        openProPopup('Pro access needed for AI Auto Trader.');
+        return;
+      }
+      openAutoTraderPage();
     });
   }
 }
