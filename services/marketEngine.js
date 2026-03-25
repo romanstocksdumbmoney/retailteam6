@@ -725,7 +725,7 @@ async function getEarningsGamblingBoard(limit = 5) {
   const seed = hashString(`earnings:${daySeed()}`);
   const boundedLimit = Math.max(1, Math.min(8, Math.trunc(limit)));
   const calendarRows = await fetchNasdaqEarningsCalendar();
-  const requestedDate = todayIsoDate();
+  const requestedDate = new Date().toISOString().slice(0, 10);
   const availableDates = [...new Set(calendarRows.map((entry) => entry.earningsDate).filter(Boolean))].sort();
   const selectedDate = availableDates.find((isoDate) => isoDate >= requestedDate) || availableDates[0] || requestedDate;
 
