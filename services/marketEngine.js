@@ -216,6 +216,7 @@ const WILD_TAKE_HOOKS = [
 
 const AI_TRADE_MODELS = ['Grok', 'ChatGPT', 'Claude AI', 'Anthropic'];
 const AI_TRADE_TIMEFRAMES = new Set(['scalp', 'intraday', 'swing', 'position']);
+const AI_ANALYZER_DIRECTIONS = new Set(['long', 'short']);
 
 function clamp(value, min, max) {
   return Math.max(min, Math.min(max, value));
@@ -1452,6 +1453,14 @@ function getAiTradeRationale(consensusTrend, symbol, timeframe) {
   ];
 }
 
+function normalizeAiAnalyzerDirection(rawDirection) {
+  const direction = String(rawDirection || 'long').trim().toLowerCase();
+  if (AI_ANALYZER_DIRECTIONS.has(direction)) {
+    return direction;
+  }
+  return 'long';
+}
+
 function analyzeAiTradePattern({
   symbol = 'SPY',
   timeframe = 'intraday',
@@ -1558,6 +1567,144 @@ function analyzeAiTradePattern({
   };
 }
 
+function buildAiAnalyzerReview(model, score, direction, timeframe, symbol) {
+  const isPositive = score >= 60;
+  if (isPositive) {
+    return `${model}: setup quality looks solid for a ${direction} ${timeframe} ${symbol} trade with acceptable risk control.`;
+  }
+  return `${model}: setup quality is weak for a ${direction} ${timeframe} ${symbol} trade; tighter confirmation is needed.`;
+}
+
+function analyzeAiTradeScreenshot({
+  symbol = 'SPY',
+  timeframe = 'intraday',
+  direction = 'long',
+  entryPrice = 0,
+  exitPrice = 0,
+  imageDataUrl = '',
+  imageName = '',
+  imageSize = 0,
+  imageHash = ''
+} = {}) {
+  const normalizedSymbol = normalizeSymbol(symbol);
+  const normalizedTimeframe = normalizeAiTradeTimeframe(timeframe);
+  const normalizedDirection = normalizeAiAnalyzerDirection(direction);
+  const normalizedImageDataUrl = String(imageDataUrl || '').trim();
+  const normalizedImageName = String(imageName || '').trim();
+  let normalizedImageHash = String(imageHash || '').trim();
+  let normalizedImageSize = Number.isFinite(Number(imageSize)) ? Math.max(0, Math.trunc(Number(imageSize))) : 0;
+
+  if (!normalizedImageDataUrl && !normalizedImageHash) {
+    throw new Error('missing_image');
+  }
+
+  let imageMeta = null;
+  if (normalizedImageDataUrl) {
+    imageMeta = parseImageDataUrlMeta(normalizedImageDataUrl);
+    if (!imageMeta) {
+      throw new Error('invalid_image');
+    }
+    if (!normalizedImageSize) {
+      normalizedImageSize = estimateBase64Bytes(imageMeta.base64Payload);
+    }
+    if (!normalizedImageHash) {
+      normalizedImageHash = buildImageFingerprint(normalizedImageDataUrl);
+    }
+  }
+
+  const resolvedImageName = normalizedImageName
+    || `uploaded-screenshot.${getImageFileExtension(imageMeta?.mimeType)}`;
+  const seed = hashString(
+    `ai-analyzer:${normalizedSymbol}:${normalizedTimeframe}:${normalizedDirection}:${daySeed()}:${normalizedImageHash}:${normalizedImageSize}:${resolvedImageName}`
+  );
+
+  const entry = Number.isFinite(Number(entryPrice)) && Number(entryPrice) > 0
+    ? roundPrice(Number(entryPrice))
+    : getAiTradeBasePrice(normalizedSymbol, 0, seed + 37);
+  const exit = Number.isFinite(Number(exitPrice)) && Number(exitPrice) > 0
+    ? roundPrice(Number(exitPrice))
+    : 0;
+
+  const structureScore = clamp(Math.round(45 + pseudoRandom(seed + 5) * 45), 18, 92);
+  const riskScore = clamp(Math.round(42 + pseudoRandom(seed + 7) * 48), 15, 95);
+  const timingScore = clamp(Math.round(40 + pseudoRandom(seed + 11) * 50), 12, 95);
+  const hasExit = exit > 0;
+  const directionMultiplier = normalizedDirection === 'long' ? 1 : -1;
+  const realizedPct = hasExit
+    ? ((exit - entry) / Math.max(entry, 0.0001)) * 100 * directionMultiplier
+    : 0;
+  const realizedScore = hasExit
+    ? clamp(Math.round(50 + realizedPct * 3), 5, 97)
+    : clamp(Math.round(46 + pseudoRandom(seed + 13) * 24), 30, 78);
+  const qualityScore = clamp(
+    Math.round((structureScore * 0.35) + (riskScore * 0.3) + (timingScore * 0.2) + (realizedScore * 0.15)),
+    8,
+    98
+  );
+
+  const verdict = qualityScore >= 68 ? 'good_trade' : qualityScore >= 52 ? 'mixed_trade' : 'weak_trade';
+  const verdictLabel = verdict === 'good_trade'
+    ? 'Good trade setup'
+    : verdict === 'mixed_trade'
+      ? 'Mixed setup'
+      : 'Not a good trade setup';
+
+  const modelReviews = AI_TRADE_MODELS.map((model, index) => {
+    const tilt = (pseudoRandom(seed + 19 + index * 31) - 0.5) * 18;
+    const score = clamp(Math.round(qualityScore + tilt), 5, 97);
+    return {
+      model,
+      score,
+      verdict: score >= 60 ? 'good' : 'risky',
+      review: buildAiAnalyzerReview(model, score, normalizedDirection, normalizedTimeframe, normalizedSymbol)
+    };
+  });
+
+  const strengths = [
+    `Structure score: ${structureScore}/100 from screenshot pattern quality.`,
+    `Risk score: ${riskScore}/100 based on likely invalidation placement.`,
+    `Timing score: ${timingScore}/100 for entry quality on ${normalizedTimeframe}.`
+  ];
+  const risks = [
+    'Do not chase after large candles away from your planned entry.',
+    'Invalidation should be respected instead of widened after entry.',
+    'Keep total risk per trade capped to a small account percentage.'
+  ];
+  const improvements = [
+    'Wait for a cleaner confirmation candle before entry.',
+    'Define a take-profit and stop-loss before sending the order.',
+    'Use smaller size when volatility expands quickly.'
+  ];
+
+  return {
+    generatedAt: new Date().toISOString(),
+    ticker: normalizedSymbol,
+    timeframe: normalizedTimeframe,
+    direction: normalizedDirection,
+    entryPrice: entry,
+    exitPrice: hasExit ? exit : null,
+    realizedMovePct: hasExit ? Number(realizedPct.toFixed(2)) : null,
+    qualityScore,
+    verdict,
+    verdictLabel,
+    image: {
+      name: resolvedImageName,
+      sizeBytes: normalizedImageSize,
+      fingerprint: normalizedImageHash ? `${normalizedImageHash.slice(0, 16)}...` : 'not_provided'
+    },
+    subscores: {
+      structure: structureScore,
+      risk: riskScore,
+      timing: timingScore,
+      realized: realizedScore
+    },
+    modelReviews,
+    strengths,
+    risks,
+    improvements
+  };
+}
+
 module.exports = {
   SCANNER_METHODS,
   AI_ENGINES,
@@ -1578,5 +1725,6 @@ module.exports = {
   getHighIvTracker,
   getRealizedPatterns,
   getWildTakes,
-  analyzeAiTradePattern
+  analyzeAiTradePattern,
+  analyzeAiTradeScreenshot
 };

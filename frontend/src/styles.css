@@ -672,6 +672,26 @@ h1 {
   align-items: center;
 }
 
+.social-auth-row {
+  display: grid;
+  gap: 0.45rem;
+}
+
+.social-auth-row .small-note {
+  margin: 0;
+}
+
+.social-auth-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+}
+
+.oauth-btn {
+  padding: 0.42rem 0.62rem;
+  font-size: 0.84rem;
+}
+
 input,
 select,
 button {

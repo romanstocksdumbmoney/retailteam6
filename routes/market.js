@@ -11,7 +11,8 @@ const {
   getHighIvTracker,
   getRealizedPatterns,
   getWildTakes,
-  analyzeAiTradePattern
+  analyzeAiTradePattern,
+  analyzeAiTradeScreenshot
 } = require('../services/marketEngine');
 const {
   configureAutoTrader,
@@ -372,6 +373,40 @@ router.post('/ai-trade/analyze', requireSignedIn, (req, res) => {
     return res.status(400).json({
       error: 'invalid_request',
       message: 'Could not analyze this pattern image.'
+    });
+  }
+});
+
+router.post('/ai-analyzer/analyze', requireSignedIn, (req, res) => {
+  try {
+    const imageDataUrl = String(req.body?.imageDataUrl || '');
+    const symbol = String(req.body?.symbol || '');
+    const timeframe = String(req.body?.timeframe || '');
+    const direction = String(req.body?.direction || '');
+    const entryPrice = Number(req.body?.entryPrice || 0);
+    const exitPrice = Number(req.body?.exitPrice || 0);
+    const analysis = analyzeAiTradeScreenshot({
+      imageDataUrl,
+      symbol,
+      timeframe,
+      direction,
+      entryPrice,
+      exitPrice,
+      imageName: req.body?.imageName,
+      imageSize: req.body?.imageSize,
+      imageHash: req.body?.imageHash
+    });
+    return res.json(analysis);
+  } catch (error) {
+    if (String(error.message) === 'missing_image') {
+      return res.status(400).json({
+        error: 'missing_image',
+        message: 'Please upload a screenshot to run AI Analyzer.'
+      });
+    }
+    return res.status(400).json({
+      error: 'invalid_request',
+      message: 'Could not analyze this trade screenshot.'
     });
   }
 });

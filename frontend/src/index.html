@@ -67,6 +67,16 @@
               <button type="submit">Log in</button>
             </form>
           </div>
+          <div id="social-auth-row" class="social-auth-row">
+            <p class="small-note">Quick sign in with:</p>
+            <div class="social-auth-buttons">
+              <button class="btn-secondary oauth-btn" data-provider="google" type="button">Continue with Google</button>
+              <button class="btn-secondary oauth-btn" data-provider="apple" type="button">Continue with Apple</button>
+              <button class="btn-secondary oauth-btn" data-provider="github" type="button">Continue with GitHub</button>
+              <button class="btn-secondary oauth-btn" data-provider="discord" type="button">Continue with Discord</button>
+              <button class="btn-secondary oauth-btn" data-provider="x" type="button">Continue with X</button>
+            </div>
+          </div>
           <div class="auth-actions">
             <button id="upgrade-pro-btn" type="button">Upgrade to Pro ($15/mo)</button>
             <button id="billing-portal-btn" class="btn-secondary" type="button">Manage Billing</button>
@@ -176,6 +186,13 @@
           </div>
           <p class="small-note">Set prompt, capital, risk limits, and sector targets for automated AI trade planning.</p>
           <button id="open-ai-auto-trader" type="button">Open AI Auto Trader</button>
+
+          <div class="section-header">
+            <h2>AI Analyzer</h2>
+            <span class="chip">Account</span>
+          </div>
+          <p class="small-note">Upload screenshots and review if the setup was a good trade with AI scoring.</p>
+          <button id="open-ai-analyzer" type="button">Open AI Analyzer</button>
         </aside>
         <div id="sidebar-backdrop" class="sidebar-backdrop hidden" aria-hidden="true"></div>
 

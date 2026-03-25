@@ -5,6 +5,7 @@ const usersById = new Map();
 const usersByEmail = new Map();
 const usersByStripeCustomerId = new Map();
 let creatorUserId = null;
+const SUPPORTED_AUTH_PROVIDERS = new Set(['password', 'google', 'apple', 'github', 'discord', 'x']);
 
 const CREATOR_EMAILS = new Set(
   String(process.env.CREATOR_EMAILS || '')
@@ -29,6 +30,8 @@ function sanitizeUser(user) {
     id: user.id,
     email: user.email,
     plan: user.plan,
+    authProviders: Array.isArray(user.authProviders) ? [...user.authProviders] : ['password'],
+    lastAuthProvider: user.lastAuthProvider || 'password',
     stripeCustomerId: user.stripeCustomerId || null,
     stripeSubscriptionId: user.stripeSubscriptionId || null,
     subscriptionStatus: user.subscriptionStatus || 'inactive',
@@ -61,7 +64,24 @@ function applyCreatorAccess(user) {
   return user;
 }
 
-function createUser({ email, password, passwordHash }) {
+function normalizeAuthProvider(provider) {
+  const value = String(provider || 'password').trim().toLowerCase();
+  if (SUPPORTED_AUTH_PROVIDERS.has(value)) {
+    return value;
+  }
+  return 'password';
+}
+
+function mergeAuthProviders(currentProviders, nextProvider) {
+  const merged = new Set(
+    (Array.isArray(currentProviders) ? currentProviders : ['password'])
+      .map((entry) => normalizeAuthProvider(entry))
+  );
+  merged.add(normalizeAuthProvider(nextProvider));
+  return [...merged];
+}
+
+function createUser({ email, password, passwordHash, authProvider = 'password' }) {
   const normalizedEmail = normalizeEmail(email);
   if (!normalizedEmail) {
     throw new Error('email_required');
@@ -69,7 +89,8 @@ function createUser({ email, password, passwordHash }) {
 
   const chosenHash = String(passwordHash || '');
   const chosenPassword = String(password || '');
-  if (!chosenHash && chosenPassword.length < 8) {
+  const provider = normalizeAuthProvider(authProvider);
+  if (provider === 'password' && !chosenHash && chosenPassword.length < 8) {
     throw new Error('weak_password');
   }
   if (usersByEmail.has(normalizedEmail)) {
@@ -79,7 +100,9 @@ function createUser({ email, password, passwordHash }) {
   const user = {
     id: crypto.randomUUID(),
     email: normalizedEmail,
-    passwordHash: chosenHash || bcrypt.hashSync(chosenPassword, 10),
+    passwordHash: chosenHash || bcrypt.hashSync(chosenPassword || crypto.randomUUID(), 10),
+    authProviders: [provider],
+    lastAuthProvider: provider,
     plan: 'free',
     stripeCustomerId: null,
     stripeSubscriptionId: null,
@@ -176,8 +199,55 @@ function updateUser(userId, patch) {
     }
   }
 
+  if (Object.prototype.hasOwnProperty.call(patch, 'authProvider')) {
+    const provider = normalizeAuthProvider(patch.authProvider);
+    user.authProviders = mergeAuthProviders(user.authProviders, provider);
+    user.lastAuthProvider = provider;
+  }
+
+  if (Object.prototype.hasOwnProperty.call(patch, 'authProviders')) {
+    const providers = Array.isArray(patch.authProviders) ? patch.authProviders : [];
+    const normalizedProviders = providers
+      .map((entry) => normalizeAuthProvider(entry))
+      .filter((entry) => SUPPORTED_AUTH_PROVIDERS.has(entry));
+    if (normalizedProviders.length > 0) {
+      user.authProviders = [...new Set(normalizedProviders)];
+      user.lastAuthProvider = user.authProviders[user.authProviders.length - 1] || user.lastAuthProvider || 'password';
+    }
+  }
+
   user.updatedAt = new Date().toISOString();
   return user;
+}
+
+function findOrCreateUserByAuthProvider({ email, authProvider }) {
+  const normalizedEmail = normalizeEmail(email);
+  if (!normalizedEmail) {
+    throw new Error('email_required');
+  }
+  const provider = normalizeAuthProvider(authProvider);
+  if (provider === 'password') {
+    throw new Error('invalid_auth_provider');
+  }
+
+  const existing = findUserByEmail(normalizedEmail);
+  if (existing) {
+    const updated = updateUser(existing.id, { authProvider: provider });
+    return {
+      user: sanitizeUser(updated),
+      created: false
+    };
+  }
+
+  const created = createUser({
+    email: normalizedEmail,
+    passwordHash: bcrypt.hashSync(crypto.randomUUID(), 10),
+    authProvider: provider
+  });
+  return {
+    user: created,
+    created: true
+  };
 }
 
 function setStripeCustomerForUser(userId, stripeCustomerId) {
@@ -219,6 +289,8 @@ function setSubscriptionStatus(userId, status) {
 
 module.exports = {
   createUser,
+  findOrCreateUserByAuthProvider,
+  normalizeAuthProvider,
   verifyUserPassword,
   findUserByEmail,
   findUserById,

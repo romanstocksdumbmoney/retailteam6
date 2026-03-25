@@ -2,6 +2,8 @@ const express = require('express');
 const {
   createUser,
   findUserByEmail,
+  findOrCreateUserByAuthProvider,
+  normalizeAuthProvider,
   getUserById,
   sanitizeUser
 } = require('../services/userStore');
@@ -18,6 +20,13 @@ const {
 } = require('../services/stripeService');
 
 const router = express.Router();
+const OAUTH_PROVIDER_LABELS = {
+  google: 'Google',
+  apple: 'Apple',
+  github: 'GitHub',
+  discord: 'Discord',
+  x: 'X'
+};
 
 function authRequired(req, res, next) {
   const parsed = parseAuthToken(req.header('authorization'));
@@ -76,6 +85,49 @@ router.post('/signup', (req, res) => {
       return res.status(400).json({ error: 'weak_password', message: 'Password must be at least 8 characters.' });
     }
     return res.status(400).json({ error: 'invalid_request', message: 'Invalid signup payload.' });
+  }
+});
+
+router.get('/oauth/providers', (_req, res) => {
+  return res.json({
+    providers: Object.entries(OAUTH_PROVIDER_LABELS).map(([id, label]) => ({ id, label }))
+  });
+});
+
+router.post('/oauth/signin', (req, res) => {
+  try {
+    const email = String(req.body?.email || '').trim().toLowerCase();
+    const provider = normalizeAuthProvider(req.body?.provider);
+    if (!email) {
+      return res.status(400).json({
+        error: 'email_required',
+        message: 'Email is required for social sign in.'
+      });
+    }
+    if (!Object.prototype.hasOwnProperty.call(OAUTH_PROVIDER_LABELS, provider)) {
+      return res.status(400).json({
+        error: 'invalid_provider',
+        message: 'Unsupported social provider.'
+      });
+    }
+
+    const { user, created } = findOrCreateUserByAuthProvider({
+      email,
+      authProvider: provider
+    });
+    const token = signAuthToken({ userId: user.id, email: user.email });
+    return res.status(created ? 201 : 200).json({
+      token,
+      user,
+      created,
+      provider,
+      providerLabel: OAUTH_PROVIDER_LABELS[provider]
+    });
+  } catch (_error) {
+    return res.status(400).json({
+      error: 'invalid_request',
+      message: 'Could not complete social sign in.'
+    });
   }
 });
 

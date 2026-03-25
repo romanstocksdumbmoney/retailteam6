@@ -1089,9 +1089,23 @@ async function signup(email, password) {
   await fetchCurrentUser();
 }
 
+async function socialSignIn(provider, email) {
+  const payload = await fetchJson('/api/auth/oauth/signin', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ provider, email })
+  });
+  authToken = payload.token;
+  localStorage.setItem('dumbdollars_token', authToken);
+  saveAuthEmail(email);
+  await fetchCurrentUser();
+  return payload;
+}
+
 function setupAuthForms() {
   const loginForm = document.getElementById('login-form');
   const signupForm = document.getElementById('signup-form');
+  const socialButtons = Array.from(document.querySelectorAll('.oauth-btn'));
   const logoutButton = document.getElementById('logout-btn');
   const checkoutButton = document.getElementById('upgrade-pro-btn');
   const billingPortalButton = document.getElementById('billing-portal-btn');
@@ -1141,6 +1155,32 @@ function setupAuthForms() {
     } catch (error) {
       setAuthMessage(error.message || 'Signup failed.', true);
     }
+  });
+
+  socialButtons.forEach((button) => {
+    button.addEventListener('click', async () => {
+      const provider = String(button.getAttribute('data-provider') || '').trim().toLowerCase();
+      const loginInput = document.getElementById('login-email');
+      const signupInput = document.getElementById('signup-email');
+      const fallbackEmail = loadPreferredEmail() || getSavedAuthEmail();
+      const preferred = String(loginInput?.value || signupInput?.value || fallbackEmail || '').trim().toLowerCase();
+      if (!preferred) {
+        setAuthMessage('Enter your email first, then choose Google/Apple/etc.', true);
+        return;
+      }
+      try {
+        button.disabled = true;
+        const payload = await socialSignIn(provider, preferred);
+        savePreferredEmail(preferred);
+        const providerLabel = payload.providerLabel || provider;
+        setAuthMessage(`${providerLabel} sign in successful.`);
+        await Promise.all([refreshBaseline(), loadUnusualFeed(), loadTrendTrades()]);
+      } catch (error) {
+        setAuthMessage(error.message || 'Social sign in failed.', true);
+      } finally {
+        button.disabled = false;
+      }
+    });
   });
 
   logoutButton.addEventListener('click', async () => {
@@ -1334,6 +1374,7 @@ function setupAiSidebar() {
   const highIvButton = document.getElementById('high-iv-refresh');
   const aiTradeButton = document.getElementById('open-ai-trade');
   const autoTraderButton = document.getElementById('open-ai-auto-trader');
+  const aiAnalyzerButton = document.getElementById('open-ai-analyzer');
   if (highIvButton) {
     highIvButton.addEventListener('click', async () => {
       try {
@@ -1356,6 +1397,12 @@ function setupAiSidebar() {
   if (autoTraderButton) {
     autoTraderButton.addEventListener('click', () => {
       openAutoTraderPage();
+    });
+  }
+
+  if (aiAnalyzerButton) {
+    aiAnalyzerButton.addEventListener('click', () => {
+      window.location.href = '/ai-analyzer.html';
     });
   }
 }
