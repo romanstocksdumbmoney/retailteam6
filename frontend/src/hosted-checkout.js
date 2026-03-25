@@ -11,28 +11,35 @@ function setStatus(text, isError = false) {
   statusNode.className = isError ? 'small-note auth-error' : 'small-note';
 }
 
-function maskCardPreview(cardNumber) {
-  const digits = String(cardNumber || '').replace(/\D/g, '');
-  if (digits.length < 4) {
-    return '****';
-  }
-  return `**** **** **** ${digits.slice(-4)}`;
-}
-
 function initHostedCheckout() {
   const form = document.getElementById('hosted-checkout-form');
-  const submit = document.getElementById('hosted-pay-now');
-  const priceLine = document.getElementById('hosted-checkout-plan');
-  const cardPreview = document.getElementById('hosted-card-preview');
-  const cardInput = document.getElementById('card-number');
+  const submit = document.getElementById('hosted-submit');
+  const cardInput = document.getElementById('hosted-card');
+  const expInput = document.getElementById('hosted-exp');
+  const cvcInput = document.getElementById('hosted-cvc');
+  const zipInput = document.getElementById('hosted-zip');
 
-  if (priceLine) {
-    priceLine.textContent = `DumbDollars Pro — ${parsePlanPrice()}`;
-  }
-
-  if (cardInput && cardPreview) {
+  if (cardInput instanceof HTMLInputElement) {
+    cardInput.placeholder = `Card number • ${parsePlanPrice()}`;
     cardInput.addEventListener('input', () => {
-      cardPreview.textContent = maskCardPreview(cardInput.value);
+      const digits = cardInput.value.replace(/\D/g, '').slice(0, 19);
+      cardInput.value = digits.replace(/(\d{4})(?=\d)/g, '$1 ').trim();
+    });
+  }
+  if (expInput instanceof HTMLInputElement) {
+    expInput.addEventListener('input', () => {
+      const digits = expInput.value.replace(/\D/g, '').slice(0, 4);
+      expInput.value = digits.length > 2 ? `${digits.slice(0, 2)}/${digits.slice(2)}` : digits;
+    });
+  }
+  if (cvcInput instanceof HTMLInputElement) {
+    cvcInput.addEventListener('input', () => {
+      cvcInput.value = cvcInput.value.replace(/\D/g, '').slice(0, 4);
+    });
+  }
+  if (zipInput instanceof HTMLInputElement) {
+    zipInput.addEventListener('input', () => {
+      zipInput.value = zipInput.value.replace(/[^a-zA-Z0-9 -]/g, '').slice(0, 10);
     });
   }
 

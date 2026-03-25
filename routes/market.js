@@ -287,6 +287,8 @@ router.get('/earnings-gambling', async (req, res) => {
       direction: item.predictedDirection,
       volume: item.volume,
       volumeSource: item.volumeSource,
+      verificationStatus: item.verificationStatus,
+      verificationScore: item.verificationScore,
       recentNews: item.recentNews || [],
       analystPushes: item.analystPushes || [],
       unusualWhalesIntel: item.unusualWhalesIntel || item.intel,

@@ -12,7 +12,11 @@ let sidebarOpen = false;
 let billingInfo = null;
 let proPopupVisible = false;
 let earningsRefreshIntervalId = null;
+let earningsDayRolloverIntervalId = null;
+let earningsLastEtDateKey = '';
+const AUTH_EMAIL_STORAGE_KEY = 'dumbdollars_saved_email';
 const SAVED_EMAIL_KEY = 'dumbdollars_saved_email';
+const FALLBACK_AI_DISCOVERY_LINK = 'https://x.com';
 
 function isSecureCheckoutUrl(url) {
   if (typeof url !== 'string' || !url) {
@@ -81,6 +85,33 @@ function headersWithPlan() {
   return headers;
 }
 
+function getSavedAuthEmail() {
+  return String(localStorage.getItem(AUTH_EMAIL_STORAGE_KEY) || '').trim().toLowerCase();
+}
+
+function saveAuthEmail(email) {
+  const normalized = String(email || '').trim().toLowerCase();
+  if (!normalized) {
+    return;
+  }
+  localStorage.setItem(AUTH_EMAIL_STORAGE_KEY, normalized);
+}
+
+function applySavedEmailToForms() {
+  const saved = getSavedAuthEmail();
+  if (!saved) {
+    return;
+  }
+  const loginEmail = document.getElementById('login-email');
+  const signupEmail = document.getElementById('signup-email');
+  if (loginEmail instanceof HTMLInputElement && !loginEmail.value.trim()) {
+    loginEmail.value = saved;
+  }
+  if (signupEmail instanceof HTMLInputElement && !signupEmail.value.trim()) {
+    signupEmail.value = saved;
+  }
+}
+
 function savePreferredEmail(email) {
   const normalized = String(email || '').trim().toLowerCase();
   if (!normalized) {
@@ -119,6 +150,11 @@ function toEtNow() {
     hour: Number(get('hour')),
     minute: Number(get('minute'))
   };
+}
+
+function getEtDateKey() {
+  const now = toEtNow();
+  return `${now.year}-${String(now.month).padStart(2, '0')}-${String(now.day).padStart(2, '0')}`;
 }
 
 function parseEventDateParts(isoDate) {
@@ -162,6 +198,23 @@ function isEarningsItemStillActive(item) {
   const nowMinutes = now.hour * 60 + now.minute;
   const cutoffMinutes = parseSessionCutoffMinutes(item.reportTimeLabel);
   return nowMinutes < cutoffMinutes;
+}
+
+function startEarningsDayRolloverWatcher() {
+  earningsLastEtDateKey = getEtDateKey();
+  if (earningsDayRolloverIntervalId) {
+    clearInterval(earningsDayRolloverIntervalId);
+  }
+  earningsDayRolloverIntervalId = window.setInterval(() => {
+    const currentDateKey = getEtDateKey();
+    if (currentDateKey === earningsLastEtDateKey) {
+      return;
+    }
+    earningsLastEtDateKey = currentDateKey;
+    loadEarningsBoard().catch((error) => {
+      console.error(error);
+    });
+  }, 60_000);
 }
 
 function renderStatus(text) {
@@ -534,6 +587,12 @@ function renderEarningsBoard(payload) {
     const volumeSourceLabel = String(item.volumeSource || '').includes('yahoo')
       ? 'live vol'
       : 'est vol';
+    const verificationState = String(item.verificationStatus || 'estimated').toLowerCase();
+    const verificationLabel = verificationState === 'verified'
+      ? 'verified'
+      : verificationState === 'partial'
+        ? 'partially verified'
+        : 'estimated';
     const card = document.createElement('article');
     card.className = `earnings-card earnings-card--${directionClass} earnings-card--strength-${spread >= 14 ? 'high' : spread >= 7 ? 'mid' : 'low'}`;
     card.setAttribute('role', 'button');
@@ -554,6 +613,7 @@ function renderEarningsBoard(payload) {
         <span class="earnings-down-pct">${fmtPct(down)} down</span>
       </p>
       <p class="small-note">Volume: ${Number(item.volume || 0).toLocaleString()} <span class="earnings-volume-source">(${volumeSourceLabel})</span></p>
+      <p class="small-note">Status: <span class="earnings-verify-badge earnings-verify-badge--${verificationState}">${verificationLabel}</span></p>
       <p class="small-note">${directionClass.toUpperCase()} bias</p>
     `;
     target.appendChild(card);
@@ -661,7 +721,7 @@ function renderAiSidebar(payload) {
 
   if (!platforms.length) {
     details.innerHTML = '<div class="pro-lock">No AI platforms available.</div>';
-    openLink.setAttribute('href', '#');
+    openLink.setAttribute('href', FALLBACK_AI_DISCOVERY_LINK);
     return;
   }
 
@@ -1012,6 +1072,7 @@ async function login(email, password) {
 
   authToken = payload.token;
   localStorage.setItem('dumbdollars_token', authToken);
+  saveAuthEmail(email);
   await fetchCurrentUser();
 }
 
@@ -1024,6 +1085,7 @@ async function signup(email, password) {
 
   authToken = payload.token;
   localStorage.setItem('dumbdollars_token', authToken);
+  saveAuthEmail(email);
   await fetchCurrentUser();
 }
 
@@ -1050,6 +1112,8 @@ function setupAuthForms() {
     }
     billingCard.classList.remove('hidden');
   }
+
+  applySavedEmailToForms();
 
   loginForm.addEventListener('submit', async (event) => {
     event.preventDefault();
@@ -1447,6 +1511,7 @@ function setupProPopup() {
 
 async function init() {
   authToken = localStorage.getItem('dumbdollars_token') || '';
+  applySavedEmailToForms();
   const rememberedEmail = loadPreferredEmail();
   if (rememberedEmail) {
     const loginEmail = document.getElementById('login-email');
@@ -1486,6 +1551,21 @@ async function init() {
       console.error(error);
     });
   }, 90_000);
+
+  startEarningsDayRolloverWatcher();
+
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState !== 'visible') {
+      return;
+    }
+    const currentDateKey = getEtDateKey();
+    if (currentDateKey !== earningsLastEtDateKey) {
+      earningsLastEtDateKey = currentDateKey;
+      loadEarningsBoard().catch((error) => {
+        console.error(error);
+      });
+    }
+  });
 }
 
 init();

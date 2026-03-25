@@ -799,6 +799,12 @@ label {
   text-decoration: underline;
 }
 
+.open-link.open-link-disabled {
+  opacity: 0.6;
+  pointer-events: none;
+  cursor: default;
+}
+
 .app-layout {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
@@ -1026,6 +1032,38 @@ label {
   background: linear-gradient(180deg, rgba(239, 68, 68, 0.24), rgba(127, 29, 29, 0.22));
   border-color: rgba(248, 113, 113, 0.85);
   box-shadow: inset 0 0 0 1px rgba(239, 68, 68, 0.28);
+}
+
+.earnings-verification-chip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin-top: 0.2rem;
+  margin-bottom: 0.2rem;
+  padding: 0.16rem 0.45rem;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.01em;
+}
+
+.earnings-verification-chip--high {
+  background: rgba(34, 197, 94, 0.2);
+  color: #86efac;
+  border: 1px solid rgba(34, 197, 94, 0.5);
+}
+
+.earnings-verification-chip--medium {
+  background: rgba(245, 158, 11, 0.2);
+  color: #fde68a;
+  border: 1px solid rgba(245, 158, 11, 0.5);
+}
+
+.earnings-verification-chip--low {
+  background: rgba(148, 163, 184, 0.2);
+  color: #cbd5e1;
+  border: 1px solid rgba(148, 163, 184, 0.5);
 }
 
 .earnings-card--strength-high {

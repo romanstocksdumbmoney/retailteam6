@@ -298,6 +298,9 @@ function resolveEarningsTargetDate(rawTargetDate) {
 function humanizeEarningsScheduleLabel(targetDate, effectiveDate) {
   const target = String(targetDate || '').trim();
   const effective = String(effectiveDate || '').trim();
+  if (target && effective === target) {
+    return `Earnings board (${formatIsoDate(effective)} ET)`;
+  }
   const today = todayIsoDate();
   const tomorrow = addDaysToIsoDate(today, 1);
   if (effective === today) {
@@ -305,9 +308,6 @@ function humanizeEarningsScheduleLabel(targetDate, effectiveDate) {
   }
   if (effective === tomorrow) {
     return `Tomorrow's earnings (${formatIsoDate(effective)} ET)`;
-  }
-  if (target && effective === target) {
-    return `Earnings board (${formatIsoDate(effective)} ET)`;
   }
   return `Next live earnings day (${formatIsoDate(effective)} ET)`;
 }
@@ -359,6 +359,39 @@ function filterCompletedEarnings(rows) {
     }
     return nowEt.minutesIntoDay < earningsSessionCutoffMinutes(entry.reportTime);
   });
+}
+
+function buildEarningsVerification(entry, context = {}) {
+  const source = String(context.source || 'simulated').toLowerCase();
+  const volumeSource = String(entry.volumeSource || 'model_estimate').toLowerCase();
+  const symbol = normalizeSymbol(entry.symbol || '');
+  const hasRecentNews = Number(context.recentNewsCount || 0) > 0;
+  const hasLiveVolume = volumeSource.includes('yahoo') || volumeSource.includes('stooq');
+  const hasCalendarProvider = source === 'nasdaq' || source === 'alphavantage';
+  const symbolLooksTradable = isLikelyTradableTicker(symbol);
+
+  const checks = [
+    { name: 'calendar_provider', passed: hasCalendarProvider },
+    { name: 'live_volume', passed: hasLiveVolume },
+    { name: 'tradable_symbol_format', passed: symbolLooksTradable },
+    { name: 'recent_news', passed: hasRecentNews }
+  ];
+
+  const passedCount = checks.filter((check) => check.passed).length;
+  const score = Math.round((passedCount / checks.length) * 100);
+
+  let status = 'estimated';
+  if (passedCount >= 3 && hasLiveVolume && hasCalendarProvider) {
+    status = 'verified_high';
+  } else if (passedCount >= 2 && hasCalendarProvider) {
+    status = 'verified_medium';
+  }
+
+  return {
+    status,
+    score,
+    checks
+  };
 }
 
 function daySeed() {
@@ -1065,10 +1098,15 @@ async function getEarningsGamblingBoard(limit = 5, options = {}) {
       const yahooVolume = Number(yahooVolumes[entry.symbol]?.volume || 0);
       const hasYahooVolume = Number.isFinite(yahooVolume) && yahooVolume > 0;
       const marketCapWeight = entry.marketCapUsd > 0 ? Math.round(Math.sqrt(entry.marketCapUsd)) : 0;
+      const verification = buildEarningsVerification({
+        ...entry,
+        volumeSource: hasYahooVolume ? (yahooVolumes[entry.symbol]?.source || 'yahoo') : 'model_estimate'
+      }, { source });
       return {
         ...entry,
         estimatedVolume: hasYahooVolume ? yahooVolume : estimatedVolume + marketCapWeight,
-        volumeSource: hasYahooVolume ? (yahooVolumes[entry.symbol]?.source || 'yahoo') : 'model_estimate'
+        volumeSource: hasYahooVolume ? (yahooVolumes[entry.symbol]?.source || 'yahoo') : 'model_estimate',
+        verification
       };
     })
     .filter((entry) => source !== 'alphavantage' || isLikelyTradableTicker(entry.symbol));
@@ -1080,7 +1118,14 @@ async function getEarningsGamblingBoard(limit = 5, options = {}) {
       earningsDate: fallbackDate,
       reportTime: 'Unknown',
       estimatedVolume: estimateEarningsDayVolume(symbol, fallbackDate),
-      volumeSource: 'model_estimate'
+      volumeSource: 'model_estimate',
+      verification: buildEarningsVerification(
+        {
+          symbol,
+          volumeSource: 'model_estimate'
+        },
+        { source: 'simulated' }
+      )
     }))
       .sort((a, b) => b.estimatedVolume - a.estimatedVolume);
     source = 'simulated';
@@ -1101,11 +1146,16 @@ async function getEarningsGamblingBoard(limit = 5, options = {}) {
     const earningsDateLabel = formatIsoDate(entry.earningsDate);
     const intel = buildEarningsIntel(symbol, entry.estimatedVolume, up, down, index, earningsDateLabel);
     const recentNews = await fetchTickerNews(symbol, 3);
+    const verification = buildEarningsVerification(entry, {
+      source,
+      recentNewsCount: recentNews.length
+    });
 
     return {
       symbol,
       volume: entry.estimatedVolume,
       volumeSource: entry.volumeSource || 'model_estimate',
+      verification,
       earningsDate: entry.earningsDate,
       earningsDateLabel,
       reportTime: entry.reportTime === 'Unknown' ? (index % 2 === 0 ? 'Pre-Market' : 'After-Hours') : entry.reportTime,
