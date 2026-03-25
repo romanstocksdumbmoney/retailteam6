@@ -84,6 +84,7 @@ let earningsCalendarCache = {
   items: []
 };
 let newsCache = new Map();
+let quoteVolumeCache = new Map();
 
 const AI_DISCOVERY_PLATFORMS = [
   {
@@ -237,6 +238,20 @@ function normalizeSymbol(symbol) {
   return (symbol || '').toUpperCase().replace(/[^A-Z.]/g, '').slice(0, 10) || 'AAPL';
 }
 
+function isLikelyTradableTicker(symbol) {
+  const normalized = normalizeSymbol(symbol);
+  if (!normalized || normalized.includes('.')) {
+    return false;
+  }
+  if (normalized.length > 5) {
+    return false;
+  }
+  if (normalized.endsWith('F') || normalized.endsWith('Y') || normalized.endsWith('Q')) {
+    return false;
+  }
+  return true;
+}
+
 function isoDateInTimeZone(date = new Date(), timeZone = MARKET_TIME_ZONE) {
   const parts = new Intl.DateTimeFormat('en-US', {
     timeZone,
@@ -255,6 +270,29 @@ function isoDateInTimeZone(date = new Date(), timeZone = MARKET_TIME_ZONE) {
 
 function todayIsoDate() {
   return isoDateInTimeZone(new Date(), MARKET_TIME_ZONE);
+}
+
+function addDaysToIsoDate(isoDate, days) {
+  const parsed = new Date(`${String(isoDate || '').trim()}T00:00:00Z`);
+  if (Number.isNaN(parsed.getTime())) {
+    return todayIsoDate();
+  }
+  parsed.setUTCDate(parsed.getUTCDate() + Math.trunc(days));
+  return parsed.toISOString().slice(0, 10);
+}
+
+function resolveEarningsTargetDate(rawTargetDate) {
+  const normalized = String(rawTargetDate || '').trim().toLowerCase();
+  if (normalized === 'today') {
+    return todayIsoDate();
+  }
+  if (normalized === 'tomorrow' || !normalized) {
+    return addDaysToIsoDate(todayIsoDate(), 1);
+  }
+  if (/^\d{4}-\d{2}-\d{2}$/.test(normalized)) {
+    return normalized;
+  }
+  return addDaysToIsoDate(todayIsoDate(), 1);
 }
 
 function daySeed() {
@@ -352,10 +390,13 @@ function sessionFromNasdaqTimeClass(timeClass) {
 }
 
 async function safeFetchJson(url, options = {}) {
+  const timeoutMs = Number(options.timeoutMs) > 0 ? Number(options.timeoutMs) : 2500;
+  const requestOptions = { ...options };
+  delete requestOptions.timeoutMs;
   try {
     const response = await fetch(url, {
-      ...options,
-      signal: AbortSignal.timeout(2500)
+      ...requestOptions,
+      signal: AbortSignal.timeout(timeoutMs)
     });
     if (!response.ok) {
       return null;
@@ -367,10 +408,13 @@ async function safeFetchJson(url, options = {}) {
 }
 
 async function safeFetchText(url, options = {}) {
+  const timeoutMs = Number(options.timeoutMs) > 0 ? Number(options.timeoutMs) : 2500;
+  const requestOptions = { ...options };
+  delete requestOptions.timeoutMs;
   try {
     const response = await fetch(url, {
-      ...options,
-      signal: AbortSignal.timeout(2500)
+      ...requestOptions,
+      signal: AbortSignal.timeout(timeoutMs)
     });
     if (!response.ok) {
       return null;
@@ -479,6 +523,191 @@ async function fetchTickerNews(symbol, limit = 3) {
     items: parsed
   });
   return parsed;
+}
+
+function parseCsvLine(line) {
+  const values = [];
+  let current = '';
+  let inQuotes = false;
+  for (let i = 0; i < line.length; i += 1) {
+    const char = line[i];
+    if (char === '"') {
+      if (inQuotes && line[i + 1] === '"') {
+        current += '"';
+        i += 1;
+      } else {
+        inQuotes = !inQuotes;
+      }
+      continue;
+    }
+    if (char === ',' && !inQuotes) {
+      values.push(current);
+      current = '';
+      continue;
+    }
+    current += char;
+  }
+  values.push(current);
+  return values.map((value) => String(value || '').trim());
+}
+
+function sessionFromAlphaVantageTimeOfDay(timeOfTheDay) {
+  const normalized = String(timeOfTheDay || '').trim().toLowerCase();
+  if (normalized.includes('pre')) {
+    return 'Pre-Market';
+  }
+  if (normalized.includes('post') || normalized.includes('after')) {
+    return 'After-Hours';
+  }
+  return 'Unknown';
+}
+
+function isLikelyUsCommonTicker(symbol) {
+  const value = normalizeSymbol(symbol);
+  return /^[A-Z]{1,5}$/.test(value);
+}
+
+async function fetchAlphaVantageEarningsByDate(isoDate) {
+  const apiKey = String(process.env.ALPHAVANTAGE_API_KEY || 'demo').trim() || 'demo';
+  const url = `https://www.alphavantage.co/query?function=EARNINGS_CALENDAR&horizon=3month&apikey=${encodeURIComponent(apiKey)}`;
+  const csvText = await safeFetchText(url, { timeoutMs: 12000 });
+  if (!csvText) {
+    return [];
+  }
+
+  const lines = csvText
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+  if (lines.length <= 1) {
+    return [];
+  }
+
+  const rows = [];
+  const dedupe = new Set();
+  for (let i = 1; i < lines.length; i += 1) {
+    const columns = parseCsvLine(lines[i]);
+    const symbol = normalizeSymbol(columns[0] || '');
+    const reportDate = String(columns[2] || '');
+    if (!symbol || !isLikelyUsCommonTicker(symbol) || reportDate !== isoDate || dedupe.has(symbol)) {
+      continue;
+    }
+    dedupe.add(symbol);
+    rows.push({
+      symbol,
+      earningsDate: reportDate,
+      reportTime: sessionFromAlphaVantageTimeOfDay(columns[6]),
+      marketCapUsd: 0
+    });
+  }
+
+  return rows;
+}
+
+async function fetchLatestVolumeForSymbol(symbol) {
+  const normalized = normalizeSymbol(symbol);
+  if (!normalized) {
+    return {
+      volume: 0,
+      source: 'missing'
+    };
+  }
+
+  const lower = normalized.toLowerCase();
+  const chartUrl = `https://query2.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(normalized)}?range=5d&interval=1d`;
+  const chartPayload = await safeFetchJson(chartUrl, { timeoutMs: 8000 });
+  const volumeSeries = chartPayload?.chart?.result?.[0]?.indicators?.quote?.[0]?.volume;
+  if (Array.isArray(volumeSeries)) {
+    for (let i = volumeSeries.length - 1; i >= 0; i -= 1) {
+      const candidate = Number(volumeSeries[i] || 0);
+      if (Number.isFinite(candidate) && candidate > 0) {
+        return {
+          volume: Math.round(candidate),
+          source: 'yahoo_chart_volume'
+        };
+      }
+    }
+  }
+
+  const stooqUrl = `https://stooq.com/q/l/?s=${encodeURIComponent(`${lower}.us`)}&i=d`;
+  const stooqText = await safeFetchText(stooqUrl, { timeoutMs: 8000 });
+  if (stooqText) {
+    const line = stooqText.trim().split(/\r?\n/).find((row) => row && !row.startsWith('Symbol'));
+    if (line) {
+      const parts = line.split(',');
+      const volume = Number(parts[7] || 0);
+      if (Number.isFinite(volume) && volume > 0) {
+        return {
+          volume: Math.round(volume),
+          source: 'stooq_daily_volume'
+        };
+      }
+    }
+  }
+
+  return {
+    volume: 0,
+    source: 'missing'
+  };
+}
+
+async function fetchYahooQuoteVolumeMap(symbols) {
+  const uniqueSymbols = [...new Set((Array.isArray(symbols) ? symbols : []).map((symbol) => normalizeSymbol(symbol)).filter(Boolean))];
+  if (uniqueSymbols.length === 0) {
+    return {};
+  }
+
+  const now = Date.now();
+  const staleMs = 10 * 60 * 1000;
+  const volumes = {};
+  const missingSymbols = [];
+
+  uniqueSymbols.forEach((symbol) => {
+    const cached = quoteVolumeCache.get(symbol);
+    if (cached && now - cached.fetchedAt < staleMs) {
+      volumes[symbol] = {
+        volume: cached.volume,
+        source: cached.source
+      };
+    } else {
+      missingSymbols.push(symbol);
+    }
+  });
+
+  if (missingSymbols.length === 0) {
+    return volumes;
+  }
+
+  await Promise.all(missingSymbols.map(async (symbol) => {
+    const latest = await fetchLatestVolumeForSymbol(symbol);
+    quoteVolumeCache.set(symbol, {
+      fetchedAt: now,
+      volume: latest.volume,
+      source: latest.source
+    });
+
+    volumes[symbol] = {
+      volume: latest.volume,
+      source: latest.source
+    };
+  }));
+
+  uniqueSymbols.forEach((symbol) => {
+    if (!volumes[symbol]) {
+      const cached = quoteVolumeCache.get(symbol);
+      quoteVolumeCache.set(symbol, {
+        fetchedAt: now,
+        volume: Number(cached?.volume || 0),
+        source: String(cached?.source || 'missing')
+      });
+      volumes[symbol] = {
+        volume: Number(cached?.volume || 0),
+        source: String(cached?.source || 'missing')
+      };
+    }
+  });
+
+  return volumes;
 }
 
 function pickWorldEvents(symbol) {
@@ -721,37 +950,64 @@ function buildEarningsIntel(symbol, volume, up, down, seedOffset, earningsDateLa
   };
 }
 
-async function getEarningsGamblingBoard(limit = 5) {
+async function getEarningsGamblingBoard(limit = 5, options = {}) {
   const seed = hashString(`earnings:${daySeed()}`);
   const boundedLimit = Math.max(1, Math.min(8, Math.trunc(limit)));
+  const requestedDate = resolveEarningsTargetDate(options.targetDate);
   const calendarRows = await fetchNasdaqEarningsCalendar();
-  const requestedDate = new Date().toISOString().slice(0, 10);
-  const availableDates = [...new Set(calendarRows.map((entry) => entry.earningsDate).filter(Boolean))].sort();
-  const selectedDate = availableDates.find((isoDate) => isoDate >= requestedDate) || availableDates[0] || requestedDate;
 
-  let rankedByVolume = calendarRows
-    .filter((entry) => entry.earningsDate === selectedDate)
+  let source = 'nasdaq';
+  let scheduleDate = requestedDate;
+  const todayDate = todayIsoDate();
+  let scheduleLabel = requestedDate === todayDate
+    ? `Today's earnings (${formatIsoDate(requestedDate)} ET)`
+    : `Tomorrow's earnings (${formatIsoDate(requestedDate)} ET)`;
+
+  let selectedRows = calendarRows.filter((entry) => entry.earningsDate === requestedDate);
+  if (selectedRows.length === 0) {
+    const alphaRows = await fetchAlphaVantageEarningsByDate(requestedDate);
+    if (alphaRows.length > 0) {
+      selectedRows = alphaRows;
+      source = 'alphavantage';
+    }
+  }
+
+  if (selectedRows.length === 0 && calendarRows.length > 0) {
+    const availableDates = [...new Set(calendarRows.map((entry) => entry.earningsDate).filter(Boolean))].sort();
+    const selectedDate = availableDates.find((isoDate) => isoDate >= requestedDate) || availableDates[0] || requestedDate;
+    selectedRows = calendarRows.filter((entry) => entry.earningsDate === selectedDate);
+    scheduleDate = selectedDate;
+    scheduleLabel = selectedDate === requestedDate
+      ? `Tomorrow's earnings (${formatIsoDate(selectedDate)} ET)`
+      : `Next live earnings day (${formatIsoDate(selectedDate)} ET)`;
+    source = 'nasdaq';
+  }
+
+  const symbolsForSelectedDate = selectedRows.map((entry) => entry.symbol);
+  const yahooVolumes = await fetchYahooQuoteVolumeMap(symbolsForSelectedDate);
+
+  let rankedByVolume = selectedRows
     .map((entry) => {
       const estimatedVolume = estimateEarningsDayVolume(entry.symbol, entry.earningsDate);
+      const yahooVolume = Number(yahooVolumes[entry.symbol]?.volume || 0);
+      const hasYahooVolume = Number.isFinite(yahooVolume) && yahooVolume > 0;
       const marketCapWeight = entry.marketCapUsd > 0 ? Math.round(Math.sqrt(entry.marketCapUsd)) : 0;
       return {
         ...entry,
-        estimatedVolume: estimatedVolume + marketCapWeight
+        estimatedVolume: hasYahooVolume ? yahooVolume : estimatedVolume + marketCapWeight,
+        volumeSource: hasYahooVolume ? (yahooVolumes[entry.symbol]?.source || 'yahoo') : 'model_estimate'
       };
-    });
+    })
+    .filter((entry) => source !== 'alphavantage' || isLikelyTradableTicker(entry.symbol));
 
-  let source = 'nasdaq';
-  let scheduleDate = selectedDate;
-  let scheduleLabel = selectedDate === requestedDate
-    ? `Today's earnings (${formatIsoDate(selectedDate)} ET)`
-    : `Next live earnings day (${formatIsoDate(selectedDate)} ET)`;
   if (rankedByVolume.length === 0) {
     const fallbackDate = requestedDate;
     rankedByVolume = TOMORROW_EARNINGS_CALLS.map((symbol) => ({
       symbol,
       earningsDate: fallbackDate,
       reportTime: 'Unknown',
-      estimatedVolume: estimateEarningsDayVolume(symbol, fallbackDate)
+      estimatedVolume: estimateEarningsDayVolume(symbol, fallbackDate),
+      volumeSource: 'model_estimate'
     }))
       .sort((a, b) => b.estimatedVolume - a.estimatedVolume);
     source = 'simulated';
@@ -776,6 +1032,7 @@ async function getEarningsGamblingBoard(limit = 5) {
     return {
       symbol,
       volume: entry.estimatedVolume,
+      volumeSource: entry.volumeSource || 'model_estimate',
       earningsDate: entry.earningsDate,
       earningsDateLabel,
       reportTime: entry.reportTime === 'Unknown' ? (index % 2 === 0 ? 'Pre-Market' : 'After-Hours') : entry.reportTime,

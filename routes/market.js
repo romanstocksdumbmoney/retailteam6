@@ -269,7 +269,8 @@ router.get('/unusual-moves', requirePro, (_req, res) => {
 router.get('/earnings-gambling', async (req, res) => {
   const limit = Number(req.query.limit || 5);
   const boundedLimit = Number.isFinite(limit) ? Math.max(1, Math.min(8, Math.trunc(limit))) : 5;
-  const board = await buildEarningsGambling(boundedLimit);
+  const targetDate = String(req.query.targetDate || '').trim();
+  const board = await buildEarningsGambling(boundedLimit, { targetDate });
   const raw = board.items || [];
   const boardDate = board.scheduleDate || null;
 
@@ -284,6 +285,7 @@ router.get('/earnings-gambling', async (req, res) => {
       eventDateLabel: item.earningsDateLabel,
       direction: item.predictedDirection,
       volume: item.volume,
+      volumeSource: item.volumeSource,
       recentNews: item.recentNews || [],
       analystPushes: item.analystPushes || [],
       unusualWhalesIntel: item.unusualWhalesIntel || item.intel,
