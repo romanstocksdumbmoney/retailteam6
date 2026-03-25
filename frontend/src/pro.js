@@ -37,12 +37,22 @@ function isSecureHostedCheckoutUrl(url) {
   if (typeof url !== 'string') {
     return false;
   }
+  const candidate = url.trim();
+  if (!candidate) {
+    return false;
+  }
+  if (candidate.startsWith('/')) {
+    return !candidate.startsWith('//');
+  }
   try {
-    const parsed = new URL(url);
+    const parsed = new URL(candidate);
     const isHttps = parsed.protocol === 'https:';
     const isLocalHttp = parsed.protocol === 'http:' && ['localhost', '127.0.0.1'].includes(parsed.hostname);
     if (!isHttps && !isLocalHttp) {
       return false;
+    }
+    if (parsed.origin === window.location.origin) {
+      return true;
     }
     const host = parsed.hostname.toLowerCase();
     return (

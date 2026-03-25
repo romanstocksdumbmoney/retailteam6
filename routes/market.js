@@ -10,7 +10,8 @@ const {
   getTrendTrades,
   getHighIvTracker,
   getRealizedPatterns,
-  getWildTakes
+  getWildTakes,
+  analyzeAiTradePattern
 } = require('../services/marketEngine');
 const { parseAuthToken } = require('../services/authService');
 const { getUserById } = require('../services/userStore');
@@ -326,6 +327,31 @@ router.get('/wild-takes', (req, res) => {
   const limit = Number(req.query.limit || 10);
   const boundedLimit = Number.isFinite(limit) ? Math.max(1, Math.min(30, Math.trunc(limit))) : 10;
   return res.json(getWildTakes(boundedLimit));
+});
+
+router.post('/ai-trade/analyze', requirePro, (req, res) => {
+  try {
+    const imageDataUrl = String(req.body?.imageDataUrl || '');
+    const symbol = String(req.body?.symbol || '');
+    const timeframe = String(req.body?.timeframe || '');
+    const analysis = analyzeAiTradePattern({
+      imageDataUrl,
+      symbol,
+      timeframe
+    });
+    return res.json(analysis);
+  } catch (error) {
+    if (String(error.message) === 'missing_image') {
+      return res.status(400).json({
+        error: 'missing_image',
+        message: 'Please upload a chart image to run AI Trade analysis.'
+      });
+    }
+    return res.status(400).json({
+      error: 'invalid_request',
+      message: 'Could not analyze this pattern image.'
+    });
+  }
 });
 
 router.get('/stock-outlook', stockOutlookHandler);

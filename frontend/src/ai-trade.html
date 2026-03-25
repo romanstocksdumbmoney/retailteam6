@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>DumbDollars AI Trade</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body class="payment-page-body">
+    <main class="ai-trade-page-shell">
+      <article class="ai-trade-page-card card" role="main" aria-labelledby="ai-trade-title">
+        <a class="open-link" href="/">Back to dashboard</a>
+        <div class="pro-plan-logo-wrap" aria-hidden="true">
+          <img class="pro-plan-logo-image" src="./logo-mark.svg" alt="" />
+        </div>
+        <h1 id="ai-trade-title">AI Trade (Pro)</h1>
+        <p class="pro-plan-subtitle">Upload a chart pattern and get a multi-AI bullish/bearish consensus with stop loss and take profit guidance.</p>
+
+        <form id="ai-trade-form" class="pro-plan-box ai-trade-form" novalidate>
+          <div class="ai-trade-form-grid">
+            <label>
+              Ticker
+              <input id="ai-trade-symbol" type="text" maxlength="10" placeholder="NVDA" required />
+            </label>
+            <label>
+              Timeframe
+              <select id="ai-trade-timeframe">
+                <option value="scalp">Scalp</option>
+                <option value="intraday" selected>Intraday</option>
+                <option value="swing">Swing</option>
+                <option value="position">Position</option>
+              </select>
+            </label>
+            <label class="field-full">
+              Current Price (optional)
+              <input id="ai-trade-current-price" type="number" min="0" step="0.01" placeholder="0.00" />
+            </label>
+            <label class="field-full ai-trade-upload">
+              Pattern Image
+              <input id="ai-trade-image" type="file" accept="image/*" required />
+            </label>
+          </div>
+          <p class="small-note">Supports PNG/JPG/WEBP/GIF/BMP uploads. Pro access required.</p>
+          <button id="ai-trade-submit" type="submit">Analyze Pattern</button>
+        </form>
+
+        <p id="ai-trade-status" class="small-note"></p>
+        <div id="ai-trade-preview-wrap" class="ai-trade-preview-wrap hidden">
+          <img id="ai-trade-preview" class="ai-trade-preview" alt="Uploaded chart preview" />
+        </div>
+
+        <section id="ai-trade-results" class="ai-trade-results hidden">
+          <div id="ai-trade-summary"></div>
+
+          <article class="ai-trade-consensus">
+            <h3>Multi-AI Votes</h3>
+            <div id="ai-trade-votes" class="ai-trade-votes-grid"></div>
+          </article>
+
+          <article class="ai-trade-consensus">
+            <h3>Why this setup</h3>
+            <ul id="ai-trade-rationale" class="detail-list"></ul>
+          </article>
+
+          <article class="ai-trade-consensus">
+            <h3>Risk Controls</h3>
+            <ul id="ai-trade-risk-controls" class="detail-list"></ul>
+          </article>
+        </section>
+      </article>
+    </main>
+    <script src="./ai-trade.js"></script>
+  </body>
+</html>

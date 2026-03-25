@@ -25,16 +25,26 @@ function getAuthHeaders() {
 }
 
 function isSecureCheckoutUrl(url) {
-  if (typeof url !== 'string') {
+  if (typeof url !== 'string' || !url) {
     return false;
   }
+  const candidate = url.trim();
+  if (!candidate) {
+    return false;
+  }
+  if (candidate.startsWith('/')) {
+    return !candidate.startsWith('//');
+  }
   try {
-    const parsed = new URL(url);
+    const parsed = new URL(candidate);
     const protocol = parsed.protocol.toLowerCase();
     const isHttps = protocol === 'https:';
     const isLocalHttp = protocol === 'http:' && ['localhost', '127.0.0.1'].includes(parsed.hostname.toLowerCase());
     if (!isHttps && !isLocalHttp) {
       return false;
+    }
+    if (parsed.origin === window.location.origin) {
+      return true;
     }
     const host = parsed.hostname.toLowerCase();
     return host === 'checkout.stripe.com'

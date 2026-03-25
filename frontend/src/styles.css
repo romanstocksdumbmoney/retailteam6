@@ -52,6 +52,128 @@ body {
   width: min(94vw, 760px);
 }
 
+.ai-trade-page-shell {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 1.5rem 1rem;
+}
+
+.ai-trade-page-card {
+  width: min(94vw, 860px);
+}
+
+.ai-trade-form {
+  display: grid;
+  gap: 0.85rem;
+}
+
+.ai-trade-form-grid {
+  display: grid;
+  gap: 0.75rem;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+}
+
+.ai-trade-upload {
+  border: 1px dashed rgba(250, 204, 21, 0.4);
+  border-radius: 10px;
+  padding: 0.75rem;
+  background: rgba(2, 6, 23, 0.45);
+}
+
+.ai-trade-preview-wrap {
+  margin-top: 0.5rem;
+  border-radius: 10px;
+  overflow: hidden;
+  border: 1px solid rgba(250, 204, 21, 0.3);
+  background: rgba(15, 23, 42, 0.8);
+}
+
+.ai-trade-preview-wrap.hidden {
+  display: none;
+}
+
+.ai-trade-preview {
+  display: block;
+  width: 100%;
+  max-height: 280px;
+  object-fit: contain;
+  background: #020617;
+}
+
+.ai-trade-results {
+  margin-top: 0.9rem;
+  display: grid;
+  gap: 0.7rem;
+}
+
+.ai-trade-results.hidden {
+  display: none;
+}
+
+.ai-trade-consensus {
+  border: 1px solid rgba(250, 204, 21, 0.32);
+  border-radius: 10px;
+  background: rgba(15, 23, 42, 0.7);
+  padding: 0.75rem;
+}
+
+.ai-trade-consensus h3 {
+  margin: 0 0 0.45rem;
+  color: #fde68a;
+}
+
+.ai-trade-votes-grid {
+  display: grid;
+  gap: 0.6rem;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+}
+
+.ai-trade-vote {
+  border: 1px solid rgba(148, 163, 184, 0.34);
+  border-radius: 10px;
+  background: rgba(2, 6, 23, 0.78);
+  padding: 0.6rem;
+}
+
+.ai-trade-vote h4 {
+  margin: 0;
+  color: #fef08a;
+}
+
+.ai-trade-vote p {
+  margin: 0.25rem 0;
+  font-size: 0.86rem;
+}
+
+.ai-trade-vote--up {
+  border-color: rgba(16, 185, 129, 0.5);
+  background: rgba(16, 185, 129, 0.1);
+}
+
+.ai-trade-vote--down {
+  border-color: rgba(239, 68, 68, 0.5);
+  background: rgba(239, 68, 68, 0.1);
+}
+
+.ai-trade-consensus--up {
+  border-color: rgba(16, 185, 129, 0.5);
+  background: rgba(16, 185, 129, 0.1);
+}
+
+.ai-trade-consensus--down {
+  border-color: rgba(239, 68, 68, 0.5);
+  background: rgba(239, 68, 68, 0.1);
+}
+
+.ai-trade-preview-image {
+  width: 100%;
+  max-height: 320px;
+  object-fit: contain;
+  display: block;
+  background: rgba(2, 6, 23, 0.9);
+}
+
 .checkout-form-grid {
   display: grid;
   gap: 0.75rem;

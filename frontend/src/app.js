@@ -12,6 +12,40 @@ let sidebarOpen = false;
 let billingInfo = null;
 let proPopupVisible = false;
 
+function isSecureCheckoutUrl(url) {
+  if (typeof url !== 'string' || !url) {
+    return false;
+  }
+  const candidate = url.trim();
+  if (!candidate) {
+    return false;
+  }
+  if (candidate.startsWith('/')) {
+    return !candidate.startsWith('//');
+  }
+  try {
+    const parsed = new URL(candidate);
+    const host = parsed.hostname.toLowerCase();
+    const protocolOk = parsed.protocol === 'https:'
+      || (parsed.protocol === 'http:' && ['localhost', '127.0.0.1'].includes(host));
+    if (!protocolOk) {
+      return false;
+    }
+    if (parsed.origin === window.location.origin) {
+      return true;
+    }
+    return (
+      host === 'checkout.stripe.com'
+      || host.endsWith('.stripe.com')
+      || host.endsWith('.shopify.com')
+      || host === 'localhost'
+      || host === '127.0.0.1'
+    );
+  } catch (_error) {
+    return false;
+  }
+}
+
 function openExternal(url) {
   try {
     window.open(url, '_blank', 'noopener,noreferrer');
@@ -209,6 +243,9 @@ async function beginProCheckoutFlow() {
         ...headersWithPlan()
       }
     });
+    if (!payload || !isSecureCheckoutUrl(payload.url)) {
+      throw new Error('Could not verify secure Stripe checkout URL.');
+    }
     if (window.location.pathname.endsWith('/pro.html')) {
       sessionStorage.setItem('dumbdollars_return_after_checkout', '/');
     }
@@ -972,6 +1009,9 @@ function setupAuthForms() {
             ...headersWithPlan()
           }
         });
+        if (!payload || !isSecureCheckoutUrl(payload.url)) {
+          throw new Error('Could not verify secure Stripe checkout URL.');
+        }
         closeBillingCard();
         window.location.href = payload.url;
       } catch (error) {
@@ -1124,6 +1164,7 @@ function setupAiSidebar() {
   }
 
   const highIvButton = document.getElementById('high-iv-refresh');
+  const aiTradeButton = document.getElementById('open-ai-trade');
   if (highIvButton) {
     highIvButton.addEventListener('click', async () => {
       try {
@@ -1134,6 +1175,16 @@ function setupAiSidebar() {
           openProPopup('Pro access needed for High IV Tracker.');
         }
       }
+    });
+  }
+
+  if (aiTradeButton) {
+    aiTradeButton.addEventListener('click', async () => {
+      if (activePlan !== PLAN_PRO) {
+        openProPopup('Pro access needed for AI Trade pattern analysis.');
+        return;
+      }
+      window.location.href = '/ai-trade.html';
     });
   }
 }

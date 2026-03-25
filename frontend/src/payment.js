@@ -53,13 +53,24 @@ function isSecureHostedCheckoutUrl(url) {
   if (typeof url !== 'string' || !url) {
     return false;
   }
+  const candidate = url.trim();
+  if (!candidate) {
+    return false;
+  }
+  if (candidate.startsWith('/')) {
+    // Allow same-origin hosted fallback pages like /hosted-checkout.html.
+    return !candidate.startsWith('//');
+  }
   try {
-    const parsed = new URL(url);
+    const parsed = new URL(candidate);
     const host = parsed.hostname.toLowerCase();
     const protocolOk = parsed.protocol === 'https:'
       || (parsed.protocol === 'http:' && ['localhost', '127.0.0.1'].includes(host));
     if (!protocolOk) {
       return false;
+    }
+    if (parsed.origin === window.location.origin) {
+      return true;
     }
     const isTrustedProvider = host === 'checkout.stripe.com' || host.endsWith('.stripe.com') || host.endsWith('.shopify.com');
     const isLocalHosted = ['localhost', '127.0.0.1'].includes(host);

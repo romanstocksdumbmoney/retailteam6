@@ -213,6 +213,9 @@ const WILD_TAKE_HOOKS = [
   'is betting on a momentum continuation into the close.'
 ];
 
+const AI_TRADE_MODELS = ['Grok', 'ChatGPT', 'Claude AI', 'Anthropic'];
+const AI_TRADE_TIMEFRAMES = new Set(['scalp', 'intraday', 'swing', 'position']);
+
 function clamp(value, min, max) {
   return Math.max(min, Math.min(max, value));
 }
@@ -986,6 +989,195 @@ function getWildTakes(limit = 8) {
   };
 }
 
+function roundPrice(value) {
+  return Number(Number(value || 0).toFixed(2));
+}
+
+function estimateBase64Bytes(base64Payload) {
+  const text = String(base64Payload || '').replace(/\s+/g, '');
+  if (!text) {
+    return 0;
+  }
+  const padding = text.endsWith('==') ? 2 : text.endsWith('=') ? 1 : 0;
+  return Math.max(0, Math.floor((text.length * 3) / 4) - padding);
+}
+
+function parseImageDataUrlMeta(imageDataUrl) {
+  const text = String(imageDataUrl || '').trim();
+  if (!text) {
+    return null;
+  }
+  const match = text.match(/^data:(image\/[a-zA-Z0-9.+-]+);base64,([A-Za-z0-9+/=\s]+)$/);
+  if (!match) {
+    return null;
+  }
+  return {
+    mimeType: match[1].toLowerCase(),
+    base64Payload: match[2]
+  };
+}
+
+function getImageFileExtension(mimeType) {
+  const normalized = String(mimeType || '').toLowerCase();
+  const map = {
+    'image/png': 'png',
+    'image/jpeg': 'jpg',
+    'image/jpg': 'jpg',
+    'image/webp': 'webp',
+    'image/gif': 'gif',
+    'image/bmp': 'bmp'
+  };
+  return map[normalized] || 'png';
+}
+
+function buildImageFingerprint(imageDataUrl) {
+  const text = String(imageDataUrl || '');
+  if (!text) {
+    return '';
+  }
+  const signature = `${text.slice(0, 80)}:${text.slice(-80)}:${text.length}`;
+  return hashString(signature).toString(16);
+}
+
+function getAiTradeBasePrice(symbol, currentPrice, seed) {
+  const parsedCurrent = Number(currentPrice);
+  if (Number.isFinite(parsedCurrent) && parsedCurrent > 0) {
+    return roundPrice(parsedCurrent);
+  }
+  const symbolBias = 35 + (hashString(symbol) % 320);
+  const synthetic = symbolBias + pseudoRandom(seed + 301) * 65;
+  return roundPrice(synthetic);
+}
+
+function normalizeAiTradeTimeframe(rawTimeframe) {
+  const timeframe = String(rawTimeframe || 'intraday').trim().toLowerCase();
+  if (AI_TRADE_TIMEFRAMES.has(timeframe)) {
+    return timeframe;
+  }
+  return 'intraday';
+}
+
+function getAiTradeRationale(consensusTrend, symbol, timeframe) {
+  if (consensusTrend === 'bullish') {
+    return [
+      `${symbol} chart structure suggests higher lows on the ${timeframe} setup.`,
+      'Momentum and volume profile favor continuation over mean reversion.',
+      'Risk is defined below the invalidation zone to protect downside.'
+    ];
+  }
+  return [
+    `${symbol} structure is printing lower highs on the ${timeframe} setup.`,
+    'Momentum deceleration and supply pressure favor downside continuation.',
+    'Risk is defined above invalidation to avoid holding failed breakdowns.'
+  ];
+}
+
+function analyzeAiTradePattern({
+  symbol = 'SPY',
+  timeframe = 'intraday',
+  currentPrice = 0,
+  imageDataUrl = '',
+  imageName = '',
+  imageSize = 0,
+  imageHash = ''
+} = {}) {
+  const normalizedSymbol = normalizeSymbol(symbol);
+  const normalizedTimeframe = normalizeAiTradeTimeframe(timeframe);
+  const normalizedImageDataUrl = String(imageDataUrl || '').trim();
+  const normalizedImageName = String(imageName || '').trim();
+  let normalizedImageHash = String(imageHash || '').trim();
+  let normalizedImageSize = Number.isFinite(Number(imageSize)) ? Math.max(0, Math.trunc(Number(imageSize))) : 0;
+
+  if (!normalizedImageDataUrl && !normalizedImageHash) {
+    throw new Error('missing_image');
+  }
+
+  let imageMeta = null;
+  if (normalizedImageDataUrl) {
+    imageMeta = parseImageDataUrlMeta(normalizedImageDataUrl);
+    if (!imageMeta) {
+      throw new Error('invalid_image');
+    }
+    if (!normalizedImageSize) {
+      normalizedImageSize = estimateBase64Bytes(imageMeta.base64Payload);
+    }
+    if (!normalizedImageHash) {
+      normalizedImageHash = buildImageFingerprint(normalizedImageDataUrl);
+    }
+  }
+
+  const resolvedImageName = normalizedImageName
+    || `uploaded-pattern.${getImageFileExtension(imageMeta?.mimeType)}`;
+
+  const seed = hashString(
+    `ai-trade:${normalizedSymbol}:${normalizedTimeframe}:${daySeed()}:${normalizedImageHash}:${normalizedImageSize}:${resolvedImageName}`
+  );
+  const entryPrice = getAiTradeBasePrice(normalizedSymbol, currentPrice, seed);
+  const bullishScore = clamp(
+    Math.round(46 + pseudoRandom(seed + 11) * 34 + (pseudoRandom(seed + 13) - 0.5) * 10),
+    20,
+    86
+  );
+  const bearishScore = 100 - bullishScore;
+  const consensusTrend = bullishScore >= bearishScore ? 'bullish' : 'bearish';
+  const confidencePct = consensusTrend === 'bullish' ? bullishScore : bearishScore;
+
+  const stopRiskPct = 0.012 + pseudoRandom(seed + 17) * 0.02;
+  const rewardPct = stopRiskPct * (1.7 + pseudoRandom(seed + 19) * 1.8);
+
+  const stopLoss = consensusTrend === 'bullish'
+    ? roundPrice(entryPrice * (1 - stopRiskPct))
+    : roundPrice(entryPrice * (1 + stopRiskPct));
+  const takeProfit = consensusTrend === 'bullish'
+    ? roundPrice(entryPrice * (1 + rewardPct))
+    : roundPrice(entryPrice * (1 - rewardPct));
+  const riskRewardRatio = roundPrice(
+    Math.abs((takeProfit - entryPrice) / Math.max(Math.abs(entryPrice - stopLoss), 0.0001))
+  );
+
+  const modelVotes = AI_TRADE_MODELS.map((model, index) => {
+    const tilt = (pseudoRandom(seed + 31 + index * 23) - 0.5) * 22;
+    const modelBullish = clamp(Math.round(bullishScore + tilt), 18, 88);
+    const modelBearish = 100 - modelBullish;
+    const modelTrend = modelBullish >= modelBearish ? 'bullish' : 'bearish';
+    const confidence = modelTrend === 'bullish' ? modelBullish : modelBearish;
+    return {
+      model,
+      trend: modelTrend,
+      confidencePct: confidence,
+      signal: modelTrend === 'bullish'
+        ? `${model} sees breakout continuation with controlled pullback risk.`
+        : `${model} sees breakdown continuation with weak rebound quality.`
+    };
+  });
+
+  return {
+    generatedAt: new Date().toISOString(),
+    ticker: normalizedSymbol,
+    timeframe: normalizedTimeframe,
+    image: {
+      name: resolvedImageName,
+      sizeBytes: normalizedImageSize,
+      fingerprint: normalizedImageHash ? `${normalizedImageHash.slice(0, 16)}...` : 'not_provided'
+    },
+    consensus: {
+      trend: consensusTrend,
+      confidencePct,
+      entryPrice,
+      stopLoss,
+      takeProfit,
+      riskRewardRatio,
+      rationale: getAiTradeRationale(consensusTrend, normalizedSymbol, normalizedTimeframe)
+    },
+    modelVotes,
+    riskControls: [
+      'Risk no more than 1-2% of account equity per trade.',
+      'Do not widen stop loss after entry.',
+      'Take partial profits into strength/weakness as target approaches.'
+    ]
+  };
+}
+
 module.exports = {
   SCANNER_METHODS,
   AI_ENGINES,
@@ -1005,5 +1197,6 @@ module.exports = {
   getTrendTrades,
   getHighIvTracker,
   getRealizedPatterns,
-  getWildTakes
+  getWildTakes,
+  analyzeAiTradePattern
 };

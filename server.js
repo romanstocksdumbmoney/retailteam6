@@ -18,7 +18,7 @@ app.use((req, res, next) => {
     if (req.path === '/api/auth/stripe/webhook') {
         return next();
     }
-    return express.json()(req, res, next);
+    return express.json({ limit: '8mb' })(req, res, next);
 });
 
 app.get('/', (_req, res) => {
