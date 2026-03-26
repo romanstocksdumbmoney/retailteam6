@@ -60,6 +60,22 @@ function openExternal(url) {
   }
 }
 
+function consumeDeveloperAutologinFromUrl() {
+  const params = new URLSearchParams(window.location.search);
+  const devToken = String(params.get('dev_authtoken') || '').trim();
+  if (!devToken) {
+    return false;
+  }
+  localStorage.setItem('dumbdollars_token', devToken);
+  authToken = devToken;
+  params.delete('dev_authtoken');
+  params.delete('dev_pro');
+  const nextQuery = params.toString();
+  const nextUrl = `${window.location.pathname}${nextQuery ? `?${nextQuery}` : ''}${window.location.hash || ''}`;
+  window.history.replaceState({}, '', nextUrl);
+  return true;
+}
+
 async function fetchJson(url, options = {}) {
   const response = await fetch(url, options);
   if (!response.ok) {
@@ -1557,6 +1573,7 @@ function setupProPopup() {
 }
 
 async function init() {
+  const usedDevAutologin = consumeDeveloperAutologinFromUrl();
   authToken = localStorage.getItem('dumbdollars_token') || '';
   applySavedEmailToForms();
   const rememberedEmail = loadPreferredEmail();
@@ -1582,6 +1599,9 @@ async function init() {
 
   try {
     await fetchCurrentUser();
+    if (usedDevAutologin && currentUser?.plan === PLAN_PRO) {
+      setAuthMessage('Developer Pro access granted for this session.');
+    }
     await refreshBaseline();
     await Promise.all([loadUnusualFeed(), loadHighIvTracker()]);
     await runScanner(activeTicker, 'llm-sentiment');

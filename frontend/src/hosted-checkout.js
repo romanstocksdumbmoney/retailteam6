@@ -2,6 +2,32 @@ function parsePlanPrice() {
   return '$15.00 / month';
 }
 
+function getAuthHeaders() {
+  const token = localStorage.getItem('dumbdollars_token') || '';
+  if (!token) {
+    return {};
+  }
+  return {
+    authorization: `Bearer ${token}`
+  };
+}
+
+async function fetchJson(url, options = {}) {
+  const response = await fetch(url, options);
+  if (!response.ok) {
+    let body = {};
+    try {
+      body = await response.json();
+    } catch (_error) {
+      body = { message: 'Unknown API error' };
+    }
+    const error = new Error(body.message || `Request failed: ${response.status}`);
+    error.status = response.status;
+    throw error;
+  }
+  return response.json();
+}
+
 function setStatus(text, isError = false) {
   const statusNode = document.getElementById('hosted-checkout-status');
   if (!statusNode) {
@@ -47,15 +73,42 @@ function initHostedCheckout() {
     return;
   }
 
-  form.addEventListener('submit', (event) => {
+  form.addEventListener('submit', async (event) => {
     event.preventDefault();
-    submit.disabled = true;
-    setStatus('Processing secure payment...');
-    window.setTimeout(() => {
+    try {
+      submit.disabled = true;
+      const name = String(document.getElementById('hosted-name')?.value || '').trim();
+      const card = String(cardInput?.value || '').trim();
+      const exp = String(expInput?.value || '').trim();
+      const cvc = String(cvcInput?.value || '').trim();
+      const zip = String(zipInput?.value || '').trim();
+      if (!name || !card || !exp || !cvc || !zip) {
+        throw new Error('Complete all payment fields before continuing.');
+      }
+      setStatus('Processing secure payment...');
+      const payload = await fetchJson('/api/auth/hosted-checkout/complete', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...getAuthHeaders()
+        },
+        body: JSON.stringify({
+          cardholderName: name,
+          cardNumber: card,
+          exp,
+          cvc,
+          zip
+        })
+      });
+      if (payload?.token) {
+        localStorage.setItem('dumbdollars_token', payload.token);
+      }
       setStatus('Payment approved. Your Pro access is now active.');
-      submit.disabled = false;
       submit.textContent = 'Payment Completed';
-    }, 1200);
+    } catch (error) {
+      setStatus(error.message || 'Could not complete payment.', true);
+      submit.disabled = false;
+    }
   });
 }
 
