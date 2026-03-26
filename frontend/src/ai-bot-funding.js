@@ -62,6 +62,12 @@ function clearFundingToken() {
   localStorage.removeItem('dumbdollars_live_funding_checkout_token');
 }
 
+function buildFundingPaymentReference() {
+  const token = localStorage.getItem('dumbdollars_token') || 'guest';
+  const compact = token.replace(/[^a-zA-Z0-9]/g, '').slice(0, 12) || 'guest';
+  return `fund-${Date.now()}-${compact}`;
+}
+
 function parseNumberInput(id, fallback = 0) {
   const node = document.getElementById(id);
   const value = Number(node && 'value' in node ? node.value : fallback);
@@ -142,6 +148,20 @@ function updateLivePurchaseUI(profile) {
   }
 }
 
+function applyFundingPaymentQueryState() {
+  const params = new URLSearchParams(window.location.search);
+  const paymentState = String(params.get('fundingPayment') || '').trim().toLowerCase();
+  if (!paymentState) {
+    return;
+  }
+  if (paymentState === 'success') {
+    const amountUsd = Number(params.get('amountUsd') || 0);
+    setStatus(`Funding payment completed${amountUsd > 0 ? ` for ${fmtUsd(amountUsd)}` : ''}. You can now apply funds to the live account.`);
+  } else if (paymentState === 'cancelled') {
+    setStatus('Funding payment was cancelled. You can try again anytime.', true);
+  }
+}
+
 async function loadFundingProfile() {
   const payload = await fetchJson('/api/market/auto-trader/funding-profile', {
     headers: getAuthHeaders()
@@ -168,6 +188,20 @@ async function buyLiveFundingAccess() {
   }
   setFundingToken(`pending_${Date.now()}`);
   window.location.href = session.url;
+}
+
+function openFundingPaymentPage() {
+  const amountUsd = parseNumberInput('ai-funding-amount', 0);
+  if (!Number.isFinite(amountUsd) || amountUsd < 10) {
+    throw new Error('Funding payment amount must be at least $10.');
+  }
+  const accountLabel = String(document.getElementById('ai-funding-account-ref')?.value || '').trim();
+  const params = new URLSearchParams();
+  params.set('amountUsd', String(amountUsd));
+  if (accountLabel) {
+    params.set('accountLabel', accountLabel);
+  }
+  window.location.href = `/ai-bot-funding-payment.html?${params.toString()}`;
 }
 
 async function saveLiveProfile() {
@@ -262,6 +296,28 @@ function setupForm() {
   const buyButton = document.getElementById('ai-live-buy-access');
   const testForm = document.getElementById('ai-test-area-form');
   const fundingForm = document.getElementById('ai-funding-form');
+  const openFundingPaymentButton = document.getElementById('ai-open-funding-payment');
+  const openAccountViewButton = document.getElementById('ai-open-account-view');
+
+  if (openFundingPaymentButton) {
+    openFundingPaymentButton.addEventListener('click', async () => {
+      try {
+        openFundingPaymentButton.disabled = true;
+        setStatus('Opening funding payment page...');
+        openFundingPaymentPage();
+      } catch (error) {
+        setStatus(error.message || 'Could not open funding payment checkout.', true);
+      } finally {
+        openFundingPaymentButton.disabled = false;
+      }
+    });
+  }
+
+  if (openAccountViewButton) {
+    openAccountViewButton.addEventListener('click', () => {
+      window.location.href = '/ai-bot-account.html';
+    });
+  }
 
   if (buyButton) {
     buyButton.addEventListener('click', async () => {
@@ -335,6 +391,7 @@ async function init() {
     return;
   }
   setupForm();
+  applyFundingPaymentQueryState();
   try {
     const profile = await loadFundingProfile();
     if (profile.fundingAccessPurchased) {

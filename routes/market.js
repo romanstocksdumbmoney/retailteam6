@@ -18,6 +18,7 @@ const {
   configureAutoTrader,
   getAutoTraderStatus,
   getLiveFundingProfile,
+  getAutoTraderAccountView,
   saveAutoTraderLiveTradingProfile,
   runAutoTraderCycle,
   listAutoTraderSectors,
@@ -25,6 +26,7 @@ const {
   setAutoTraderFundingMode,
   fundAutoTrader
 } = require('../services/autoTraderService');
+const { createFundingCheckoutSession } = require('../services/stripeService');
 const { parseAuthToken } = require('../services/authService');
 const { getUserById } = require('../services/userStore');
 
@@ -591,6 +593,65 @@ router.post('/auto-trader/fund', requireSignedIn, requireLiveFundingAccess, (req
 router.get('/auto-trader/funding-profile', requireSignedIn, (req, res) => {
   const payload = getLiveFundingProfile(req.user);
   return res.json(payload);
+});
+
+router.get('/auto-trader/account-view', requireSignedIn, (req, res) => {
+  try {
+    const payload = getAutoTraderAccountView(req.user);
+    return res.json(payload);
+  } catch (error) {
+    if (String(error.message || '') === 'missing_user') {
+      return res.status(401).json({
+        error: 'unauthorized',
+        message: 'Login required.'
+      });
+    }
+    return res.status(400).json({
+      error: 'invalid_request',
+      message: 'Could not load auto trader account view.'
+    });
+  }
+});
+
+router.post('/auto-trader/funding-payment-session', requireSignedIn, requireLiveFundingAccess, async (req, res) => {
+  try {
+    const amountUsd = Number(req.body?.amountUsd || 0);
+    const paymentReference = String(req.body?.paymentReference || '').trim();
+    const successPath = String(req.body?.successPath || '/ai-bot-funding-payment.html');
+    const cancelPath = String(req.body?.cancelPath || '/ai-bot-funding-payment.html');
+    const session = await createFundingCheckoutSession(req.user, {
+      amountUsd,
+      paymentReference,
+      customerEmail: req.user?.email,
+      successPath,
+      cancelPath
+    });
+    return res.json(session);
+  } catch (error) {
+    const code = String(error.message || '');
+    if (code === 'invalid_funding_amount') {
+      return res.status(400).json({
+        error: 'invalid_funding_amount',
+        message: 'Funding payment amount must be between $10 and $1,000,000.'
+      });
+    }
+    if (code === 'invalid_payment_reference') {
+      return res.status(400).json({
+        error: 'invalid_payment_reference',
+        message: 'Missing payment reference for funding checkout.'
+      });
+    }
+    if (code === 'billing_not_configured' || code === 'stripe_not_configured') {
+      return res.status(503).json({
+        error: 'billing_not_configured',
+        message: 'Billing is not configured. Add Stripe keys or hosted checkout fallback.'
+      });
+    }
+    return res.status(500).json({
+      error: 'checkout_failed',
+      message: 'Could not create funding payment session.'
+    });
+  }
 });
 
 router.post('/auto-trader/live-profile', requireSignedIn, requireLiveFundingAccess, (req, res) => {

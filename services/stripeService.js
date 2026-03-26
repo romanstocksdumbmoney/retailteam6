@@ -95,16 +95,59 @@ async function ensureStripeCustomer(user) {
   return customer.id;
 }
 
-function resolveCheckoutUser(user = {}) {
+function resolveCheckoutUser(user = {}, options = {}) {
   const fallbackEmail = String(process.env.CHECKOUT_GUEST_EMAIL || 'guest-checkout@dumbdollars.local').trim().toLowerCase();
+  const preferredEmail = String(options.customerEmail || user.email || fallbackEmail).trim().toLowerCase() || fallbackEmail;
   return {
     id: user.id || 'guest-checkout',
-    email: user.email || fallbackEmail,
+    email: preferredEmail,
     stripeCustomerId: user.stripeCustomerId || null
   };
 }
 
-async function createCheckoutSession(user) {
+function normalizeAppPath(pathValue, fallbackPath) {
+  const raw = String(pathValue || '').trim();
+  if (!raw) {
+    return fallbackPath;
+  }
+  if (!raw.startsWith('/') || raw.startsWith('//')) {
+    return fallbackPath;
+  }
+  return raw;
+}
+
+function appendPathQuery(pathValue, params = {}) {
+  const [pathname, query = ''] = String(pathValue || '/').split('?');
+  const search = new URLSearchParams(query);
+  Object.entries(params).forEach(([key, value]) => {
+    if (value === undefined || value === null || value === '') {
+      return;
+    }
+    search.set(key, String(value));
+  });
+  const next = search.toString();
+  return next ? `${pathname}?${next}` : pathname;
+}
+
+function appendQueryToUrl(urlValue, params = {}) {
+  const urlText = String(urlValue || '').trim();
+  if (!urlText) {
+    return '';
+  }
+  if (urlText.startsWith('/')) {
+    return appendPathQuery(urlText, params);
+  }
+  const parsed = new URL(urlText);
+  Object.entries(params).forEach(([key, value]) => {
+    if (value === undefined || value === null || value === '') {
+      return;
+    }
+    parsed.searchParams.set(key, String(value));
+  });
+  return parsed.toString();
+}
+
+async function createCheckoutSession(user, options = {}) {
   const stripe = getStripe();
   const priceId = getProPriceId();
   if (!stripe || !priceId) {
@@ -117,7 +160,7 @@ async function createCheckoutSession(user) {
     throw new Error('billing_not_configured');
   }
 
-  const checkoutUser = resolveCheckoutUser(user);
+  const checkoutUser = resolveCheckoutUser(user, options);
   const customerId = await ensureStripeCustomer(checkoutUser);
   const base = getAppBaseUrl();
   const session = await stripe.checkout.sessions.create({
@@ -131,6 +174,94 @@ async function createCheckoutSession(user) {
   });
 
   return session;
+}
+
+async function createFundingCheckoutSession(user, options = {}) {
+  const amountUsd = Number(options.amountUsd);
+  const amountRounded = Number(amountUsd.toFixed(2));
+  if (!Number.isFinite(amountRounded) || amountRounded < 10 || amountRounded > 1_000_000) {
+    throw new Error('invalid_funding_amount');
+  }
+  const paymentReference = String(options.paymentReference || '').trim().slice(0, 120);
+  if (!paymentReference) {
+    throw new Error('invalid_payment_reference');
+  }
+
+  const successPath = normalizeAppPath(options.successPath, '/ai-bot-funding-payment.html');
+  const cancelPath = normalizeAppPath(options.cancelPath, '/ai-bot-funding-payment.html');
+  const successReturnPath = appendPathQuery(successPath, {
+    fundingPayment: 'success',
+    amountUsd: amountRounded,
+    paymentReference
+  });
+  const cancelReturnPath = appendPathQuery(cancelPath, {
+    fundingPayment: 'cancelled',
+    amountUsd: amountRounded,
+    paymentReference
+  });
+
+  const stripe = getStripe();
+  if (!stripe) {
+    const hostedFallbackUrl = getHostedCheckoutFallbackUrl();
+    if (!hostedFallbackUrl) {
+      throw new Error('billing_not_configured');
+    }
+    return {
+      url: appendQueryToUrl(hostedFallbackUrl, {
+        mode: 'funding',
+        amountUsd: amountRounded,
+        paymentReference,
+        returnTo: successReturnPath,
+        cancelTo: cancelReturnPath
+      }),
+      paymentReference,
+      amountUsd: amountRounded
+    };
+  }
+
+  const checkoutUser = resolveCheckoutUser(user, options);
+  const customerId = await ensureStripeCustomer(checkoutUser);
+  const base = getAppBaseUrl();
+  const successUrl = `${base}${appendPathQuery(successPath, {
+    fundingPayment: 'success',
+    amountUsd: amountRounded,
+    paymentReference,
+    sessionId: '{CHECKOUT_SESSION_ID}'
+  })}`;
+  const cancelUrl = `${base}${cancelReturnPath}`;
+  const amountCents = Math.round(amountRounded * 100);
+  const session = await stripe.checkout.sessions.create({
+    mode: 'payment',
+    customer: customerId,
+    payment_method_types: ['card'],
+    line_items: [
+      {
+        price_data: {
+          currency: 'usd',
+          unit_amount: amountCents,
+          product_data: {
+            name: 'DumbDollars AI Trader Funding',
+            description: `Funding deposit for AI Trader account ($${amountRounded.toFixed(2)})`
+          }
+        },
+        quantity: 1
+      }
+    ],
+    success_url: successUrl,
+    cancel_url: cancelUrl,
+    metadata: {
+      userId: checkoutUser.id,
+      paymentType: 'ai_trader_funding',
+      paymentReference,
+      amountUsd: String(amountRounded)
+    }
+  });
+
+  return {
+    url: session.url,
+    paymentReference,
+    amountUsd: amountRounded
+  };
 }
 
 function createHostedCheckoutSession() {
@@ -247,6 +378,7 @@ function getBillingPublicInfo() {
 
 module.exports = {
   createCheckoutSession,
+  createFundingCheckoutSession,
   createHostedCheckoutSession,
   createBillingPortalSession,
   processWebhookEvent,

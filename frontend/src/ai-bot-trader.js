@@ -255,10 +255,17 @@ function setupForm() {
   const pauseButton = document.getElementById('ai-bot-pause');
   const resumeButton = document.getElementById('ai-bot-resume');
   const fundingButton = document.getElementById('open-ai-bot-funding');
+  const accountButton = document.getElementById('open-ai-bot-account');
 
   if (fundingButton) {
     fundingButton.addEventListener('click', () => {
       window.location.href = '/ai-bot-funding.html';
+    });
+  }
+
+  if (accountButton) {
+    accountButton.addEventListener('click', () => {
+      window.location.href = '/ai-bot-account.html';
     });
   }
 

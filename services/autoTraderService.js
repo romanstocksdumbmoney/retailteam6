@@ -94,6 +94,8 @@ function defaultState() {
     },
     config: defaultConfig(),
     openPositions: [],
+    fundingTransactions: [],
+    cycleHistory: [],
     lastCycle: null,
     updatedAt: nowIso()
   };
@@ -253,6 +255,36 @@ function sectorExposurePct(openPositions, sector, portfolioValue) {
   return (sectorValue / portfolioValue) * 100;
 }
 
+function estimatePositionMarkPrice(userId, position) {
+  const baseSeed = hashString(`${userId}:${position.id}:${minuteSeed()}`);
+  const driftPct = (pseudoRandom(baseSeed) - 0.5) * 0.06; // +/- 3% mark drift
+  const entry = Number(position.entry || 0);
+  return roundUsd(entry * (1 + driftPct));
+}
+
+function buildMarkedPositions(userId, positions = []) {
+  return positions.map((position) => {
+    const markPrice = estimatePositionMarkPrice(userId, position);
+    const shares = Number(position.shares || 0);
+    const direction = String(position.direction || 'long').toLowerCase() === 'short' ? 'short' : 'long';
+    const rawPnl = direction === 'long'
+      ? (markPrice - Number(position.entry || 0)) * shares
+      : (Number(position.entry || 0) - markPrice) * shares;
+    const marketValueUsd = roundUsd(markPrice * shares);
+    return {
+      ...position,
+      markPrice,
+      marketValueUsd,
+      unrealizedPnlUsd: roundUsd(rawPnl)
+    };
+  });
+}
+
+function buildSyntheticAccountReference(userId, broker, accountHolder) {
+  const base = hashString(`${userId}:${broker}:${accountHolder}`).toString(16).slice(-8).toUpperCase();
+  return `AI-${base || '00000000'}`;
+}
+
 function runAutoTraderCycle(user) {
   const userId = user?.id;
   if (!userId) {
@@ -388,6 +420,18 @@ function runAutoTraderCycle(user) {
       ? 'Live mode uses funded capital sizing, but broker execution still requires an explicit connected broker API.'
       : 'Paper-trading simulation only. Connect a real broker API before enabling live execution.'
   };
+  const cycleSummary = {
+    cycleId: `cyc-${hashString(`${userId}:${cycle.executedAt}`)}`,
+    executedAt: cycle.executedAt,
+    mode: state.tradingMode,
+    startedCashUsd: cycle.startedCashUsd,
+    endingCashUsd: cycle.endingCashUsd,
+    openedPositionsCount: candidateTrades.length,
+    closedPositionsCount: closedPositions.length,
+    closedPnlUsd: roundUsd(closedPositions.reduce((sum, row) => sum + Number(row.pnlUsd || 0), 0)),
+    note: cycle.note
+  };
+  state.cycleHistory = [cycleSummary, ...(state.cycleHistory || [])].slice(0, 60);
   state.lastCycle = cycle;
   state.updatedAt = nowIso();
   return cycle;
@@ -509,6 +553,16 @@ function fundAutoTrader(user, amountUsd, details = {}) {
     fundedAt: nowIso(),
     status: 'funded'
   };
+  const transaction = {
+    transactionId: `fund-${hashString(`${userId}:${state.liveFunding.fundedAt}:${amount}`)}`,
+    amountUsd: amount,
+    broker,
+    accountHolder,
+    paymentRail,
+    status: 'completed',
+    fundedAt: state.liveFunding.fundedAt
+  };
+  state.fundingTransactions = [transaction, ...(state.fundingTransactions || [])].slice(0, 120);
   state.updatedAt = nowIso();
   return state;
 }
@@ -566,7 +620,65 @@ function getLiveFundingProfile(user) {
     totalDepositedUsd: state.totalDepositedUsd,
     config: state.config,
     liveFunding: state.liveFunding || defaultState().liveFunding,
+    fundingTransactions: (state.fundingTransactions || []).slice(0, 12),
+    cycleHistory: (state.cycleHistory || []).slice(0, 12),
     updatedAt: state.updatedAt
+  };
+}
+
+function getAutoTraderAccountView(user) {
+  const userId = user?.id;
+  if (!userId) {
+    throw new Error('missing_user');
+  }
+  const state = getState(userId);
+  const markedPositions = buildMarkedPositions(userId, state.openPositions || []);
+  const openExposureUsd = roundUsd(markedPositions.reduce((sum, row) => sum + Number(row.marketValueUsd || 0), 0));
+  const unrealizedPnlUsd = roundUsd(markedPositions.reduce((sum, row) => sum + Number(row.unrealizedPnlUsd || 0), 0));
+  const realizedPnlUsd = roundUsd((state.cycleHistory || []).reduce((sum, row) => sum + Number(row.closedPnlUsd || 0), 0));
+  const equityUsd = roundUsd(Number(state.cashUsd || 0) + openExposureUsd);
+  const liveFunding = state.liveFunding || defaultState().liveFunding;
+  const broker = liveFunding.broker || 'manual';
+  const accountHolder = liveFunding.accountHolder || 'live-account';
+
+  return {
+    account: {
+      broker,
+      accountLabel: accountHolder,
+      accountReference: buildSyntheticAccountReference(userId, broker, accountHolder),
+      executionMode: liveFunding.executionMode || 'manual_confirmed',
+      riskAcknowledged: Boolean(liveFunding.riskAcknowledged),
+      status: liveFunding.status || 'not_funded',
+      fundedUsd: Number(liveFunding.fundedUsd || 0),
+      fundedAt: liveFunding.fundedAt || null
+    },
+    bot: {
+      configured: state.configured,
+      isActive: state.isActive,
+      tradingMode: state.tradingMode || 'paper',
+      updatedAt: state.updatedAt
+    },
+    portfolio: {
+      cashUsd: Number(state.cashUsd || 0),
+      totalDepositedUsd: Number(state.totalDepositedUsd || 0),
+      openExposureUsd,
+      openPositionsCount: markedPositions.length,
+      realizedPnlUsd,
+      unrealizedPnlUsd,
+      equityUsd
+    },
+    openPositions: markedPositions,
+    activity: {
+      recentFunding: (state.fundingTransactions || []).slice(0, 20),
+      recentCycles: (state.cycleHistory || []).slice(0, 20)
+    },
+    config: state.config,
+    safety: {
+      mode: state.tradingMode === 'live' ? 'live_funding_mode' : 'paper_trading',
+      disclaimer: state.tradingMode === 'live'
+        ? 'Live funding is enabled. Direct broker order placement still requires broker API integration.'
+        : 'Paper mode only. No real brokerage orders are sent.'
+    }
   };
 }
 
@@ -585,6 +697,8 @@ function getAutoTraderStatus(user) {
     liveFunding: state.liveFunding || defaultState().liveFunding,
     config: state.config,
     openPositions: state.openPositions,
+    fundingTransactions: (state.fundingTransactions || []).slice(0, 10),
+    cycleHistory: (state.cycleHistory || []).slice(0, 10),
     lastCycle: state.lastCycle,
     updatedAt: state.updatedAt,
     sectorUniverse: Object.keys(SECTOR_UNIVERSE).map((sector) => ({
@@ -612,6 +726,7 @@ module.exports = {
   fundAutoTrader,
   getLiveFundingProfile,
   saveAutoTraderLiveTradingProfile,
+  getAutoTraderAccountView,
   runAutoTraderCycle,
   getAutoTraderStatus,
   listAutoTraderSectors

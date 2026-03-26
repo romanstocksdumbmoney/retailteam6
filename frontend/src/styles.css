@@ -275,6 +275,15 @@ body {
   font-size: 0.86rem;
 }
 
+.bot-position-card--compact {
+  padding: 0.55rem;
+}
+
+.bot-position-card--compact p {
+  margin: 0.16rem 0;
+  font-size: 0.82rem;
+}
+
 .ai-bot-status-chip {
   display: inline-flex;
   align-items: center;
@@ -931,6 +940,51 @@ label {
 .stack {
   display: grid;
   gap: 0.55rem;
+}
+
+.ai-account-header {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.55rem;
+  margin-bottom: 0.4rem;
+}
+
+.ai-account-layout {
+  display: grid;
+  gap: 0.75rem;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+}
+
+.ai-account-tile-grid {
+  display: grid;
+  gap: 0.55rem;
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+}
+
+.ai-account-tile {
+  border: 1px solid rgba(250, 204, 21, 0.25);
+  border-radius: 10px;
+  background: rgba(2, 6, 23, 0.72);
+  padding: 0.55rem 0.62rem;
+}
+
+.ai-account-tile h4 {
+  margin: 0;
+  color: #fde68a;
+  font-size: 0.85rem;
+}
+
+.ai-account-tile p {
+  margin: 0.2rem 0 0;
+  font-size: 0.92rem;
+  font-weight: 700;
+}
+
+.ai-account-stack {
+  display: grid;
+  gap: 0.5rem;
 }
 
 .stack-item p {
