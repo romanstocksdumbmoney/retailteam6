@@ -62,6 +62,16 @@ function requirePro(req, res, next) {
   return next();
 }
 
+function requireLiveFundingAccess(req, res, next) {
+  if (!isPro(req)) {
+    return res.status(403).json({
+      error: 'live_funding_purchase_required',
+      message: 'Buy into Live Funding Mode first by upgrading to Pro.'
+    });
+  }
+  return next();
+}
+
 function requireSignedIn(req, res, next) {
   if (!req.user) {
     return res.status(401).json({
@@ -528,6 +538,12 @@ router.post('/auto-trader/bot/resume', requireSignedIn, (req, res) => {
 router.post('/auto-trader/funding-mode', requireSignedIn, (req, res) => {
   try {
     const mode = String(req.body?.mode || '');
+    if (mode.trim().toLowerCase() === 'live' && !isPro(req)) {
+      return res.status(403).json({
+        error: 'live_funding_purchase_required',
+        message: 'Buy into Live Funding Mode first by upgrading to Pro.'
+      });
+    }
     const payload = setAutoTraderFundingMode(req.user, mode);
     return res.json(payload);
   } catch (error) {
@@ -545,7 +561,7 @@ router.post('/auto-trader/funding-mode', requireSignedIn, (req, res) => {
   }
 });
 
-router.post('/auto-trader/fund', requireSignedIn, (req, res) => {
+router.post('/auto-trader/fund', requireSignedIn, requireLiveFundingAccess, (req, res) => {
   try {
     const amountUsd = Number(req.body?.amountUsd || 0);
     const details = {
@@ -577,7 +593,7 @@ router.get('/auto-trader/funding-profile', requireSignedIn, (req, res) => {
   return res.json(payload);
 });
 
-router.post('/auto-trader/live-profile', requireSignedIn, (req, res) => {
+router.post('/auto-trader/live-profile', requireSignedIn, requireLiveFundingAccess, (req, res) => {
   try {
     const payload = saveAutoTraderLiveTradingProfile(req.user, req.body || {});
     return res.json(payload);

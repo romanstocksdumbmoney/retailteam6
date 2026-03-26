@@ -33,6 +33,15 @@ function setStatus(text, isError = false) {
   node.className = isError ? 'small-note auth-error' : 'small-note';
 }
 
+function setTestStatus(text, isError = false) {
+  const node = document.getElementById('ai-test-status');
+  if (!node) {
+    return;
+  }
+  node.textContent = text;
+  node.className = isError ? 'small-note auth-error' : 'small-note';
+}
+
 function fmtUsd(value) {
   return `$${Number(value || 0).toLocaleString(undefined, { maximumFractionDigits: 2 })}`;
 }
@@ -41,10 +50,30 @@ function fmtPct(value) {
   return `${Number(value || 0).toFixed(2)}%`;
 }
 
-function getSelectedFundingMode() {
-  const selected = document.getElementById('ai-funding-trading-mode');
-  const value = selected instanceof HTMLSelectElement ? selected.value : 'paper';
-  return String(value || 'paper').trim().toLowerCase() === 'live' ? 'live' : 'paper';
+function getFundingToken() {
+  return localStorage.getItem('dumbdollars_live_funding_checkout_token') || '';
+}
+
+function setFundingToken(value) {
+  localStorage.setItem('dumbdollars_live_funding_checkout_token', String(value || ''));
+}
+
+function clearFundingToken() {
+  localStorage.removeItem('dumbdollars_live_funding_checkout_token');
+}
+
+function parseNumberInput(id, fallback = 0) {
+  const node = document.getElementById(id);
+  const value = Number(node && 'value' in node ? node.value : fallback);
+  return Number.isFinite(value) ? value : fallback;
+}
+
+function isFundingAccessAllowed(profile) {
+  if (!profile) {
+    return false;
+  }
+  const token = getFundingToken();
+  return Boolean(profile.fundingAccessPurchased || token);
 }
 
 function renderFundingSummary(payload) {
@@ -59,18 +88,58 @@ function renderFundingSummary(payload) {
   const live = payload.liveFunding || {};
   target.innerHTML = `
     <article class="bot-position-card">
+      <p><strong>Funding Access:</strong> ${payload.fundingAccessPurchased ? 'Purchased' : 'Not purchased'}</p>
       <p><strong>Mode:</strong> ${(payload.tradingMode || 'paper').toUpperCase()}</p>
       <p><strong>Cash:</strong> ${fmtUsd(payload.cashUsd)}</p>
       <p><strong>Total Deposited:</strong> ${fmtUsd(payload.totalDepositedUsd)}</p>
       <p><strong>Live Funded:</strong> ${live.isFunded ? 'Yes' : 'No'}</p>
       <p><strong>Broker:</strong> ${live.broker || 'manual'}</p>
       <p><strong>Account Label:</strong> ${live.accountHolder || 'N/A'}</p>
-      <p><strong>Target Return:</strong> ${fmtPct(live.targetReturnPct || 0)}</p>
-      <p><strong>Risk per Trade:</strong> ${fmtPct(live.riskPerTradePct || 0)}</p>
+      <p><strong>Target Return:</strong> ${fmtPct(live.targetReturnPct || payload.config?.targetReturnPct || 0)}</p>
+      <p><strong>Risk per Trade:</strong> ${fmtPct(live.riskPerTradePct || payload.config?.riskPerTradePct || 0)}</p>
       <p><strong>Last Funding:</strong> ${fmtUsd(live.lastFundingUsd || 0)}</p>
       <p><strong>Funded At:</strong> ${live.fundedAt || 'N/A'}</p>
     </article>
   `;
+}
+
+function setLiveControlsEnabled(enabled) {
+  const ids = [
+    'ai-funding-amount',
+    'ai-funding-broker',
+    'ai-funding-account-ref',
+    'ai-funding-mode',
+    'ai-funding-target-return-pct',
+    'ai-funding-risk-pct',
+    'ai-funding-submit'
+  ];
+  ids.forEach((id) => {
+    const node = document.getElementById(id);
+    if (node && 'disabled' in node) {
+      node.disabled = !enabled;
+    }
+  });
+}
+
+function updateLivePurchaseUI(profile) {
+  const gate = document.getElementById('ai-live-gate');
+  const notice = document.getElementById('ai-live-gate-status');
+  const buyButton = document.getElementById('ai-live-buy-access');
+  const enabled = isFundingAccessAllowed(profile);
+  setLiveControlsEnabled(enabled);
+  if (gate) {
+    gate.classList.toggle('hidden', enabled);
+  }
+  if (notice) {
+    notice.textContent = enabled
+      ? 'Live Funding Mode unlocked.'
+      : 'Live Funding Mode is locked until purchase is completed.';
+    notice.className = enabled ? 'small-note' : 'small-note auth-error';
+  }
+  if (buyButton) {
+    buyButton.disabled = enabled;
+    buyButton.textContent = enabled ? 'Live Funding Mode Unlocked' : 'Buy into Live Funding Mode ($15/mo Pro)';
+  }
 }
 
 async function loadFundingProfile() {
@@ -78,14 +147,35 @@ async function loadFundingProfile() {
     headers: getAuthHeaders()
   });
   renderFundingSummary(payload);
+  updateLivePurchaseUI(payload);
+  return payload;
+}
+
+async function buyLiveFundingAccess() {
+  const token = localStorage.getItem('dumbdollars_token') || '';
+  if (!token) {
+    throw new Error('Please log in first.');
+  }
+  const session = await fetchJson('/api/auth/stripe/create-checkout-session', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      ...getAuthHeaders()
+    }
+  });
+  if (!session?.url) {
+    throw new Error('Could not create checkout session.');
+  }
+  setFundingToken(`pending_${Date.now()}`);
+  window.location.href = session.url;
 }
 
 async function saveLiveProfile() {
-  const broker = String(document.getElementById('ai-funding-broker')?.value || '').trim().toLowerCase();
-  const accountLabel = String(document.getElementById('ai-funding-account-ref')?.value || '').trim();
+  const broker = String(document.getElementById('ai-funding-broker')?.value || 'manual').trim().toLowerCase();
+  const accountLabel = String(document.getElementById('ai-funding-account-ref')?.value || '').trim() || 'live-account';
   const executionMode = String(document.getElementById('ai-funding-mode')?.value || 'manual_confirmed').trim().toLowerCase();
-  const targetReturnPct = Number(document.getElementById('ai-test-target-return')?.value || 12);
-  const riskPerTradePct = Number(document.getElementById('ai-test-risk')?.value || 1.5);
+  const targetReturnPct = parseNumberInput('ai-funding-target-return-pct', 12);
+  const riskPerTradePct = parseNumberInput('ai-funding-risk-pct', 1.5);
   return fetchJson('/api/market/auto-trader/live-profile', {
     method: 'POST',
     headers: {
@@ -104,7 +194,9 @@ async function saveLiveProfile() {
 }
 
 async function enableLiveModeAndFund() {
-  const amount = Number(document.getElementById('ai-funding-amount')?.value || 0);
+  const amount = parseNumberInput('ai-funding-amount', 0);
+  const targetReturnPct = parseNumberInput('ai-funding-target-return-pct', 12);
+  const riskPerTradePct = parseNumberInput('ai-funding-risk-pct', 1.5);
   await fetchJson('/api/market/auto-trader/funding-mode', {
     method: 'POST',
     headers: {
@@ -113,9 +205,6 @@ async function enableLiveModeAndFund() {
     },
     body: JSON.stringify({ mode: 'live' })
   });
-
-  const targetReturnPct = Number(document.getElementById('ai-test-target-return')?.value || 12);
-  const riskPerTradePct = Number(document.getElementById('ai-test-risk')?.value || 1.5);
   await fetchJson('/api/market/auto-trader/fund', {
     method: 'POST',
     headers: {
@@ -124,8 +213,8 @@ async function enableLiveModeAndFund() {
     },
     body: JSON.stringify({
       amountUsd: amount,
-      accountHolder: String(document.getElementById('ai-funding-account-ref')?.value || '').trim(),
-      broker: String(document.getElementById('ai-funding-broker')?.value || '').trim(),
+      accountHolder: String(document.getElementById('ai-funding-account-ref')?.value || '').trim() || 'live-account',
+      broker: String(document.getElementById('ai-funding-broker')?.value || 'manual').trim().toLowerCase(),
       paymentRail: 'bank_transfer',
       targetReturnPct,
       riskPerTradePct,
@@ -135,49 +224,13 @@ async function enableLiveModeAndFund() {
   });
 }
 
-async function enablePaperModeForTestArea() {
-  const amount = Number(document.getElementById('ai-test-balance')?.value || 10000);
-  const targetReturnPct = Number(document.getElementById('ai-test-target-return')?.value || 12);
-  const riskPerTradePct = Number(document.getElementById('ai-test-risk')?.value || 1.5);
-  const stopLossPct = Number(document.getElementById('ai-test-stop-loss')?.value || Math.max(0.5, riskPerTradePct * 1.5));
-  const takeProfitPct = Number(document.getElementById('ai-test-take-profit')?.value || Math.max(1.2, riskPerTradePct * 3));
-  const allocationPerTradePct = Number(document.getElementById('ai-test-allocation')?.value || 20);
-
-  await fetchJson('/api/market/auto-trader/funding-mode', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      ...getAuthHeaders()
-    },
-    body: JSON.stringify({ mode: 'paper' })
-  });
-
-  await fetchJson('/api/market/auto-trader/bot', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      ...getAuthHeaders()
-    },
-    body: JSON.stringify({
-      capitalUsd: amount,
-      riskPct: riskPerTradePct,
-      targetReturnPct,
-      stopLossPct,
-      takeProfitPct,
-      allocationPerTradePct,
-      tradingMode: 'paper'
-    })
-  });
-}
-
 async function saveTestAreaSettings() {
-  const amount = Number(document.getElementById('ai-test-balance')?.value || 10000);
-  const targetReturnPct = Number(document.getElementById('ai-test-target-return')?.value || 12);
-  const riskPerTradePct = Number(document.getElementById('ai-test-risk')?.value || 1.5);
-  const stopLossPct = Number(document.getElementById('ai-test-stop-loss')?.value || Math.max(0.5, riskPerTradePct * 1.5));
-  const takeProfitPct = Number(document.getElementById('ai-test-take-profit')?.value || Math.max(1.2, riskPerTradePct * 3));
-  const allocationPerTradePct = Number(document.getElementById('ai-test-allocation')?.value || 20);
-
+  const amount = parseNumberInput('ai-test-balance', 10000);
+  const targetReturnPct = parseNumberInput('ai-test-target-return', 12);
+  const riskPerTradePct = parseNumberInput('ai-test-risk', 1.5);
+  const stopLossPct = parseNumberInput('ai-test-stop-loss', Math.max(0.5, riskPerTradePct * 1.5));
+  const takeProfitPct = parseNumberInput('ai-test-take-profit', Math.max(1.2, riskPerTradePct * 3));
+  const allocationPerTradePct = parseNumberInput('ai-test-allocation', 20);
   await fetchJson('/api/market/auto-trader/funding-mode', {
     method: 'POST',
     headers: {
@@ -186,7 +239,6 @@ async function saveTestAreaSettings() {
     },
     body: JSON.stringify({ mode: 'paper' })
   });
-
   await fetchJson('/api/market/auto-trader/bot', {
     method: 'POST',
     headers: {
@@ -196,6 +248,7 @@ async function saveTestAreaSettings() {
     body: JSON.stringify({
       capitalUsd: amount,
       riskPct: riskPerTradePct,
+      riskPerTradePct,
       targetReturnPct,
       stopLossPct,
       takeProfitPct,
@@ -206,33 +259,37 @@ async function saveTestAreaSettings() {
 }
 
 function setupForm() {
+  const buyButton = document.getElementById('ai-live-buy-access');
   const testForm = document.getElementById('ai-test-area-form');
   const fundingForm = document.getElementById('ai-funding-form');
+
+  if (buyButton) {
+    buyButton.addEventListener('click', async () => {
+      try {
+        buyButton.disabled = true;
+        setStatus('Starting checkout for Live Funding Mode...');
+        await buyLiveFundingAccess();
+      } catch (error) {
+        setStatus(error.message || 'Could not start checkout.', true);
+        buyButton.disabled = false;
+      }
+    });
+  }
 
   if (testForm) {
     testForm.addEventListener('submit', async (event) => {
       event.preventDefault();
       const button = document.getElementById('ai-test-save');
-      const testStatus = document.getElementById('ai-test-status');
       try {
         if (button) {
           button.disabled = true;
         }
-        if (testStatus) {
-          testStatus.textContent = 'Saving Test Area settings...';
-          testStatus.className = 'small-note';
-        }
+        setTestStatus('Saving Test Area settings...');
         await saveTestAreaSettings();
         await loadFundingProfile();
-        if (testStatus) {
-          testStatus.textContent = 'Test Area saved. Paper-trading mode is ready.';
-          testStatus.className = 'small-note';
-        }
+        setTestStatus('Test Area saved. Paper-trading mode is ready.');
       } catch (error) {
-        if (testStatus) {
-          testStatus.textContent = error.message || 'Could not save Test Area settings.';
-          testStatus.className = 'small-note auth-error';
-        }
+        setTestStatus(error.message || 'Could not save Test Area settings.', true);
       } finally {
         if (button) {
           button.disabled = false;
@@ -251,20 +308,16 @@ function setupForm() {
       if (button) {
         button.disabled = true;
       }
-      const selectedMode = getSelectedFundingMode();
-      if (selectedMode === 'live') {
-        setStatus('Saving live profile...');
-        await saveLiveProfile();
-        setStatus('Funding account and enabling live mode...');
-        await enableLiveModeAndFund();
-      } else {
-        setStatus('Configuring Test Area paper mode...');
-        await enablePaperModeForTestArea();
+      const profile = await loadFundingProfile();
+      if (!isFundingAccessAllowed(profile)) {
+        throw new Error('Buy into Live Funding Mode first.');
       }
+      setStatus('Saving live profile...');
+      await saveLiveProfile();
+      setStatus('Funding account and enabling live mode...');
+      await enableLiveModeAndFund();
       await loadFundingProfile();
-      setStatus(selectedMode === 'live'
-        ? 'Live funding profile saved. Live mode is enabled.'
-        : 'Test Area paper mode is ready with your return/risk settings.');
+      setStatus('Live funding profile saved. Live mode is enabled.');
     } catch (error) {
       setStatus(error.message || 'Could not save funding profile.', true);
     } finally {
@@ -278,12 +331,15 @@ function setupForm() {
 async function init() {
   const token = localStorage.getItem('dumbdollars_token') || '';
   if (!token) {
-    setStatus('Please log in to configure live funding.', true);
+    setStatus('Please log in to configure funding.', true);
     return;
   }
   setupForm();
   try {
-    await loadFundingProfile();
+    const profile = await loadFundingProfile();
+    if (profile.fundingAccessPurchased) {
+      clearFundingToken();
+    }
     setStatus('Funding + Test Area page ready.');
   } catch (error) {
     setStatus(error.message || 'Could not load funding profile.', true);

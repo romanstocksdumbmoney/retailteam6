@@ -17,6 +17,14 @@
         <p class="pro-plan-subtitle">Use Test Area (paper trading) to simulate returns and risk, or switch to live funding mode to size with real capital.</p>
 
         <section class="ai-trade-consensus">
+          <h3>Buy into Live Funding Mode</h3>
+          <p class="small-note">Live Funding Mode requires an active Pro subscription. Test Area remains available for paper trading.</p>
+          <div class="ai-bot-actions">
+            <button id="ai-buy-live-mode" type="button">Buy Live Funding Mode (Pro)</button>
+          </div>
+        </section>
+
+        <section class="ai-trade-consensus">
           <h3>Test Area (Paper Trading)</h3>
           <form id="ai-test-area-form" class="ai-bot-form" novalidate>
             <div class="ai-bot-grid">
@@ -52,6 +60,17 @@
 
         <form id="ai-funding-form" class="pro-plan-box ai-bot-form" novalidate>
           <h3>Live Funding Mode</h3>
+          <label>
+            Live mode access
+            <select id="ai-funding-trading-mode">
+              <option value="live" selected>Live Funding Mode (requires purchase)</option>
+              <option value="paper">Keep Paper/Test Area mode</option>
+            </select>
+          </label>
+          <article id="ai-live-gate" class="pro-lock">
+            <p id="ai-live-gate-status">Live Funding Mode is locked until purchase is completed.</p>
+            <button id="ai-live-buy-access" type="button">Buy into Live Funding Mode ($15/mo Pro)</button>
+          </article>
           <div class="ai-bot-grid">
             <label>
               Live funding amount ($)

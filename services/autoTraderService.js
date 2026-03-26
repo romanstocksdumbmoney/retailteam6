@@ -561,8 +561,10 @@ function getLiveFundingProfile(user) {
   return {
     configured: state.configured,
     tradingMode: state.tradingMode,
+    fundingAccessPurchased: user?.plan === 'pro',
     cashUsd: state.cashUsd,
     totalDepositedUsd: state.totalDepositedUsd,
+    config: state.config,
     liveFunding: state.liveFunding || defaultState().liveFunding,
     updatedAt: state.updatedAt
   };
