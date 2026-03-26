@@ -15,6 +15,9 @@ const SECTOR_UNIVERSE = {
 };
 
 const ALLOWED_TIMEFRAMES = new Set(['intraday', 'swing', 'position']);
+const ALLOWED_TRADING_MODES = new Set(['paper', 'live']);
+const ALLOWED_BROKERS = new Set(['manual', 'robinhood', 'webull', 'interactive-brokers', 'tradestation']);
+const ALLOWED_EXECUTION_MODES = new Set(['manual_confirmed', 'broker_linked']);
 
 const traderStore = new Map();
 
@@ -58,6 +61,7 @@ function defaultConfig() {
     prompt: 'Momentum setups with disciplined risk.',
     chasePct: 0.8,
     riskPerTradePct: 1.5,
+    targetReturnPct: 12,
     allocationPerTradePct: 20,
     maxSectorExposurePct: 35,
     maxGrossExposurePct: 100,
@@ -73,8 +77,21 @@ function defaultState() {
   return {
     configured: false,
     isActive: false,
+    tradingMode: 'paper',
     cashUsd: 0,
     totalDepositedUsd: 0,
+    liveFunding: {
+      isFunded: false,
+      fundedUsd: 0,
+      lastFundingUsd: 0,
+      accountHolder: '',
+      broker: 'manual',
+      paymentRail: 'bank_transfer',
+      executionMode: 'manual_confirmed',
+      riskAcknowledged: false,
+      fundedAt: null,
+      status: 'not_funded'
+    },
     config: defaultConfig(),
     openPositions: [],
     lastCycle: null,
@@ -101,10 +118,16 @@ function sanitizeSectors(inputSectors) {
 function sanitizeConfig(input = {}) {
   const timeframeRaw = String(input.timeframe || 'intraday').trim().toLowerCase();
   const timeframe = ALLOWED_TIMEFRAMES.has(timeframeRaw) ? timeframeRaw : 'intraday';
+  const targetReturnRaw = Number(
+    Object.prototype.hasOwnProperty.call(input, 'targetReturnPct')
+      ? input.targetReturnPct
+      : input.desiredReturnPct
+  );
   return {
     prompt: String(input.prompt || '').trim().slice(0, 500) || defaultConfig().prompt,
     chasePct: roundUsd(clamp(Number(input.chasePct || 0.8), 0, 10)),
     riskPerTradePct: roundUsd(clamp(Number(input.riskPerTradePct || 1.5), 0.1, 10)),
+    targetReturnPct: roundUsd(clamp(Number.isFinite(targetReturnRaw) ? targetReturnRaw : 12, 1, 200)),
     allocationPerTradePct: roundUsd(clamp(Number(input.allocationPerTradePct || 20), 2, 80)),
     maxSectorExposurePct: roundUsd(clamp(Number(input.maxSectorExposurePct || 35), 10, 100)),
     maxGrossExposurePct: roundUsd(clamp(Number(input.maxGrossExposurePct || 100), 10, 200)),
@@ -114,6 +137,38 @@ function sanitizeConfig(input = {}) {
     timeframe,
     sectors: sanitizeSectors(input.sectors)
   };
+}
+
+function sanitizeTradingMode(rawMode) {
+  const mode = String(rawMode || 'paper').trim().toLowerCase();
+  if (ALLOWED_TRADING_MODES.has(mode)) {
+    return mode;
+  }
+  return 'paper';
+}
+
+function sanitizeBroker(rawBroker) {
+  const broker = String(rawBroker || 'manual').trim().toLowerCase();
+  if (ALLOWED_BROKERS.has(broker)) {
+    return broker;
+  }
+  return 'manual';
+}
+
+function parseBrokerOrThrow(rawBroker) {
+  const broker = String(rawBroker || 'manual').trim().toLowerCase();
+  if (!ALLOWED_BROKERS.has(broker)) {
+    throw new Error('invalid_broker');
+  }
+  return broker;
+}
+
+function parseExecutionMode(rawExecutionMode) {
+  const mode = String(rawExecutionMode || 'manual_confirmed').trim().toLowerCase();
+  if (ALLOWED_EXECUTION_MODES.has(mode)) {
+    return mode;
+  }
+  return 'manual_confirmed';
 }
 
 function getDirectionFromPrompt(prompt, seed) {
@@ -212,6 +267,9 @@ function runAutoTraderCycle(user) {
   }
   if (state.cashUsd <= 0) {
     throw new Error('insufficient_cash');
+  }
+  if (state.tradingMode === 'live' && !state.liveFunding?.isFunded) {
+    throw new Error('live_funding_required');
   }
 
   const seed = hashString(`${userId}:${minuteSeed()}:${state.config.prompt}`);
@@ -326,7 +384,9 @@ function runAutoTraderCycle(user) {
     endingCashUsd: state.cashUsd,
     closedPositions,
     plannedTrades: candidateTrades,
-    note: 'Paper-trading simulation only. Connect a real broker API before enabling live execution.'
+    note: state.tradingMode === 'live'
+      ? 'Live mode uses funded capital sizing, but broker execution still requires an explicit connected broker API.'
+      : 'Paper-trading simulation only. Connect a real broker API before enabling live execution.'
   };
   state.lastCycle = cycle;
   state.updatedAt = nowIso();
@@ -343,11 +403,52 @@ function configureAutoTrader(user, inputConfig = {}) {
     throw new Error('invalid_capital');
   }
   const state = getState(userId);
+  const tradingMode = sanitizeTradingMode(inputConfig.tradingMode);
   state.config = sanitizeConfig(inputConfig);
   state.configured = true;
   state.isActive = true;
-  state.cashUsd = roundUsd(capitalUsd);
-  state.totalDepositedUsd = roundUsd(capitalUsd);
+  state.tradingMode = tradingMode;
+
+  if (tradingMode === 'live') {
+    // Live mode funding is handled in a separate, explicit funding step.
+    if (!state.liveFunding?.isFunded) {
+      state.cashUsd = 0;
+      state.totalDepositedUsd = 0;
+    }
+  } else {
+    state.cashUsd = roundUsd(capitalUsd);
+    state.totalDepositedUsd = roundUsd(capitalUsd);
+  }
+  state.updatedAt = nowIso();
+  return state;
+}
+
+function setAutoTraderFundingMode(user, mode) {
+  const userId = user?.id;
+  if (!userId) {
+    throw new Error('missing_user');
+  }
+  const rawMode = String(mode || '').trim().toLowerCase();
+  if (!ALLOWED_TRADING_MODES.has(rawMode)) {
+    throw new Error('invalid_funding_mode');
+  }
+  const state = getState(userId);
+  state.tradingMode = rawMode;
+  if (rawMode === 'live' && !state.liveFunding?.isFunded) {
+    state.cashUsd = 0;
+    state.totalDepositedUsd = 0;
+  }
+  if (rawMode === 'paper' && state.cashUsd <= 0) {
+    const fallbackCash = roundUsd(
+      Number(state.totalDepositedUsd || 0) > 0
+        ? Number(state.totalDepositedUsd)
+        : 10_000
+    );
+    state.cashUsd = fallbackCash;
+    if (state.totalDepositedUsd <= 0) {
+      state.totalDepositedUsd = fallbackCash;
+    }
+  }
   state.updatedAt = nowIso();
   return state;
 }
@@ -366,20 +467,105 @@ function setBotActive(user, active) {
   return state;
 }
 
-function fundAutoTrader(user, amountUsd) {
+function fundAutoTrader(user, amountUsd, details = {}) {
   const userId = user?.id;
   if (!userId) {
     throw new Error('missing_user');
   }
   const amount = roundUsd(Number(amountUsd));
-  if (!Number.isFinite(amount) || amount <= 0) {
+  if (!Number.isFinite(amount) || amount < 10 || amount > 1_000_000) {
     throw new Error('invalid_funding_amount');
   }
   const state = getState(userId);
+  if (!state.configured) {
+    throw new Error('bot_not_configured');
+  }
+  const accountHolder = String(details.accountHolder || '').trim().slice(0, 80);
+  const broker = sanitizeBroker(details.broker);
+  const paymentRail = String(details.paymentRail || 'bank_transfer').trim().toLowerCase() || 'bank_transfer';
+  const executionMode = parseExecutionMode(details.executionMode);
+  const riskAcknowledged = Boolean(details.riskAcknowledged);
+  const targetReturnRaw = Number(details.targetReturnPct);
+  const riskPerTradeRaw = Number(details.riskPerTradePct);
+  const targetReturnPct = roundUsd(clamp(Number.isFinite(targetReturnRaw) ? targetReturnRaw : state.config.targetReturnPct, 1, 200));
+  const riskPerTradePct = roundUsd(clamp(Number.isFinite(riskPerTradeRaw) ? riskPerTradeRaw : state.config.riskPerTradePct, 0.1, 25));
+
+  state.tradingMode = 'live';
   state.cashUsd = roundUsd(state.cashUsd + amount);
   state.totalDepositedUsd = roundUsd(state.totalDepositedUsd + amount);
+  state.config.targetReturnPct = targetReturnPct;
+  state.config.riskPerTradePct = riskPerTradePct;
+  state.liveFunding = {
+    isFunded: true,
+    fundedUsd: roundUsd((state.liveFunding?.fundedUsd || 0) + amount),
+    lastFundingUsd: amount,
+    accountHolder,
+    broker,
+    paymentRail,
+    executionMode,
+    riskAcknowledged,
+    targetReturnPct,
+    riskPerTradePct,
+    fundedAt: nowIso(),
+    status: 'funded'
+  };
   state.updatedAt = nowIso();
   return state;
+}
+
+function saveAutoTraderLiveTradingProfile(user, details = {}) {
+  const userId = user?.id;
+  if (!userId) {
+    throw new Error('missing_user');
+  }
+  const state = getState(userId);
+  const broker = parseBrokerOrThrow(details.broker);
+  const accountLabel = String(details.accountLabel || details.accountHolder || '').trim();
+  if (!accountLabel || accountLabel.length > 80) {
+    throw new Error('invalid_account_label');
+  }
+  const riskAcknowledged = Boolean(details.riskAcknowledgement || details.riskAcknowledged);
+  if (!riskAcknowledged) {
+    throw new Error('invalid_risk_acknowledgement');
+  }
+  const paymentRail = String(details.paymentRail || 'bank_transfer').trim().toLowerCase() || 'bank_transfer';
+  const executionMode = parseExecutionMode(details.executionMode);
+  const targetReturnRaw = Number(details.targetReturnPct);
+  const riskPerTradeRaw = Number(details.riskPerTradePct);
+  const targetReturnPct = roundUsd(clamp(Number.isFinite(targetReturnRaw) ? targetReturnRaw : state.config.targetReturnPct, 1, 200));
+  const riskPerTradePct = roundUsd(clamp(Number.isFinite(riskPerTradeRaw) ? riskPerTradeRaw : state.config.riskPerTradePct, 0.1, 25));
+
+  state.config.targetReturnPct = targetReturnPct;
+  state.config.riskPerTradePct = riskPerTradePct;
+  state.liveFunding = {
+    ...(state.liveFunding || defaultState().liveFunding),
+    accountHolder: accountLabel,
+    broker,
+    paymentRail,
+    executionMode,
+    riskAcknowledged,
+    targetReturnPct,
+    riskPerTradePct,
+    status: state.liveFunding?.isFunded ? 'funded' : 'profile_saved'
+  };
+  state.updatedAt = nowIso();
+  return state;
+}
+
+function getLiveFundingProfile(user) {
+  const userId = user?.id;
+  if (!userId) {
+    throw new Error('missing_user');
+  }
+  const state = getState(userId);
+  return {
+    configured: state.configured,
+    tradingMode: state.tradingMode,
+    cashUsd: state.cashUsd,
+    totalDepositedUsd: state.totalDepositedUsd,
+    liveFunding: state.liveFunding || defaultState().liveFunding,
+    updatedAt: state.updatedAt
+  };
 }
 
 function getAutoTraderStatus(user) {
@@ -391,8 +577,10 @@ function getAutoTraderStatus(user) {
   return {
     configured: state.configured,
     isActive: state.isActive,
+    tradingMode: state.tradingMode || 'paper',
     cashUsd: state.cashUsd,
     totalDepositedUsd: state.totalDepositedUsd,
+    liveFunding: state.liveFunding || defaultState().liveFunding,
     config: state.config,
     openPositions: state.openPositions,
     lastCycle: state.lastCycle,
@@ -402,9 +590,11 @@ function getAutoTraderStatus(user) {
       tickers: SECTOR_UNIVERSE[sector]
     })),
     safety: {
-      mode: 'paper_trading',
+      mode: state.tradingMode === 'live' ? 'live_funding_mode' : 'paper_trading',
       liveBrokerConnected: false,
-      disclaimer: 'This bot is simulation-only and does not place real brokerage orders.'
+      disclaimer: state.tradingMode === 'live'
+        ? 'Live funding is enabled, but direct broker placement still requires broker API integration.'
+        : 'This bot is simulation-only and does not place real brokerage orders.'
     }
   };
 }
@@ -416,7 +606,10 @@ function listAutoTraderSectors() {
 module.exports = {
   configureAutoTrader,
   setBotActive,
+  setAutoTraderFundingMode,
   fundAutoTrader,
+  getLiveFundingProfile,
+  saveAutoTraderLiveTradingProfile,
   runAutoTraderCycle,
   getAutoTraderStatus,
   listAutoTraderSectors

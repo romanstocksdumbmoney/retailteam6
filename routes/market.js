@@ -17,9 +17,13 @@ const {
 const {
   configureAutoTrader,
   getAutoTraderStatus,
+  getLiveFundingProfile,
+  saveAutoTraderLiveTradingProfile,
   runAutoTraderCycle,
   listAutoTraderSectors,
-  setBotActive
+  setBotActive,
+  setAutoTraderFundingMode,
+  fundAutoTrader
 } = require('../services/autoTraderService');
 const { parseAuthToken } = require('../services/authService');
 const { getUserById } = require('../services/userStore');
@@ -472,6 +476,12 @@ router.post('/auto-trader/run', requireSignedIn, (req, res) => {
         message: 'No available cash. Update capital and save configuration.'
       });
     }
+    if (code === 'live_funding_required') {
+      return res.status(400).json({
+        error: 'live_funding_required',
+        message: 'Live mode requires funding first. Open the funding page to add live capital.'
+      });
+    }
     return res.status(400).json({
       error: 'invalid_request',
       message: 'Could not run AI Auto Trader cycle.'
@@ -511,6 +521,89 @@ router.post('/auto-trader/bot/resume', requireSignedIn, (req, res) => {
     return res.status(400).json({
       error: 'invalid_request',
       message: 'Could not resume AI Auto Trader.'
+    });
+  }
+});
+
+router.post('/auto-trader/funding-mode', requireSignedIn, (req, res) => {
+  try {
+    const mode = String(req.body?.mode || '');
+    const payload = setAutoTraderFundingMode(req.user, mode);
+    return res.json(payload);
+  } catch (error) {
+    const code = String(error.message || '');
+    if (code === 'invalid_funding_mode') {
+      return res.status(400).json({
+        error: 'invalid_funding_mode',
+        message: 'Funding mode must be either "paper" or "live".'
+      });
+    }
+    return res.status(400).json({
+      error: 'invalid_request',
+      message: 'Could not update funding mode.'
+    });
+  }
+});
+
+router.post('/auto-trader/fund', requireSignedIn, (req, res) => {
+  try {
+    const amountUsd = Number(req.body?.amountUsd || 0);
+    const details = {
+      accountHolder: req.body?.accountHolder,
+      broker: req.body?.broker,
+      paymentRail: req.body?.paymentRail,
+      targetReturnPct: req.body?.targetReturnPct,
+      riskPerTradePct: req.body?.riskPerTradePct
+    };
+    const payload = fundAutoTrader(req.user, amountUsd, details);
+    return res.json(payload);
+  } catch (error) {
+    const code = String(error.message || '');
+    if (code === 'invalid_funding_amount') {
+      return res.status(400).json({
+        error: 'invalid_funding_amount',
+        message: 'Funding amount must be a positive dollar value.'
+      });
+    }
+    return res.status(400).json({
+      error: 'invalid_request',
+      message: 'Could not fund AI Auto Trader.'
+    });
+  }
+});
+
+router.get('/auto-trader/funding-profile', requireSignedIn, (req, res) => {
+  const payload = getLiveFundingProfile(req.user);
+  return res.json(payload);
+});
+
+router.post('/auto-trader/live-profile', requireSignedIn, (req, res) => {
+  try {
+    const payload = saveAutoTraderLiveTradingProfile(req.user, req.body || {});
+    return res.json(payload);
+  } catch (error) {
+    const code = String(error.message || '');
+    if (code === 'invalid_broker') {
+      return res.status(400).json({
+        error: 'invalid_broker',
+        message: 'Broker name is invalid.'
+      });
+    }
+    if (code === 'invalid_account_label') {
+      return res.status(400).json({
+        error: 'invalid_account_label',
+        message: 'Account label is invalid.'
+      });
+    }
+    if (code === 'invalid_risk_acknowledgement') {
+      return res.status(400).json({
+        error: 'invalid_risk_acknowledgement',
+        message: 'You must acknowledge live-trading risk to continue.'
+      });
+    }
+    return res.status(400).json({
+      error: 'invalid_request',
+      message: 'Could not save live trading profile.'
     });
   }
 });

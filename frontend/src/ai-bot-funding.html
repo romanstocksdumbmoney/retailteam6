@@ -1,0 +1,107 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>DumbDollars AI Trader Funding + Test Area</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body class="payment-page-body">
+    <main class="ai-trade-page-shell">
+      <article class="ai-trade-page-card card" role="main" aria-labelledby="ai-funding-title">
+        <a class="open-link" href="/ai-bot-trader.html">Back to AI Bot Trader</a>
+        <div class="pro-plan-logo-wrap" aria-hidden="true">
+          <img class="pro-plan-logo-image" src="./logo-mark.svg" alt="" />
+        </div>
+        <h1 id="ai-funding-title">AI Trader Funding + Test Area</h1>
+        <p class="pro-plan-subtitle">Use Test Area (paper trading) to simulate returns and risk, or switch to live funding mode to size with real capital.</p>
+
+        <section class="ai-trade-consensus">
+          <h3>Test Area (Paper Trading)</h3>
+          <form id="ai-test-area-form" class="ai-bot-form" novalidate>
+            <div class="ai-bot-grid">
+              <label>
+                Test balance ($)
+                <input id="ai-test-balance" type="number" min="100" step="100" value="10000" required />
+              </label>
+              <label>
+                Target return (%)
+                <input id="ai-test-target-return" type="number" min="1" max="200" step="0.5" value="12" required />
+              </label>
+              <label>
+                Risk per trade (%)
+                <input id="ai-test-risk" type="number" min="0.2" max="25" step="0.1" value="1.5" required />
+              </label>
+              <label>
+                Stop loss (%)
+                <input id="ai-test-stop-loss" type="number" min="0.2" max="25" step="0.1" value="2.5" required />
+              </label>
+              <label>
+                Take profit (%)
+                <input id="ai-test-take-profit" type="number" min="0.5" max="50" step="0.1" value="6" required />
+              </label>
+              <label>
+                Allocation per trade (%)
+                <input id="ai-test-allocation" type="number" min="2" max="80" step="1" value="20" required />
+              </label>
+            </div>
+            <button id="ai-test-save" type="submit">Save Test Area Settings</button>
+          </form>
+          <p id="ai-test-status" class="small-note"></p>
+        </section>
+
+        <form id="ai-funding-form" class="pro-plan-box ai-bot-form" novalidate>
+          <h3>Live Funding Mode</h3>
+          <div class="ai-bot-grid">
+            <label>
+              Live funding amount ($)
+              <input id="ai-funding-amount" type="number" min="25" step="25" value="1000" required />
+            </label>
+            <label>
+              Broker
+              <select id="ai-funding-broker">
+                <option value="manual" selected>Manual / No direct broker API</option>
+                <option value="robinhood">Robinhood</option>
+                <option value="webull">Webull</option>
+                <option value="interactive-brokers">Interactive Brokers</option>
+                <option value="tradestation">TradeStation</option>
+              </select>
+            </label>
+          </div>
+          <label>
+            Account reference (optional)
+            <input id="ai-funding-account-ref" type="text" maxlength="80" placeholder="Last4 / nickname / account alias" />
+          </label>
+          <label>
+            Live execution mode
+            <select id="ai-funding-mode">
+              <option value="manual_confirmed" selected>Manual Confirmed (safer)</option>
+              <option value="broker_linked">Broker Linked (ready for API)</option>
+            </select>
+          </label>
+          <div class="ai-bot-grid">
+            <label>
+              Target return (%)
+              <input id="ai-funding-target-return-pct" type="number" min="1" max="200" step="0.5" value="12" required />
+            </label>
+            <label>
+              Risk per trade (%)
+              <input id="ai-funding-risk-pct" type="number" min="0.2" max="25" step="0.1" value="1.5" required />
+            </label>
+          </div>
+          <button id="ai-funding-submit" type="submit">Save Funding & Enable Live Mode</button>
+        </form>
+
+        <p id="ai-funding-status" class="small-note"></p>
+
+        <section class="ai-trade-consensus">
+          <h3>Current Funding Profile</h3>
+          <div id="ai-funding-summary"></div>
+        </section>
+
+        <p class="small-note">Security note: this demo stores funding preferences only and does not store card or bank credentials in-app.</p>
+      </article>
+    </main>
+    <script src="./ai-bot-funding.js"></script>
+  </body>
+</html>

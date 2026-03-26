@@ -57,6 +57,14 @@ function getNumberInputValue(id, fallback = 0) {
   return Number.isFinite(value) ? value : fallback;
 }
 
+function getSelectedTradingMode() {
+  const selected = document.getElementById('ai-bot-trading-mode');
+  if (!(selected instanceof HTMLSelectElement)) {
+    return 'paper';
+  }
+  return String(selected.value || 'paper').trim().toLowerCase() === 'live' ? 'live' : 'paper';
+}
+
 function renderBotSummary(payload) {
   const target = document.getElementById('ai-bot-summary');
   if (!target) {
@@ -69,6 +77,7 @@ function renderBotSummary(payload) {
   target.innerHTML = `
     <article class="bot-position-card">
       <h4>Status: ${(payload.status || 'paused').toUpperCase()}</h4>
+      <p><strong>Mode:</strong> ${String(payload.tradingMode || 'paper').toUpperCase()}</p>
       <p><strong>Cash:</strong> ${fmtUsd(payload.cashUsd)}</p>
       <p><strong>Total Deposited:</strong> ${fmtUsd(payload.totalDepositedUsd)}</p>
       <p><strong>Updated:</strong> ${payload.updatedAt || 'N/A'}</p>
@@ -89,6 +98,7 @@ function renderPlan(payload) {
   target.innerHTML = `
     <article class="bot-position-card">
       <p><strong>Prompt:</strong> ${cfg.prompt || ''}</p>
+      <p><strong>Target Return %:</strong> ${cfg.targetReturnPct || 0}%</p>
       <p><strong>Chase %:</strong> ${cfg.chasePct || 0}%</p>
       <p><strong>Risk/trade %:</strong> ${cfg.riskPerTradePct || 0}%</p>
       <p><strong>Allocation/trade %:</strong> ${cfg.allocationPerTradePct || 0}%</p>
@@ -179,9 +189,13 @@ async function saveBotConfig() {
   const timeframeNode = document.getElementById('ai-bot-timeframe');
   const prompt = promptNode instanceof HTMLTextAreaElement ? promptNode.value.trim() : '';
   const timeframe = timeframeNode instanceof HTMLSelectElement ? timeframeNode.value : 'intraday';
+  const selectedMode = getSelectedTradingMode();
+  const targetReturnPct = getNumberInputValue('ai-bot-target-return-pct', 8);
+  const testAreaCapitalUsd = getNumberInputValue('ai-bot-test-capital', 10000);
+  const testAreaRiskPct = getNumberInputValue('ai-bot-test-risk-pct', getNumberInputValue('ai-bot-risk-pct', 1.5));
   const payload = {
     prompt,
-    capitalUsd: getNumberInputValue('ai-bot-capital', 10000),
+    capitalUsd: testAreaCapitalUsd,
     riskPct: getNumberInputValue('ai-bot-risk-pct', 1.5),
     chasePct: 0.8,
     allocationPerTradePct: Math.max(4, Math.min(60, Math.round(100 / Math.max(1, getNumberInputValue('ai-bot-target-holdings', 6))))),
@@ -189,7 +203,11 @@ async function saveBotConfig() {
     maxPositions: getNumberInputValue('ai-bot-target-holdings', 6),
     stopLossPct: Math.max(0.5, getNumberInputValue('ai-bot-risk-pct', 1.5) * 1.5),
     takeProfitPct: Math.max(1.2, getNumberInputValue('ai-bot-risk-pct', 1.5) * 3),
+    targetReturnPct,
+    testAreaCapitalUsd,
+    testAreaRiskPct,
     maxGrossExposurePct: getNumberInputValue('ai-bot-max-gross-exposure-pct', 100),
+    tradingMode: selectedMode,
     timeframe,
     sectors: collectSelectedSectors()
   };
@@ -202,6 +220,7 @@ async function saveBotConfig() {
     body: JSON.stringify(payload)
   });
   renderState(saved);
+  return saved;
 }
 
 async function runCycle() {
@@ -235,6 +254,13 @@ function setupForm() {
   const refreshButton = document.getElementById('ai-bot-refresh');
   const pauseButton = document.getElementById('ai-bot-pause');
   const resumeButton = document.getElementById('ai-bot-resume');
+  const fundingButton = document.getElementById('open-ai-bot-funding');
+
+  if (fundingButton) {
+    fundingButton.addEventListener('click', () => {
+      window.location.href = '/ai-bot-funding.html';
+    });
+  }
 
   if (form) {
     form.addEventListener('submit', async (event) => {
@@ -245,8 +271,14 @@ function setupForm() {
           saveButton.disabled = true;
         }
         setStatus('Saving bot configuration...');
-        await saveBotConfig();
-        setStatus('Bot configuration saved.');
+        const saved = await saveBotConfig();
+        const mode = String(saved?.tradingMode || getSelectedTradingMode() || 'paper').toLowerCase();
+        if (mode === 'live') {
+          setStatus('Configuration saved. Redirecting to live funding setup...');
+        } else {
+          setStatus('Configuration saved. Redirecting to Test Area...');
+        }
+        window.location.href = '/ai-bot-funding.html';
       } catch (error) {
         setStatus(error.message || 'Could not save bot configuration.', true);
       } finally {
