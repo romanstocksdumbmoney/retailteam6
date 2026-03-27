@@ -577,6 +577,8 @@ router.post('/auto-trader/fund', requireSignedIn, requireLiveFundingAccess, (req
       accountHolder: req.body?.accountHolder,
       broker: req.body?.broker,
       paymentRail: req.body?.paymentRail,
+      executionMode: req.body?.executionMode,
+      riskAcknowledged: req.body?.riskAcknowledged,
       targetReturnPct: req.body?.targetReturnPct,
       riskPerTradePct: req.body?.riskPerTradePct
     };

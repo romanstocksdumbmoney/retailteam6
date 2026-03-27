@@ -297,11 +297,11 @@ function runAutoTraderCycle(user) {
   if (!state.isActive) {
     throw new Error('bot_paused');
   }
-  if (state.cashUsd <= 0) {
-    throw new Error('insufficient_cash');
-  }
   if (state.tradingMode === 'live' && !state.liveFunding?.isFunded) {
     throw new Error('live_funding_required');
+  }
+  if (state.cashUsd <= 0) {
+    throw new Error('insufficient_cash');
   }
 
   const seed = hashString(`${userId}:${minuteSeed()}:${state.config.prompt}`);
