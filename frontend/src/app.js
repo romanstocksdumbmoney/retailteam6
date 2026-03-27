@@ -587,6 +587,45 @@ function renderHighIvLocked(message) {
   target.innerHTML = `<div class="pro-lock">${message}</div>`;
 }
 
+function renderPremiumSpikes(payload) {
+  const target = document.getElementById('premium-spikes-results');
+  if (!target) {
+    return;
+  }
+  target.innerHTML = '';
+  const rows = Array.isArray(payload?.items) ? payload.items : [];
+  rows.forEach((item) => {
+    const isCall = String(item.premiumType || '').toLowerCase() === 'call';
+    const card = document.createElement('article');
+    card.className = `premium-spike-card premium-spike-card--${isCall ? 'call' : 'put'}`;
+    const reaction = item.reaction || {};
+    const reactionMove = Number(reaction.movePct || 0);
+    const reactionSign = reactionMove > 0 ? '+' : '';
+    const happenedAt = item.happenedAt || payload.generatedAt || 'N/A';
+    card.innerHTML = `
+      <h4>${item.symbol} • ${isCall ? 'CALL' : 'PUT'} spike</h4>
+      <p><strong>Spike:</strong> ${fmtUsd(item.spikeAmountUsd)} (${Number(item.spikeMultiple || 0).toFixed(2)}x baseline)</p>
+      <p><strong>When:</strong> ${happenedAt}</p>
+      <p><strong>Expected:</strong> ${String(item.expectedDirection || '').toUpperCase()} • <strong>Reacted:</strong> ${reaction.label || 'N/A'}</p>
+      <p><strong>Move after spike:</strong> ${reactionSign}${reactionMove.toFixed(2)}%</p>
+      <p class="small-note">Call prem ${fmtUsd(item.callPremiumUsd)} • Put prem ${fmtUsd(item.putPremiumUsd)} • PCR ${Number(item.putCallRatio || 0).toFixed(2)}</p>
+    `;
+    target.appendChild(card);
+  });
+
+  if (!rows.length) {
+    target.innerHTML = '<div class="pro-lock">No premium spikes detected right now.</div>';
+  }
+}
+
+function renderPremiumSpikesLocked(message) {
+  const target = document.getElementById('premium-spikes-results');
+  if (!target) {
+    return;
+  }
+  target.innerHTML = `<div class="pro-lock">${message}</div>`;
+}
+
 function renderEarningsBoard(payload) {
   const target = document.getElementById('earnings-board');
   target.innerHTML = '';
@@ -1012,6 +1051,22 @@ async function loadHighIvTracker() {
   }
 }
 
+async function loadPremiumSpikes() {
+  try {
+    const payload = await fetchJson('/api/market/premium-spikes?limit=10', {
+      headers: headersWithPlan()
+    });
+    renderPremiumSpikes(payload);
+  } catch (error) {
+    if (error.status === 403) {
+      renderPremiumSpikesLocked('Call / Put Premium Spikes is Pro-only. Upgrade to unlock this module.');
+      openProPopup('Pro access needed for Call / Put Premium Spikes.');
+      return;
+    }
+    throw error;
+  }
+}
+
 async function calculateOptions(formValues) {
   const query = new URLSearchParams({
     ticker: formValues.symbol,
@@ -1046,7 +1101,8 @@ async function refreshBaseline() {
     loadTrendTrades(),
     loadRealizedPatterns(),
     loadWildTakes(),
-    loadHighIvTracker()
+    loadHighIvTracker(),
+    loadPremiumSpikes()
   ]);
 }
 
@@ -1388,6 +1444,7 @@ function setupAiSidebar() {
   }
 
   const highIvButton = document.getElementById('high-iv-refresh');
+  const premiumSpikesButton = document.getElementById('premium-spikes-refresh');
   const aiTradeButton = document.getElementById('open-ai-trade');
   const autoTraderButton = document.getElementById('open-ai-auto-trader');
   const aiAnalyzerButton = document.getElementById('open-ai-analyzer');
@@ -1399,6 +1456,19 @@ function setupAiSidebar() {
         renderHighIvLocked(error.message || 'Could not load High IV Tracker.');
         if (error.status === 403) {
           openProPopup('Pro access needed for High IV Tracker.');
+        }
+      }
+    });
+  }
+
+  if (premiumSpikesButton) {
+    premiumSpikesButton.addEventListener('click', async () => {
+      try {
+        await loadPremiumSpikes();
+      } catch (error) {
+        renderPremiumSpikesLocked(error.message || 'Could not load Call / Put Premium Spikes.');
+        if (error.status === 403) {
+          openProPopup('Pro access needed for Call / Put Premium Spikes.');
         }
       }
     });

@@ -1034,6 +1034,33 @@ label {
   font-size: 0.86rem;
 }
 
+.premium-spike-card {
+  border-radius: 10px;
+  border: 1px solid rgba(250, 204, 21, 0.34);
+  background: rgba(2, 6, 23, 0.82);
+  padding: 0.68rem;
+}
+
+.premium-spike-card--call {
+  border-color: rgba(16, 185, 129, 0.55);
+  background: rgba(16, 185, 129, 0.12);
+}
+
+.premium-spike-card--put {
+  border-color: rgba(239, 68, 68, 0.55);
+  background: rgba(239, 68, 68, 0.12);
+}
+
+.premium-spike-card h4 {
+  margin: 0;
+  color: #fde68a;
+}
+
+.premium-spike-card p {
+  margin: 0.22rem 0;
+  font-size: 0.86rem;
+}
+
 .pattern-card {
   border-radius: 10px;
   border: 1px solid rgba(250, 204, 21, 0.3);

@@ -182,6 +182,23 @@ const HIGH_IV_CATALYSTS = [
   'Elevated retail options participation'
 ];
 
+const PREMIUM_SPIKE_LARGE_CAPS = [
+  'AAPL',
+  'MSFT',
+  'NVDA',
+  'AMZN',
+  'GOOGL',
+  'META',
+  'TSLA',
+  'AMD',
+  'AVGO',
+  'NFLX',
+  'JPM',
+  'BAC',
+  'SPY',
+  'QQQ'
+];
+
 const REALIZED_PATTERN_LIBRARY = [
   { key: 'vol-fade', name: 'Volume Fade Continuation', type: 'volume_down', edge: 'Low-participation drift tends to continue intraday.' },
   { key: 'vol-compress', name: 'Volume Compression Breakout', type: 'volume_down', edge: 'Compression often resolves with directional expansion.' },
@@ -1288,6 +1305,83 @@ function getHighIvTracker(limit = 8) {
   };
 }
 
+function getPremiumSpikes(limit = 10) {
+  const seed = hashString(`premium-spikes:${minuteBucketSeed()}`);
+  const total = Math.max(1, Math.min(30, Math.trunc(limit)));
+  const used = new Set();
+  const items = [];
+
+  for (let i = 0; i < total * 6 && items.length < total; i += 1) {
+    const symbol = PREMIUM_SPIKE_LARGE_CAPS[Math.floor(pseudoRandom(seed + i * 5) * PREMIUM_SPIKE_LARGE_CAPS.length)];
+    if (used.has(symbol)) {
+      continue;
+    }
+    used.add(symbol);
+
+    const isCallSpike = pseudoRandom(seed + i * 7 + 1) > 0.45;
+    const side = isCallSpike ? 'call' : 'put';
+    const oppositeSide = isCallSpike ? 'put' : 'call';
+
+    const baselinePremiumUsd = Math.round((12 + pseudoRandom(seed + i * 11 + 2) * 95) * 1_000_000);
+    const spikeMultiple = Number((2 + pseudoRandom(seed + i * 13 + 3) * 5.5).toFixed(2));
+    const spikeAmountUsd = Math.round(baselinePremiumUsd * spikeMultiple);
+    const oppositePremiumUsd = Math.round((8 + pseudoRandom(seed + i * 17 + 4) * 55) * 1_000_000);
+    const totalPremiumUsd = spikeAmountUsd + oppositePremiumUsd;
+    const putCallRatio = isCallSpike
+      ? Number((oppositePremiumUsd / Math.max(spikeAmountUsd, 1)).toFixed(2))
+      : Number((spikeAmountUsd / Math.max(oppositePremiumUsd, 1)).toFixed(2));
+
+    const minutesAgo = 3 + Math.floor(pseudoRandom(seed + i * 19 + 5) * 120);
+    const happenedAt = new Date(Date.now() - minutesAgo * 60 * 1000).toISOString();
+    const reactionPctRaw = (pseudoRandom(seed + i * 23 + 6) - 0.5) * 4.8;
+    const reactionPct = Number(reactionPctRaw.toFixed(2));
+
+    const hasReacted = Math.abs(reactionPct) >= 0.45;
+    const expectedDirection = isCallSpike ? 'up' : 'down';
+    const reactedDirection = reactionPct > 0 ? 'up' : reactionPct < 0 ? 'down' : 'flat';
+    const reactionMatched = hasReacted && reactedDirection === expectedDirection;
+
+    const reactionStatus = hasReacted
+      ? (reactionMatched ? 'reacted_as_expected' : 'reacted_opposite')
+      : 'no_clear_reaction_yet';
+    const reactionLabel = reactionStatus === 'reacted_as_expected'
+      ? 'Reacted (as expected)'
+      : reactionStatus === 'reacted_opposite'
+        ? 'Reacted (opposite)'
+        : 'No clear reaction yet';
+
+    items.push({
+      symbol,
+      premiumType: side,
+      spikeAmountUsd,
+      baselinePremiumUsd,
+      spikeMultiple,
+      callPremiumUsd: isCallSpike ? spikeAmountUsd : oppositePremiumUsd,
+      putPremiumUsd: isCallSpike ? oppositePremiumUsd : spikeAmountUsd,
+      totalPremiumUsd,
+      putCallRatio,
+      happenedAt,
+      expectedDirection,
+      reaction: {
+        hasReacted,
+        matchedExpectedDirection: reactionMatched,
+        status: reactionStatus,
+        label: reactionLabel,
+        movePct: reactionPct
+      }
+    });
+  }
+
+  items.sort((a, b) => b.spikeAmountUsd - a.spikeAmountUsd);
+
+  return {
+    generatedAt: new Date().toISOString(),
+    universe: 'high_volume_large_caps',
+    source: 'Unusual Whales style premium monitor (simulated feed)',
+    items
+  };
+}
+
 function getRealizedPatterns(limit = 8, patternType = 'all') {
   const seed = hashString(`realized-patterns:${minuteBucketSeed()}`);
   const normalizedType = String(patternType || 'all').trim().toLowerCase();
@@ -1809,6 +1903,7 @@ module.exports = {
   getAiDiscovery,
   getTrendTrades,
   getHighIvTracker,
+  getPremiumSpikes,
   getRealizedPatterns,
   getWildTakes,
   analyzeAiTradePattern,

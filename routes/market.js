@@ -9,6 +9,7 @@ const {
   getAiDiscovery,
   getTrendTrades,
   getHighIvTracker,
+  getPremiumSpikes,
   getRealizedPatterns,
   getWildTakes,
   analyzeAiTradePattern,
@@ -353,6 +354,12 @@ router.get('/high-iv', requirePro, (req, res) => {
   const limit = Number(req.query.limit || 8);
   const boundedLimit = Number.isFinite(limit) ? Math.max(1, Math.min(20, Math.trunc(limit))) : 8;
   return res.json(getHighIvTracker(boundedLimit));
+});
+
+router.get('/premium-spikes', requirePro, (req, res) => {
+  const limit = Number(req.query.limit || 10);
+  const boundedLimit = Number.isFinite(limit) ? Math.max(1, Math.min(30, Math.trunc(limit))) : 10;
+  return res.json(getPremiumSpikes(boundedLimit));
 });
 
 router.get('/realized-patterns', (req, res) => {
