@@ -675,6 +675,11 @@ function renderEarningsBoard(payload) {
       : verificationState === 'partial'
         ? 'partially verified'
         : 'estimated';
+    const verificationClass = verificationState === 'verified'
+      ? 'high'
+      : verificationState === 'partial'
+        ? 'medium'
+        : 'low';
     const card = document.createElement('article');
     card.className = `earnings-card earnings-card--${directionClass} earnings-card--strength-${spread >= 14 ? 'high' : spread >= 7 ? 'mid' : 'low'}`;
     card.setAttribute('role', 'button');
@@ -695,7 +700,7 @@ function renderEarningsBoard(payload) {
         <span class="earnings-down-pct">${fmtPct(down)} down</span>
       </p>
       <p class="small-note">Volume: ${Number(item.volume || 0).toLocaleString()} <span class="earnings-volume-source">(${volumeSourceLabel})</span></p>
-      <p class="small-note">Status: <span class="earnings-verify-badge earnings-verify-badge--${verificationState}">${verificationLabel}</span></p>
+      <p class="small-note">Status: <span class="earnings-verification-chip earnings-verification-chip--${verificationClass}">${verificationLabel}</span></p>
       <p class="small-note">${directionClass.toUpperCase()} bias</p>
     `;
     target.appendChild(card);
