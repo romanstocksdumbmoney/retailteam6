@@ -272,6 +272,33 @@ function openAutoTraderPage() {
   window.location.href = '/ai-bot-trader.html';
 }
 
+async function focusPremiumSpikesSection(options = {}) {
+  const sectionHeader = document.getElementById('premium-spikes-section');
+  const shouldLoad = options.load !== false;
+  openSidebarMenu();
+  if (sectionHeader) {
+    sectionHeader.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    sectionHeader.classList.remove('module-highlight');
+    // Force restart of highlight animation when opened repeatedly.
+    void sectionHeader.offsetWidth;
+    sectionHeader.classList.add('module-highlight');
+    window.setTimeout(() => {
+      sectionHeader.classList.remove('module-highlight');
+    }, 1500);
+  }
+  if (!shouldLoad) {
+    return;
+  }
+  try {
+    await loadPremiumSpikes();
+  } catch (error) {
+    renderPremiumSpikesLocked(error.message || 'Could not load Call / Put Premium Spikes.');
+    if (error.status === 403) {
+      openProPopup('Pro access needed for Call / Put Premium Spikes.');
+    }
+  }
+}
+
 function closeSidebarMenu() {
   const sidebar = document.getElementById('sidebar-panel');
   const backdrop = document.getElementById('sidebar-backdrop');
@@ -1357,6 +1384,7 @@ function setupAiSidebar() {
   const patternTypeSelect = document.getElementById('pattern-type-select');
   const wildTakesButton = document.getElementById('wild-takes-refresh');
   const searchAllButton = document.getElementById('ai-search-all');
+  const jumpPremiumSpikesButton = document.getElementById('jump-premium-spikes');
 
   if (!form || !trendForm || !patternForm || !select || !trendSourceSelect || !patternTypeSelect || !wildTakesButton) {
     return;
@@ -1463,14 +1491,13 @@ function setupAiSidebar() {
 
   if (premiumSpikesButton) {
     premiumSpikesButton.addEventListener('click', async () => {
-      try {
-        await loadPremiumSpikes();
-      } catch (error) {
-        renderPremiumSpikesLocked(error.message || 'Could not load Call / Put Premium Spikes.');
-        if (error.status === 403) {
-          openProPopup('Pro access needed for Call / Put Premium Spikes.');
-        }
-      }
+      await focusPremiumSpikesSection();
+    });
+  }
+
+  if (jumpPremiumSpikesButton) {
+    jumpPremiumSpikesButton.addEventListener('click', async () => {
+      await focusPremiumSpikesSection();
     });
   }
 
@@ -1491,6 +1518,21 @@ function setupAiSidebar() {
       window.location.href = '/ai-analyzer.html';
     });
   }
+}
+
+function setupModuleDeepLinks() {
+  const params = new URLSearchParams(window.location.search);
+  const moduleParam = String(params.get('module') || '').trim().toLowerCase();
+  const hash = String(window.location.hash || '').replace(/^#/, '').trim().toLowerCase();
+  const wantsPremiumSpikes = moduleParam === 'premium-spikes' || hash === 'premium-spikes';
+  if (!wantsPremiumSpikes) {
+    return;
+  }
+  window.setTimeout(() => {
+    focusPremiumSpikesSection().catch((error) => {
+      console.error(error);
+    });
+  }, 180);
 }
 
 function setupSidebarMenu() {
@@ -1662,6 +1704,7 @@ async function init() {
   setupProPopup();
   setupSidebarMenu();
   setupAiSidebar();
+  setupModuleDeepLinks();
   setupStockForm();
   setupScanForm();
   setupOptionsForm();

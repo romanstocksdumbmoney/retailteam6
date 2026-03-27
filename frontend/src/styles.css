@@ -631,6 +631,13 @@ h1 {
   color: #fef9c3;
 }
 
+.quick-module-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.55rem;
+  margin-top: 0.55rem;
+}
+
 .plan-badge {
   display: inline-flex;
   align-items: center;
