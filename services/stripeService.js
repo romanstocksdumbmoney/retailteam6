@@ -48,34 +48,6 @@ function getProPriceId() {
   return priceId;
 }
 
-function getHostedCheckoutFallbackUrl() {
-  const fallbackUrl = String(
-    process.env.PAYMENT_CHECKOUT_FALLBACK_URL
-      || process.env.CHECKOUT_FALLBACK_URL
-      || ''
-  ).trim();
-
-  if (!fallbackUrl || isPlaceholderValue(fallbackUrl)) {
-    return '/hosted-checkout.html';
-  }
-
-  if (fallbackUrl.startsWith('/')) {
-    return fallbackUrl;
-  }
-
-  try {
-    const parsed = new URL(fallbackUrl);
-    const isHttps = parsed.protocol === 'https:';
-    const isLocalHttp = parsed.protocol === 'http:' && ['localhost', '127.0.0.1'].includes(parsed.hostname);
-    if (!isHttps && !isLocalHttp) {
-      return '';
-    }
-    return parsed.toString();
-  } catch (_error) {
-    return '';
-  }
-}
-
 async function ensureStripeCustomer(user) {
   const stripe = getStripe();
   if (!stripe) {
@@ -129,34 +101,10 @@ function appendPathQuery(pathValue, params = {}) {
   return next ? `${pathname}?${next}` : pathname;
 }
 
-function appendQueryToUrl(urlValue, params = {}) {
-  const urlText = String(urlValue || '').trim();
-  if (!urlText) {
-    return '';
-  }
-  if (urlText.startsWith('/')) {
-    return appendPathQuery(urlText, params);
-  }
-  const parsed = new URL(urlText);
-  Object.entries(params).forEach(([key, value]) => {
-    if (value === undefined || value === null || value === '') {
-      return;
-    }
-    parsed.searchParams.set(key, String(value));
-  });
-  return parsed.toString();
-}
-
 async function createCheckoutSession(user, options = {}) {
   const stripe = getStripe();
   const priceId = getProPriceId();
   if (!stripe || !priceId) {
-    const hostedFallbackUrl = getHostedCheckoutFallbackUrl();
-    if (hostedFallbackUrl) {
-      return {
-        url: hostedFallbackUrl
-      };
-    }
     throw new Error('billing_not_configured');
   }
 
@@ -168,7 +116,7 @@ async function createCheckoutSession(user, options = {}) {
     customer: customerId,
     payment_method_types: ['card'],
     line_items: [{ price: priceId, quantity: 1 }],
-    success_url: `${base}/?checkout=success`,
+    success_url: `${base}/?checkout=success&session_id={CHECKOUT_SESSION_ID}`,
     cancel_url: `${base}/?checkout=cancelled`,
     metadata: { userId: checkoutUser.id }
   });
@@ -202,21 +150,7 @@ async function createFundingCheckoutSession(user, options = {}) {
 
   const stripe = getStripe();
   if (!stripe) {
-    const hostedFallbackUrl = getHostedCheckoutFallbackUrl();
-    if (!hostedFallbackUrl) {
-      throw new Error('billing_not_configured');
-    }
-    return {
-      url: appendQueryToUrl(hostedFallbackUrl, {
-        mode: 'funding',
-        amountUsd: amountRounded,
-        paymentReference,
-        returnTo: successReturnPath,
-        cancelTo: cancelReturnPath
-      }),
-      paymentReference,
-      amountUsd: amountRounded
-    };
+    throw new Error('billing_not_configured');
   }
 
   const checkoutUser = resolveCheckoutUser(user, options);
@@ -264,16 +198,6 @@ async function createFundingCheckoutSession(user, options = {}) {
   };
 }
 
-function createHostedCheckoutSession() {
-  const hostedFallbackUrl = getHostedCheckoutFallbackUrl();
-  if (!hostedFallbackUrl) {
-    throw new Error('hosted_checkout_not_configured');
-  }
-  return {
-    url: hostedFallbackUrl
-  };
-}
-
 async function createBillingPortalSession(user) {
   const stripe = getStripe();
   if (!stripe) {
@@ -285,6 +209,53 @@ async function createBillingPortalSession(user) {
     customer: customerId,
     return_url: `${base}/`
   });
+  return session;
+}
+
+async function confirmCheckoutSessionForUser(user, sessionId) {
+  const stripe = getStripe();
+  if (!stripe) {
+    throw new Error('billing_not_configured');
+  }
+  const checkoutUser = resolveCheckoutUser(user, {});
+  const normalizedSessionId = String(sessionId || '').trim();
+  if (!normalizedSessionId.startsWith('cs_')) {
+    throw new Error('invalid_session_id');
+  }
+
+  const session = await stripe.checkout.sessions.retrieve(normalizedSessionId, {
+    expand: ['subscription']
+  });
+  if (!session) {
+    throw new Error('session_not_found');
+  }
+  if (session.mode !== 'subscription') {
+    throw new Error('invalid_session_mode');
+  }
+  if (session.status !== 'complete') {
+    throw new Error('session_not_completed');
+  }
+  const paid = session.payment_status === 'paid' || session.payment_status === 'no_payment_required';
+  if (!paid) {
+    throw new Error('session_not_paid');
+  }
+
+  const expectedEmail = String(checkoutUser.email || '').toLowerCase();
+  const sessionEmail = String(session.customer_email || '').toLowerCase();
+  const stripeCustomerId = String(checkoutUser.stripeCustomerId || '');
+  const matchesEmail = Boolean(expectedEmail && sessionEmail && expectedEmail === sessionEmail);
+  const matchesCustomer = Boolean(
+    stripeCustomerId
+    && session.customer
+    && String(session.customer) === stripeCustomerId
+  );
+  if (!matchesEmail && !matchesCustomer) {
+    throw new Error('session_user_mismatch');
+  }
+  if (!session.customer) {
+    throw new Error('session_customer_missing');
+  }
+  await syncUserSubscriptionByCustomer(String(session.customer));
   return session;
 }
 
@@ -347,40 +318,33 @@ async function processWebhookEvent(rawBody, signature) {
 }
 
 function isBillingConfigured() {
-  return Boolean((getStripe() && getProPriceId()) || getHostedCheckoutFallbackUrl());
+  return Boolean(getStripe() && getProPriceId());
 }
 
 function getBillingPublicInfo() {
   const hasStripeApiCheckout = Boolean(getStripe() && getProPriceId());
-  const hostedCheckoutUrl = getHostedCheckoutFallbackUrl();
-  const checkoutMode = hasStripeApiCheckout
-    ? 'stripe_api'
-    : hostedCheckoutUrl
-      ? 'hosted_url'
-      : 'unconfigured';
+  const checkoutMode = hasStripeApiCheckout ? 'stripe_api' : 'unconfigured';
 
   return {
     configured: isBillingConfigured(),
-    provider: hasStripeApiCheckout ? 'Stripe' : hostedCheckoutUrl ? 'DumbDollars Hosted Checkout' : 'Stripe',
+    provider: 'Stripe',
     currency: 'usd',
     amountMonthly: 15,
     recurringInterval: 'month',
     paymentMethodTypes: ['card'],
-    secureCheckoutUrl: hasStripeApiCheckout ? 'https://stripe.com/security' : hostedCheckoutUrl || '',
+    secureCheckoutUrl: hasStripeApiCheckout ? 'https://stripe.com/security' : '',
     billingTermsUrl: hasStripeApiCheckout ? 'https://stripe.com/legal/consumer' : '',
     checkoutMode,
-    checkoutHostedUrl: hostedCheckoutUrl || '',
-    cancellationPolicy: hasStripeApiCheckout
-      ? 'Cancel anytime from the billing portal. Access remains active until the current period ends.'
-      : 'Cancel policy is managed by the hosted checkout provider.'
+    checkoutHostedUrl: '',
+    cancellationPolicy: 'Cancel anytime from the billing portal. Access remains active until the current period ends.'
   };
 }
 
 module.exports = {
   createCheckoutSession,
   createFundingCheckoutSession,
-  createHostedCheckoutSession,
   createBillingPortalSession,
+  confirmCheckoutSessionForUser,
   processWebhookEvent,
   getBillingPublicInfo,
   isBillingConfigured,

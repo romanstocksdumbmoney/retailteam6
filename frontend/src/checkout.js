@@ -49,7 +49,6 @@ function isSecureCheckoutUrl(url) {
     const host = parsed.hostname.toLowerCase();
     return host === 'checkout.stripe.com'
       || host.endsWith('.stripe.com')
-      || host.endsWith('.shopify.com')
       || host === 'localhost'
       || host === '127.0.0.1';
   } catch (_error) {
@@ -74,14 +73,14 @@ async function startSecureCheckout() {
     }
     setStatus('Opening secure Stripe checkout...');
     const token = localStorage.getItem('dumbdollars_token') || '';
-    const endpoint = token
-      ? '/api/auth/stripe/create-checkout-session'
-      : '/api/auth/stripe/create-checkout-session-public';
-    const session = await fetchJson(endpoint, {
+    if (!token) {
+      throw new Error('Login required before secure checkout.');
+    }
+    const session = await fetchJson('/api/auth/stripe/create-checkout-session', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        ...(token ? getAuthHeaders() : {})
+        ...getAuthHeaders()
       }
     });
     if (!session || !isSecureCheckoutUrl(session.url)) {
@@ -89,7 +88,7 @@ async function startSecureCheckout() {
     }
     window.location.href = session.url;
   } catch (error) {
-    setStatus(error.message || 'Could not start secure checkout.', true);
+    setStatus(error.message || 'Could not start Stripe checkout.', true);
     if (startButton) {
       startButton.disabled = false;
     }

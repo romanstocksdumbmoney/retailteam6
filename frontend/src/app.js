@@ -43,7 +43,6 @@ function isSecureCheckoutUrl(url) {
     return (
       host === 'checkout.stripe.com'
       || host.endsWith('.stripe.com')
-      || host.endsWith('.shopify.com')
       || host === 'localhost'
       || host === '127.0.0.1'
     );
@@ -60,20 +59,81 @@ function openExternal(url) {
   }
 }
 
-function consumeDeveloperAutologinFromUrl() {
-  const params = new URLSearchParams(window.location.search);
-  const devToken = String(params.get('dev_authtoken') || '').trim();
-  if (!devToken) {
-    return false;
+function clearCheckoutQueryParams() {
+  const url = new URL(window.location.href);
+  let changed = false;
+  ['checkout', 'session_id'].forEach((key) => {
+    if (url.searchParams.has(key)) {
+      url.searchParams.delete(key);
+      changed = true;
+    }
+  });
+  if (changed) {
+    const nextUrl = `${url.pathname}${url.search}${url.hash}`;
+    window.history.replaceState({}, '', nextUrl || '/');
   }
-  localStorage.setItem('dumbdollars_token', devToken);
-  authToken = devToken;
-  params.delete('dev_authtoken');
-  params.delete('dev_pro');
-  const nextQuery = params.toString();
-  const nextUrl = `${window.location.pathname}${nextQuery ? `?${nextQuery}` : ''}${window.location.hash || ''}`;
-  window.history.replaceState({}, '', nextUrl);
-  return true;
+}
+
+async function handleCheckoutReturn() {
+  const checkoutState = String(new URLSearchParams(window.location.search).get('checkout') || '')
+    .trim()
+    .toLowerCase();
+  if (!checkoutState) {
+    return;
+  }
+
+  if (checkoutState === 'cancelled') {
+    setAuthMessage('Checkout was cancelled. No charge was made.');
+    clearCheckoutQueryParams();
+    return;
+  }
+
+  if (checkoutState !== 'success') {
+    clearCheckoutQueryParams();
+    return;
+  }
+
+  const sessionId = String(new URLSearchParams(window.location.search).get('session_id') || '').trim();
+  if (!sessionId) {
+    setAuthMessage('Checkout finished but confirmation is missing. Contact support if your card was charged.', true);
+    clearCheckoutQueryParams();
+    return;
+  }
+  if (!authToken) {
+    setAuthMessage('Please sign in again to finish activating Pro after checkout.', true);
+    clearCheckoutQueryParams();
+    return;
+  }
+
+  try {
+    const payload = await fetchJson('/api/auth/stripe/confirm-checkout-session', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...headersWithPlan()
+      },
+      body: JSON.stringify({ sessionId })
+    });
+    if (payload?.token) {
+      authToken = payload.token;
+      localStorage.setItem('dumbdollars_token', authToken);
+    }
+    if (payload?.user) {
+      currentUser = payload.user;
+    }
+    clearCheckoutQueryParams();
+    renderAuthState();
+    setAuthMessage('Payment confirmed. Pro access is now active.');
+
+    const returnAfterCheckout = String(sessionStorage.getItem('dumbdollars_return_after_checkout') || '').trim();
+    sessionStorage.removeItem('dumbdollars_return_after_checkout');
+    if (returnAfterCheckout && returnAfterCheckout.startsWith('/') && returnAfterCheckout !== window.location.pathname) {
+      window.location.href = returnAfterCheckout;
+    }
+  } catch (error) {
+    setAuthMessage(error.message || 'Could not verify checkout session. Please try again.', true);
+    clearCheckoutQueryParams();
+  }
 }
 
 async function fetchJson(url, options = {}) {
@@ -394,41 +454,6 @@ function renderBillingInfo(info, checkoutPreview = null) {
   trustPoints.innerHTML = points.map((point) => `<li>${point}</li>`).join('');
   if (continueButton) {
     continueButton.disabled = !configured;
-  }
-}
-
-async function beginProCheckoutFlow() {
-  if (!currentUser) {
-    setAuthMessage('Please login first.', true);
-    return;
-  }
-  try {
-    await fetchBillingInfo();
-    const preview = await fetchJson('/api/auth/billing/checkout-preview', {
-      headers: headersWithPlan()
-    });
-    renderBillingInfo(billingInfo, preview);
-    const continueButton = document.getElementById('billing-safe-continue');
-    if (!billingInfo?.configured || continueButton?.disabled) {
-      setAuthMessage('Billing is not configured yet. Try again later.', true);
-      return;
-    }
-    const payload = await fetchJson('/api/auth/stripe/create-checkout-session', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        ...headersWithPlan()
-      }
-    });
-    if (!payload || !isSecureCheckoutUrl(payload.url)) {
-      throw new Error('Could not verify secure Stripe checkout URL.');
-    }
-    if (window.location.pathname.endsWith('/pro.html')) {
-      sessionStorage.setItem('dumbdollars_return_after_checkout', '/');
-    }
-    window.location.href = payload.url;
-  } catch (error) {
-    setAuthMessage(error.message || 'Could not start checkout.', true);
   }
 }
 
@@ -1224,11 +1249,12 @@ function setupAuthForms() {
     billingCard.classList.add('hidden');
   }
 
-  function openBillingCard() {
-    if (!billingCard) {
+  function setButtonBusy(button, isBusy, idleLabel, busyLabel) {
+    if (!button) {
       return;
     }
-    billingCard.classList.remove('hidden');
+    button.disabled = isBusy;
+    button.textContent = isBusy ? busyLabel : idleLabel;
   }
 
   applySavedEmailToForms();
@@ -1237,13 +1263,18 @@ function setupAuthForms() {
     event.preventDefault();
     const email = document.getElementById('login-email').value.trim().toLowerCase();
     const password = document.getElementById('login-password').value;
+    const submitButton = loginForm.querySelector('button[type="submit"]');
+    const idleLabel = submitButton?.textContent || 'Log in';
     try {
+      setButtonBusy(submitButton, true, idleLabel, 'Signing in...');
       await login(email, password);
       savePreferredEmail(email);
       setAuthMessage('Logged in successfully.');
       await Promise.all([refreshBaseline(), loadUnusualFeed(), loadTrendTrades()]);
     } catch (error) {
       setAuthMessage(error.message || 'Login failed.', true);
+    } finally {
+      setButtonBusy(submitButton, false, idleLabel, 'Signing in...');
     }
   });
 
@@ -1251,13 +1282,18 @@ function setupAuthForms() {
     event.preventDefault();
     const email = document.getElementById('signup-email').value.trim().toLowerCase();
     const password = document.getElementById('signup-password').value;
+    const submitButton = signupForm.querySelector('button[type="submit"]');
+    const idleLabel = submitButton?.textContent || 'Sign up';
     try {
+      setButtonBusy(submitButton, true, idleLabel, 'Creating...');
       await signup(email, password);
       savePreferredEmail(email);
       setAuthMessage('Account created and logged in.');
       await Promise.all([refreshBaseline(), loadUnusualFeed(), loadTrendTrades()]);
     } catch (error) {
       setAuthMessage(error.message || 'Signup failed.', true);
+    } finally {
+      setButtonBusy(submitButton, false, idleLabel, 'Creating...');
     }
   });
 
@@ -1690,8 +1726,8 @@ function setupProPopup() {
 }
 
 async function init() {
-  const usedDevAutologin = consumeDeveloperAutologinFromUrl();
   authToken = localStorage.getItem('dumbdollars_token') || '';
+  await handleCheckoutReturn();
   applySavedEmailToForms();
   const rememberedEmail = loadPreferredEmail();
   if (rememberedEmail) {
@@ -1717,9 +1753,6 @@ async function init() {
 
   try {
     await fetchCurrentUser();
-    if (usedDevAutologin && currentUser?.plan === PLAN_PRO) {
-      setAuthMessage('Developer Pro access granted for this session.');
-    }
     await refreshBaseline();
     await Promise.all([loadUnusualFeed(), loadHighIvTracker()]);
     await runScanner(activeTicker, 'llm-sentiment');

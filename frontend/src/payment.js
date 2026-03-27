@@ -26,20 +26,6 @@ function getAuthHeaders() {
   };
 }
 
-function getGuestCheckoutId() {
-  const key = 'dumbdollars_guest_checkout_id';
-  let id = localStorage.getItem(key);
-  if (!id) {
-    if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
-      id = crypto.randomUUID();
-    } else {
-      id = `guest-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
-    }
-    localStorage.setItem(key, id);
-  }
-  return id;
-}
-
 function setStatus(text, isError = false) {
   const statusNode = document.getElementById('payment-status');
   if (!statusNode) {
@@ -47,6 +33,71 @@ function setStatus(text, isError = false) {
   }
   statusNode.textContent = text;
   statusNode.className = isError ? 'small-note auth-error' : 'small-note';
+}
+
+function clearCheckoutQueryParams() {
+  const url = new URL(window.location.href);
+  let changed = false;
+  ['checkout', 'session_id'].forEach((key) => {
+    if (url.searchParams.has(key)) {
+      url.searchParams.delete(key);
+      changed = true;
+    }
+  });
+  if (changed) {
+    const nextUrl = `${url.pathname}${url.search}${url.hash}`;
+    window.history.replaceState({}, '', nextUrl || '/payment.html');
+  }
+}
+
+async function handleCheckoutReturn() {
+  const params = new URLSearchParams(window.location.search);
+  const checkoutState = String(params.get('checkout') || '').trim().toLowerCase();
+  if (!checkoutState) {
+    return;
+  }
+  if (checkoutState === 'cancelled') {
+    setStatus('Checkout was cancelled. No charge was made.');
+    clearCheckoutQueryParams();
+    return;
+  }
+  if (checkoutState !== 'success') {
+    clearCheckoutQueryParams();
+    return;
+  }
+
+  const sessionId = String(params.get('session_id') || '').trim();
+  if (!sessionId) {
+    setStatus('Checkout finished but verification data is missing.', true);
+    clearCheckoutQueryParams();
+    return;
+  }
+  const token = localStorage.getItem('dumbdollars_token') || '';
+  if (!token) {
+    setStatus('Please log in again to finalize Pro activation.', true);
+    clearCheckoutQueryParams();
+    return;
+  }
+
+  try {
+    const payload = await fetchJson('/api/auth/stripe/confirm-checkout-session', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...getAuthHeaders()
+      },
+      body: JSON.stringify({ sessionId })
+    });
+    if (payload?.token) {
+      localStorage.setItem('dumbdollars_token', payload.token);
+    }
+    setStatus('Payment confirmed. Pro access is now active.');
+    clearCheckoutQueryParams();
+    window.location.href = '/';
+  } catch (error) {
+    setStatus(error.message || 'Could not verify checkout session.', true);
+    clearCheckoutQueryParams();
+  }
 }
 
 function isSecureHostedCheckoutUrl(url) {
@@ -58,7 +109,6 @@ function isSecureHostedCheckoutUrl(url) {
     return false;
   }
   if (candidate.startsWith('/')) {
-    // Allow same-origin hosted fallback pages like /hosted-checkout.html.
     return !candidate.startsWith('//');
   }
   try {
@@ -72,7 +122,7 @@ function isSecureHostedCheckoutUrl(url) {
     if (parsed.origin === window.location.origin) {
       return true;
     }
-    const isTrustedProvider = host === 'checkout.stripe.com' || host.endsWith('.stripe.com') || host.endsWith('.shopify.com');
+    const isTrustedProvider = host === 'checkout.stripe.com' || host.endsWith('.stripe.com');
     const isLocalHosted = ['localhost', '127.0.0.1'].includes(host);
     return isTrustedProvider || isLocalHosted;
   } catch (_error) {
@@ -83,9 +133,6 @@ function isSecureHostedCheckoutUrl(url) {
 function displayCheckoutProviderName(billingInfo) {
   if (!billingInfo) {
     return 'Checkout';
-  }
-  if (billingInfo.checkoutMode === 'hosted_url') {
-    return billingInfo.provider || 'Hosted Checkout';
   }
   return billingInfo.provider || 'Stripe';
 }
@@ -146,7 +193,6 @@ async function loadPaymentSummary() {
         headers: getAuthHeaders()
       });
     } catch (_error) {
-      // Guests can still proceed to Stripe card entry.
       preview = null;
     }
     renderPlanAndBenefits(preview);
@@ -178,39 +224,17 @@ async function beginCheckout() {
     }
     setStatus('Opening secure checkout...');
     const token = localStorage.getItem('dumbdollars_token') || '';
-    const guestCheckoutId = getGuestCheckoutId();
-    let session;
-    const basePayload = {
-      email: '',
-      guestCheckoutId
-    };
-
-    if (token) {
-      try {
-        session = await fetchJson('/api/auth/stripe/create-checkout-session', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            ...getAuthHeaders()
-          },
-          body: JSON.stringify(basePayload)
-        });
-      } catch (error) {
-        if (error.status !== 401) {
-          throw error;
-        }
-      }
+    if (!token) {
+      throw new Error('Login required before secure checkout.');
     }
-
-    if (!session) {
-      session = await fetchJson('/api/auth/stripe/create-checkout-session-public', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify(basePayload)
-      });
-    }
+    const session = await fetchJson('/api/auth/stripe/create-checkout-session', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...getAuthHeaders()
+      },
+      body: JSON.stringify({})
+    });
 
     if (!session || !isSecureHostedCheckoutUrl(session.url)) {
       throw new Error('Could not verify secure Stripe checkout URL.');
@@ -237,4 +261,10 @@ function initPaymentPage() {
   });
 }
 
-initPaymentPage();
+handleCheckoutReturn()
+  .catch(() => {
+    setStatus('Could not verify checkout return.', true);
+  })
+  .finally(() => {
+    initPaymentPage();
+  });

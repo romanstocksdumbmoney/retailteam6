@@ -4,16 +4,7 @@ const bcrypt = require('bcryptjs');
 const usersById = new Map();
 const usersByEmail = new Map();
 const usersByStripeCustomerId = new Map();
-let creatorUserId = null;
 const SUPPORTED_AUTH_PROVIDERS = new Set(['password', 'google', 'apple', 'github', 'discord', 'x']);
-
-const CREATOR_EMAILS = new Set(
-  String(process.env.CREATOR_EMAILS || '')
-    .split(',')
-    .map((email) => String(email || '').trim().toLowerCase())
-    .filter(Boolean)
-);
-const FIRST_SIGNUP_IS_CREATOR = String(process.env.FIRST_SIGNUP_IS_CREATOR || 'false').toLowerCase() === 'true';
 
 function normalizeEmail(email) {
   return String(email || '')
@@ -38,30 +29,6 @@ function sanitizeUser(user) {
     createdAt: user.createdAt,
     updatedAt: user.updatedAt
   };
-}
-
-function isCreatorAccount(user) {
-  if (!user) {
-    return false;
-  }
-  if (creatorUserId && user.id === creatorUserId) {
-    return true;
-  }
-  return CREATOR_EMAILS.has(user.email);
-}
-
-function applyCreatorAccess(user) {
-  if (!isCreatorAccount(user)) {
-    return user;
-  }
-  if (user.plan !== 'pro') {
-    user.plan = 'pro';
-  }
-  if (user.subscriptionStatus !== 'active') {
-    user.subscriptionStatus = 'active';
-  }
-  user.updatedAt = new Date().toISOString();
-  return user;
 }
 
 function normalizeAuthProvider(provider) {
@@ -111,11 +78,6 @@ function createUser({ email, password, passwordHash, authProvider = 'password' }
     updatedAt: new Date().toISOString()
   };
 
-  if (FIRST_SIGNUP_IS_CREATOR && !creatorUserId && usersById.size === 0) {
-    creatorUserId = user.id;
-  }
-  applyCreatorAccess(user);
-
   usersById.set(user.id, user);
   usersByEmail.set(user.email, user.id);
   return sanitizeUser(user);
@@ -138,13 +100,11 @@ function findUserByEmail(email) {
   if (!userId) {
     return null;
   }
-  const user = usersById.get(userId) || null;
-  return user ? applyCreatorAccess(user) : null;
+  return usersById.get(userId) || null;
 }
 
 function findUserById(id) {
-  const user = usersById.get(id) || null;
-  return user ? applyCreatorAccess(user) : null;
+  return usersById.get(id) || null;
 }
 
 function getUserById(id) {

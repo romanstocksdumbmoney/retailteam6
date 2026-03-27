@@ -48,29 +48,38 @@ Core focus areas:
 
 ## Authentication + billing (Stripe)
 
-DumbDollars now supports user accounts and paid Pro subscriptions.
+DumbDollars supports account auth and Stripe-backed Pro subscriptions.
 
-### Local auth
-- `POST /api/auth/register` with `{ "email", "password" }`
+### Local auth endpoints
+- `POST /api/auth/signup` with `{ "email", "password" }`
 - `POST /api/auth/login` with `{ "email", "password" }`
+- `POST /api/auth/oauth/signin` with `{ "provider", "email" }`
 - `GET /api/auth/me` (requires bearer token)
-- `POST /api/auth/logout`
+- `GET /api/auth/oauth/providers`
 
-### Stripe Pro plan
-- Pro is set to **$15/month**
-- Endpoint to create checkout:
-  - `POST /api/auth/billing/create-checkout-session`
-- Endpoint to open billing portal:
-  - `POST /api/auth/billing/create-portal-session`
-- Webhook endpoint:
-  - `POST /api/auth/billing/webhook`
+### Stripe Pro billing endpoints
+- Pro is **$15/month**
+- Start checkout (authenticated only):
+  - `POST /api/auth/stripe/create-checkout-session`
+- Confirm successful checkout session (authenticated only):
+  - `POST /api/auth/stripe/confirm-checkout-session`
+- Open billing portal (authenticated only):
+  - `POST /api/auth/stripe/create-customer-portal`
+- Stripe webhook endpoint:
+  - `POST /api/auth/stripe/webhook`
+
+Checkout is Stripe-only and Pro activation is granted only after Stripe session verification/webhook sync.
 
 Required env vars:
-- `JWT_SECRET`
+- `JWT_SECRET` (strong random secret; required in production)
 - `STRIPE_SECRET_KEY`
 - `STRIPE_WEBHOOK_SECRET`
 - `STRIPE_PRICE_ID`
-- `STRIPE_PRO_PRICE_USD=15`
+- `APP_BASE_URL`
+
+Production hardening env vars:
+- `ALLOWED_ORIGINS` (comma-separated trusted origins; required in production)
+- `NODE_ENV=production`
 
 ## API Endpoints
 ### Public endpoints

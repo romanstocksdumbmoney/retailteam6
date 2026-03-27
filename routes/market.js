@@ -126,6 +126,8 @@ function buildStockOutlookPayload(ticker) {
       total: snapshot.analystRatings.total
     },
     coverage: snapshot.coverage,
+    dataNature: snapshot.dataNature || 'simulated',
+    sourceDisclosure: snapshot.sourceDisclosure || 'Model-generated outlook for research/testing.',
     events: snapshot.events.map((event) => ({
       label: event.name,
       impact: event.impact > 0 ? `+${event.impact}` : String(event.impact)
@@ -152,6 +154,7 @@ function buildScannerPayload({ ticker, method, plan }) {
         method: snapshot.scannerMethod,
         summary: `${snapshot.symbol}: sentiment ${metrics.sentimentScore}, confidence ${metrics.confidence} (free preview).`,
         source: 'x.com + AI consensus (preview)',
+        dataNature: snapshot.dataNature || 'simulated',
         lastRunUtc: snapshot.generatedAt,
         isLimited: true
       }
@@ -164,6 +167,7 @@ function buildScannerPayload({ ticker, method, plan }) {
       method: snapshot.scannerMethod,
       summary: fullSummary,
       source: `x.com + ${snapshot.aiEngine} (${snapshot.mode})`,
+      dataNature: snapshot.dataNature || 'simulated',
       lastRunUtc: snapshot.generatedAt,
       isLimited: false,
       metrics: {
@@ -243,6 +247,8 @@ function optionsHandler(req, res) {
 
   return res.json({
     ticker,
+    dataNature: 'simulated',
+    sourceDisclosure: 'Model-generated options and gamma estimates for research/testing.',
     contract: {
       type: contractType,
       strike: Number(strike.toFixed(2)),
@@ -274,6 +280,8 @@ router.use(attachOptionalUser);
 router.get('/unusual-moves', requirePro, (_req, res) => {
   const raw = buildUnusualMoves();
   return res.json({
+    dataNature: 'simulated',
+    sourceDisclosure: 'Synthetic unusual-flow feed for beta testing.',
     data: raw.map((move) => ({
       ticker: move.symbol,
       size: move.side.toUpperCase(),
@@ -295,6 +303,7 @@ router.get('/earnings-gambling', async (req, res) => {
 
   return res.json({
     source: board.source || 'simulated',
+    dataNature: board.source === 'nasdaq' || board.source === 'alphavantage' ? 'mixed_live' : 'simulated',
     scheduleDate: boardDate,
     scheduleLabel: board.scheduleLabel || (boardDate ? `Upcoming earnings (${boardDate})` : 'Upcoming earnings'),
     items: raw.map((item) => ({
@@ -324,6 +333,7 @@ router.get('/earnings-gambling', async (req, res) => {
 router.get('/pro-status', (req, res) => {
   return res.json({
     plan: parsePlan(req),
+    dataNature: 'system',
     proFeatures: [
       'x.com multi-method scanner',
       'advanced options calculator + gamma exposure',
@@ -335,7 +345,12 @@ router.get('/pro-status', (req, res) => {
 
 router.get('/ai-discovery', (req, res) => {
   const query = String(req.query.query || req.query.q || '');
-  return res.json(getAiDiscovery(query));
+  const payload = getAiDiscovery(query);
+  return res.json({
+    ...payload,
+    dataNature: 'external_links',
+    sourceDisclosure: 'Links open external AI/social platforms. Results depend on those providers.'
+  });
 });
 
 router.get('/trend-trades-sources', (_req, res) => {
@@ -347,32 +362,57 @@ router.get('/trend-trades', requirePro, (req, res) => {
   const limit = Number(req.query.limit || 8);
   const boundedLimit = Number.isFinite(limit) ? Math.max(1, Math.min(20, Math.trunc(limit))) : 8;
   const source = String(req.query.source || 'all');
-  return res.json(getTrendTrades(boundedLimit, source));
+  const payload = getTrendTrades(boundedLimit, source);
+  return res.json({
+    ...payload,
+    dataNature: 'simulated',
+    sourceDisclosure: 'Synthetic social trend model for beta testing.'
+  });
 });
 
 router.get('/high-iv', requirePro, (req, res) => {
   const limit = Number(req.query.limit || 8);
   const boundedLimit = Number.isFinite(limit) ? Math.max(1, Math.min(20, Math.trunc(limit))) : 8;
-  return res.json(getHighIvTracker(boundedLimit));
+  const payload = getHighIvTracker(boundedLimit);
+  return res.json({
+    ...payload,
+    dataNature: 'simulated',
+    sourceDisclosure: 'Synthetic IV monitor for beta testing.'
+  });
 });
 
 router.get('/premium-spikes', requirePro, (req, res) => {
   const limit = Number(req.query.limit || 10);
   const boundedLimit = Number.isFinite(limit) ? Math.max(1, Math.min(30, Math.trunc(limit))) : 10;
-  return res.json(getPremiumSpikes(boundedLimit));
+  const payload = getPremiumSpikes(boundedLimit);
+  return res.json({
+    ...payload,
+    dataNature: 'simulated',
+    sourceDisclosure: 'Synthetic premium-spike monitor for beta testing.'
+  });
 });
 
 router.get('/realized-patterns', (req, res) => {
   const limit = Number(req.query.limit || 8);
   const boundedLimit = Number.isFinite(limit) ? Math.max(1, Math.min(20, Math.trunc(limit))) : 8;
   const patternType = String(req.query.type || 'all');
-  return res.json(getRealizedPatterns(boundedLimit, patternType));
+  const payload = getRealizedPatterns(boundedLimit, patternType);
+  return res.json({
+    ...payload,
+    dataNature: 'simulated',
+    sourceDisclosure: 'Synthetic realized-pattern tracker for beta testing.'
+  });
 });
 
 router.get('/wild-takes', (req, res) => {
   const limit = Number(req.query.limit || 10);
   const boundedLimit = Number.isFinite(limit) ? Math.max(1, Math.min(30, Math.trunc(limit))) : 10;
-  return res.json(getWildTakes(boundedLimit));
+  const payload = getWildTakes(boundedLimit);
+  return res.json({
+    ...payload,
+    dataNature: 'simulated',
+    sourceDisclosure: 'Synthetic social chatter feed for beta testing.'
+  });
 });
 
 router.post('/ai-trade/analyze', requireSignedIn, (req, res) => {
@@ -385,7 +425,11 @@ router.post('/ai-trade/analyze', requireSignedIn, (req, res) => {
       symbol,
       timeframe
     });
-    return res.json(analysis);
+    return res.json({
+      ...analysis,
+      dataNature: 'simulated',
+      sourceDisclosure: 'AI Trade output is model-generated guidance for research/testing.'
+    });
   } catch (error) {
     if (String(error.message) === 'missing_image') {
       return res.status(400).json({
@@ -419,7 +463,11 @@ router.post('/ai-analyzer/analyze', requireSignedIn, (req, res) => {
       imageSize: req.body?.imageSize,
       imageHash: req.body?.imageHash
     });
-    return res.json(analysis);
+    return res.json({
+      ...analysis,
+      dataNature: 'simulated',
+      sourceDisclosure: 'AI Analyzer output is model-generated review for research/testing.'
+    });
   } catch (error) {
     if (String(error.message) === 'missing_image') {
       return res.status(400).json({
@@ -653,7 +701,7 @@ router.post('/auto-trader/funding-payment-session', requireSignedIn, requireLive
     if (code === 'billing_not_configured' || code === 'stripe_not_configured') {
       return res.status(503).json({
         error: 'billing_not_configured',
-        message: 'Billing is not configured. Add Stripe keys or hosted checkout fallback.'
+        message: 'Billing is not configured. Add Stripe keys and Stripe price configuration.'
       });
     }
     return res.status(500).json({

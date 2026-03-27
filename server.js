@@ -2,6 +2,8 @@ require('dotenv').config();
 
 const express = require('express');
 const cors = require('cors');
+const helmet = require('helmet');
+const rateLimit = require('express-rate-limit');
 const path = require('path');
 const fs = require('fs');
 const newsRoutes = require('./routes/news');
@@ -13,7 +15,68 @@ const app = express();
 const buildDir = path.join(__dirname, 'frontend', 'build');
 const hasFrontendBuild = fs.existsSync(path.join(buildDir, 'index.html'));
 
-app.use(cors());
+const isProduction = String(process.env.NODE_ENV || '').toLowerCase() === 'production';
+
+function parseAllowedOrigins(rawOrigins) {
+    return String(rawOrigins || '')
+        .split(',')
+        .map((origin) => String(origin || '').trim())
+        .filter(Boolean);
+}
+
+const allowedOrigins = parseAllowedOrigins(process.env.ALLOWED_ORIGINS);
+if (isProduction && allowedOrigins.length === 0) {
+    throw new Error('In production, ALLOWED_ORIGINS must be set (comma-separated).');
+}
+app.use(cors({
+    origin(origin, callback) {
+        if (!origin) {
+            return callback(null, true);
+        }
+        if (!isProduction) {
+            return callback(null, true);
+        }
+        if (allowedOrigins.includes(origin)) {
+            return callback(null, true);
+        }
+        return callback(new Error('CORS not allowed'));
+    },
+    credentials: true
+}));
+app.disable('x-powered-by');
+app.use(helmet({
+    contentSecurityPolicy: false,
+    crossOriginEmbedderPolicy: false
+}));
+app.use((req, res, next) => {
+    res.setHeader('Referrer-Policy', 'no-referrer');
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
+    next();
+});
+
+const authLimiter = rateLimit({
+    windowMs: 10 * 60 * 1000,
+    max: 60,
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: { error: 'rate_limited', message: 'Too many auth requests. Try again later.' }
+});
+const checkoutLimiter = rateLimit({
+    windowMs: 10 * 60 * 1000,
+    max: 25,
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: { error: 'rate_limited', message: 'Too many checkout attempts. Try again later.' }
+});
+
+app.use('/api/auth/signup', authLimiter);
+app.use('/api/auth/login', authLimiter);
+app.use('/api/auth/oauth/signin', authLimiter);
+app.use('/api/auth/stripe/create-checkout-session', checkoutLimiter);
+app.use('/api/auth/stripe/confirm-checkout-session', checkoutLimiter);
+app.use('/api/auth/stripe/create-customer-portal', checkoutLimiter);
+
 app.use((req, res, next) => {
     if (req.path === '/api/auth/stripe/webhook') {
         return next();

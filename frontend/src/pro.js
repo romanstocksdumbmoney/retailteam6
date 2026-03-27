@@ -58,7 +58,6 @@ function isSecureHostedCheckoutUrl(url) {
     return (
       host === 'checkout.stripe.com'
       || host.endsWith('.stripe.com')
-      || host.endsWith('.shopify.com')
       || host === 'localhost'
       || host === '127.0.0.1'
     );
@@ -67,22 +66,87 @@ function isSecureHostedCheckoutUrl(url) {
   }
 }
 
-async function startSecureCheckout() {
+function clearCheckoutQueryParams() {
+  const url = new URL(window.location.href);
+  let changed = false;
+  ['checkout', 'session_id'].forEach((key) => {
+    if (url.searchParams.has(key)) {
+      url.searchParams.delete(key);
+      changed = true;
+    }
+  });
+  if (changed) {
+    const nextUrl = `${url.pathname}${url.search}${url.hash}`;
+    window.history.replaceState({}, '', nextUrl || '/pro.html');
+  }
+}
+
+async function handleCheckoutReturn() {
+  const params = new URLSearchParams(window.location.search);
+  const checkoutState = String(params.get('checkout') || '').trim().toLowerCase();
+  if (!checkoutState) {
+    return;
+  }
+  if (checkoutState === 'cancelled') {
+    setStatus('Checkout was cancelled. No charge was made.');
+    clearCheckoutQueryParams();
+    return;
+  }
+  if (checkoutState !== 'success') {
+    clearCheckoutQueryParams();
+    return;
+  }
+
+  const sessionId = String(params.get('session_id') || '').trim();
+  if (!sessionId) {
+    setStatus('Checkout finished but verification data is missing.', true);
+    clearCheckoutQueryParams();
+    return;
+  }
   const token = localStorage.getItem('dumbdollars_token') || '';
+  if (!token) {
+    setStatus('Please log in again to finalize Pro activation.', true);
+    clearCheckoutQueryParams();
+    return;
+  }
+
+  try {
+    const payload = await fetchJson('/api/auth/stripe/confirm-checkout-session', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...getAuthHeaders()
+      },
+      body: JSON.stringify({ sessionId })
+    });
+    if (payload?.token) {
+      localStorage.setItem('dumbdollars_token', payload.token);
+    }
+    setStatus('Payment confirmed. Pro access is now active.');
+    clearCheckoutQueryParams();
+    window.location.href = '/';
+  } catch (error) {
+    setStatus(error.message || 'Could not verify checkout session.', true);
+    clearCheckoutQueryParams();
+  }
+}
+
+async function startSecureCheckout() {
   const startButton = document.getElementById('pro-page-start');
   try {
     if (startButton) {
       startButton.disabled = true;
     }
     setStatus('Opening secure card checkout...');
-    const endpoint = token
-      ? '/api/auth/stripe/create-checkout-session'
-      : '/api/auth/stripe/create-checkout-session-public';
-    const session = await fetchJson(endpoint, {
+    const token = localStorage.getItem('dumbdollars_token') || '';
+    if (!token) {
+      throw new Error('Login required before secure checkout.');
+    }
+    const session = await fetchJson('/api/auth/stripe/create-checkout-session', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        ...(token ? getAuthHeaders() : {})
+        ...getAuthHeaders()
       },
       body: JSON.stringify({})
     });
@@ -107,5 +171,10 @@ function initProPage() {
     await startSecureCheckout();
   });
 }
-
-initProPage();
+handleCheckoutReturn()
+  .catch(() => {
+    setStatus('Could not verify checkout return.', true);
+  })
+  .finally(() => {
+    initProPage();
+  });
