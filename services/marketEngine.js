@@ -1176,7 +1176,8 @@ async function getEarningsGamblingBoard(limit = 5, options = {}) {
       verification,
       earningsDate: entry.earningsDate,
       earningsDateLabel,
-      reportTime: entry.reportTime === 'Unknown' ? (index % 2 === 0 ? 'Pre-Market' : 'After-Hours') : entry.reportTime,
+      // Keep session labeling truthful: do not synthesize pre/after labels when provider time is unknown.
+      reportTime: entry.reportTime === 'Unknown' ? 'Session Unconfirmed' : entry.reportTime,
       predictedDirection,
       probabilityUp: up,
       probabilityDown: down,
