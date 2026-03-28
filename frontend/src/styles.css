@@ -1102,6 +1102,33 @@ label {
   font-size: 0.86rem;
 }
 
+.insider-trade-card {
+  border-radius: 10px;
+  border: 1px solid rgba(250, 204, 21, 0.34);
+  background: rgba(2, 6, 23, 0.82);
+  padding: 0.68rem;
+}
+
+.insider-trade-card h4 {
+  margin: 0;
+  color: #fde68a;
+}
+
+.insider-trade-card p {
+  margin: 0.22rem 0;
+  font-size: 0.86rem;
+}
+
+.insider-trade-card--buy {
+  border-color: rgba(16, 185, 129, 0.55);
+  background: rgba(16, 185, 129, 0.12);
+}
+
+.insider-trade-card--sell {
+  border-color: rgba(239, 68, 68, 0.55);
+  background: rgba(239, 68, 68, 0.12);
+}
+
 .earnings-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));

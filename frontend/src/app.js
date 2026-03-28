@@ -1004,6 +1004,31 @@ function renderWildTakes(payload) {
   }
 }
 
+function renderInsiderTrades(payload) {
+  const target = document.getElementById('insider-trades-results');
+  if (!target) {
+    return;
+  }
+  target.innerHTML = '';
+  (payload.items || []).forEach((item) => {
+    const card = document.createElement('article');
+    const actionClass = String(item.action || '').toLowerCase() === 'buy' ? 'up' : 'down';
+    card.className = `insider-trade-card insider-trade-card--${actionClass}`;
+    card.innerHTML = `
+      <h4>${item.symbol} • ${String(item.action || '').toUpperCase()}</h4>
+      <p><strong>Insider:</strong> ${item.insiderName} (${item.insiderTitle || 'N/A'})</p>
+      <p><strong>Shares:</strong> ${Number(item.shares || 0).toLocaleString()} • <strong>Price:</strong> ${fmtUsd(item.priceUsd)}</p>
+      <p><strong>Total trade:</strong> ${fmtUsd(item.totalUsd)} • <strong>Impact:</strong> ${item.impactLabel || 'Medium'}</p>
+      <p class="small-note">${item.filedAtLabel || item.filedAt || 'Filed recently'} • Source: ${item.source || 'Insider feed'}</p>
+      <p class="small-note">${item.summary || ''}</p>
+    `;
+    target.appendChild(card);
+  });
+  if (!payload.items || payload.items.length === 0) {
+    target.innerHTML = '<div class="pro-lock">No large insider trades available right now.</div>';
+  }
+}
+
 async function loadOutlook(ticker) {
   const payload = await fetchJson(`/api/market/stock-outlook?ticker=${encodeURIComponent(ticker)}`, {
     headers: headersWithPlan()
@@ -1076,6 +1101,13 @@ async function loadWildTakes() {
     headers: headersWithPlan()
   });
   renderWildTakes(payload);
+}
+
+async function loadInsiderTrades() {
+  const payload = await fetchJson('/api/market/insider-trades?limit=8', {
+    headers: headersWithPlan()
+  });
+  renderInsiderTrades(payload);
 }
 
 async function loadUnusualFeed() {
@@ -1158,6 +1190,7 @@ async function refreshBaseline() {
     loadTrendTrades(),
     loadRealizedPatterns(),
     loadWildTakes(),
+    loadInsiderTrades(),
     loadHighIvTracker(),
     loadPremiumSpikes()
   ]);
@@ -1424,10 +1457,11 @@ function setupAiSidebar() {
   const trendSourceSelect = document.getElementById('trend-source-select');
   const patternTypeSelect = document.getElementById('pattern-type-select');
   const wildTakesButton = document.getElementById('wild-takes-refresh');
+  const insiderTradesButton = document.getElementById('insider-trades-refresh');
   const searchAllButton = document.getElementById('ai-search-all');
   const jumpPremiumSpikesButton = document.getElementById('jump-premium-spikes');
 
-  if (!form || !trendForm || !patternForm || !select || !trendSourceSelect || !patternTypeSelect || !wildTakesButton) {
+  if (!form || !trendForm || !patternForm || !select || !trendSourceSelect || !patternTypeSelect || !wildTakesButton || !insiderTradesButton) {
     return;
   }
 
@@ -1502,6 +1536,17 @@ function setupAiSidebar() {
     } catch (error) {
       const target = document.getElementById('wild-takes-results');
       target.innerHTML = `<div class="pro-lock">${error.message || 'Could not load wild takes.'}</div>`;
+    }
+  });
+
+  insiderTradesButton.addEventListener('click', async () => {
+    try {
+      await loadInsiderTrades();
+    } catch (error) {
+      const target = document.getElementById('insider-trades-results');
+      if (target) {
+        target.innerHTML = `<div class="pro-lock">${error.message || 'Could not load insider trades.'}</div>`;
+      }
     }
   });
 

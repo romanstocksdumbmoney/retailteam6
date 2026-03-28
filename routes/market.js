@@ -10,6 +10,7 @@ const {
   getTrendTrades,
   getHighIvTracker,
   getPremiumSpikes,
+  getInsiderTrades,
   getRealizedPatterns,
   getWildTakes,
   analyzeAiTradePattern,
@@ -389,6 +390,17 @@ router.get('/premium-spikes', requirePro, (req, res) => {
     ...payload,
     dataNature: 'simulated',
     sourceDisclosure: 'Synthetic premium-spike monitor for beta testing.'
+  });
+});
+
+router.get('/insider-trades', (req, res) => {
+  const limit = Number(req.query.limit || 10);
+  const boundedLimit = Number.isFinite(limit) ? Math.max(1, Math.min(30, Math.trunc(limit))) : 10;
+  const payload = getInsiderTrades(boundedLimit);
+  return res.json({
+    ...payload,
+    dataNature: 'simulated',
+    sourceDisclosure: 'Synthetic large insider-trade monitor inspired by public filings and flow datasets for beta testing.'
   });
 });
 

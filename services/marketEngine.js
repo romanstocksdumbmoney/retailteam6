@@ -199,6 +199,39 @@ const PREMIUM_SPIKE_LARGE_CAPS = [
   'QQQ'
 ];
 
+const INSIDER_TRADE_SYMBOLS = [
+  'AAPL',
+  'MSFT',
+  'NVDA',
+  'AMZN',
+  'GOOGL',
+  'META',
+  'TSLA',
+  'AMD',
+  'AVGO',
+  'JPM',
+  'BAC',
+  'WMT',
+  'COST',
+  'NFLX'
+];
+
+const INSIDER_TRADE_ROLES = [
+  'CEO',
+  'CFO',
+  'COO',
+  'Director',
+  'Chairman',
+  'EVP',
+  'President'
+];
+
+const INSIDER_TRADE_SOURCES = [
+  'SEC Form 4 filings',
+  'Unusual Whales style insider monitor',
+  'AI cross-check (ChatGPT/Claude/Grok synthesis)'
+];
+
 const REALIZED_PATTERN_LIBRARY = [
   { key: 'vol-fade', name: 'Volume Fade Continuation', type: 'volume_down', edge: 'Low-participation drift tends to continue intraday.' },
   { key: 'vol-compress', name: 'Volume Compression Breakout', type: 'volume_down', edge: 'Compression often resolves with directional expansion.' },
@@ -1383,6 +1416,60 @@ function getPremiumSpikes(limit = 10) {
   };
 }
 
+function getInsiderTrades(limit = 10) {
+  const seed = hashString(`insider-trades:${minuteBucketSeed()}`);
+  const total = Math.max(1, Math.min(30, Math.trunc(limit)));
+  const used = new Set();
+  const items = [];
+
+  for (let i = 0; i < total * 6 && items.length < total; i += 1) {
+    const symbol = INSIDER_TRADE_SYMBOLS[Math.floor(pseudoRandom(seed + i * 5) * INSIDER_TRADE_SYMBOLS.length)];
+    const role = INSIDER_TRADE_ROLES[Math.floor(pseudoRandom(seed + i * 7 + 1) * INSIDER_TRADE_ROLES.length)];
+    const personTag = Math.floor(100 + pseudoRandom(seed + i * 11 + 2) * 900);
+    const insiderName = `${role} #${personTag}`;
+    const dedupeKey = `${symbol}:${insiderName}`;
+    if (used.has(dedupeKey)) {
+      continue;
+    }
+    used.add(dedupeKey);
+
+    const side = pseudoRandom(seed + i * 13 + 3) > 0.45 ? 'buy' : 'sell';
+    const shares = Math.round(25_000 + pseudoRandom(seed + i * 17 + 4) * 1_250_000);
+    const avgPrice = Number((40 + pseudoRandom(seed + i * 19 + 5) * 520).toFixed(2));
+    const valueUsd = Math.round(shares * avgPrice);
+    const minutesAgo = 8 + Math.floor(pseudoRandom(seed + i * 23 + 6) * 720);
+    const filedAt = new Date(Date.now() - minutesAgo * 60 * 1000).toISOString();
+    const stockReactionPct = Number((((pseudoRandom(seed + i * 29 + 7) - 0.5) * 7.2)).toFixed(2));
+    const source = INSIDER_TRADE_SOURCES[Math.floor(pseudoRandom(seed + i * 31 + 8) * INSIDER_TRADE_SOURCES.length)];
+    const conviction = valueUsd >= 100_000_000 ? 'very_high' : valueUsd >= 40_000_000 ? 'high' : 'medium';
+
+    items.push({
+      symbol,
+      insiderName,
+      role,
+      side,
+      shares,
+      averagePriceUsd: avgPrice,
+      valueUsd,
+      filedAt,
+      stockReactionPct,
+      conviction,
+      source,
+      details: side === 'buy'
+        ? `${role} accumulated shares; indicates potential internal confidence.`
+        : `${role} sold shares; could be diversification, liquidity, or risk reduction.`
+    });
+  }
+
+  items.sort((a, b) => b.valueUsd - a.valueUsd);
+
+  return {
+    generatedAt: new Date().toISOString(),
+    sourceDisclosure: 'Synthetic insider-activity monitor modeled from SEC Form 4 style events and AI synthesis.',
+    items
+  };
+}
+
 function getRealizedPatterns(limit = 8, patternType = 'all') {
   const seed = hashString(`realized-patterns:${minuteBucketSeed()}`);
   const normalizedType = String(patternType || 'all').trim().toLowerCase();
@@ -1905,6 +1992,7 @@ module.exports = {
   getTrendTrades,
   getHighIvTracker,
   getPremiumSpikes,
+  getInsiderTrades,
   getRealizedPatterns,
   getWildTakes,
   analyzeAiTradePattern,
