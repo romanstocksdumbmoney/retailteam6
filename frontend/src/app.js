@@ -8,6 +8,10 @@ let currentUser = null;
 let activeAiPlatform = 'x-com';
 let activeTrendSource = 'all';
 let activePatternFilter = 'all';
+let activeInsiderSide = 'all';
+let activeInsiderSymbol = '';
+let activeInsiderMinValueUsd = 0;
+let activeInsiderSortBy = 'value_desc';
 let sidebarOpen = false;
 let billingInfo = null;
 let proPopupVisible = false;
@@ -1010,21 +1014,42 @@ function renderInsiderTrades(payload) {
     return;
   }
   target.innerHTML = '';
-  (payload.items || []).forEach((item) => {
+  const rows = Array.isArray(payload?.items) ? payload.items : [];
+  const filters = payload?.filters || {};
+  const summary = document.createElement('p');
+  summary.className = 'small-note insider-trades-summary';
+  summary.textContent = `Matches: ${Number(payload?.totalMatches || rows.length).toLocaleString()} • Side: ${String(filters.side || 'all').toUpperCase()} • Sort: ${String(filters.sortBy || 'value_desc').replaceAll('_', ' ')}`;
+  target.appendChild(summary);
+  rows.forEach((item) => {
+    const side = String(item.side || item.action || '').toLowerCase() === 'buy' ? 'buy' : 'sell';
+    const valueUsd = Number(item.valueUsd ?? item.totalUsd ?? 0);
+    const averagePriceUsd = Number(item.averagePriceUsd ?? item.priceUsd ?? 0);
+    const shares = Number(item.shares || item.shareCount || 0);
+    const reactionPct = Number(item.stockReactionPct || 0);
+    const reactionSign = reactionPct > 0 ? '+' : '';
+    const reactionClass = reactionPct > 0 ? 'up' : reactionPct < 0 ? 'down' : 'flat';
+    const filedAtLabel = item.filedAt
+      ? new Date(item.filedAt).toLocaleString()
+      : (item.filedAtLabel || 'Filed recently');
+    const role = item.role || item.insiderTitle || item.insiderRole || 'N/A';
+    const conviction = String(item.conviction || item.impactLabel || 'medium')
+      .replaceAll('_', ' ')
+      .replace(/\b\w/g, (char) => char.toUpperCase());
     const card = document.createElement('article');
-    const actionClass = String(item.action || '').toLowerCase() === 'buy' ? 'up' : 'down';
-    card.className = `insider-trade-card insider-trade-card--${actionClass}`;
+    card.className = `insider-trade-card insider-trade-card--${side}`;
     card.innerHTML = `
-      <h4>${item.symbol} • ${String(item.action || '').toUpperCase()}</h4>
-      <p><strong>Insider:</strong> ${item.insiderName} (${item.insiderTitle || 'N/A'})</p>
-      <p><strong>Shares:</strong> ${Number(item.shares || 0).toLocaleString()} • <strong>Price:</strong> ${fmtUsd(item.priceUsd)}</p>
-      <p><strong>Total trade:</strong> ${fmtUsd(item.totalUsd)} • <strong>Impact:</strong> ${item.impactLabel || 'Medium'}</p>
-      <p class="small-note">${item.filedAtLabel || item.filedAt || 'Filed recently'} • Source: ${item.source || 'Insider feed'}</p>
-      <p class="small-note">${item.summary || ''}</p>
+      <h4>${item.symbol} • ${side.toUpperCase()}</h4>
+      <p><strong>Insider:</strong> ${item.insiderName || 'N/A'} (${role})</p>
+      <p><strong>Shares:</strong> ${shares.toLocaleString()} • <strong>Avg price:</strong> ${fmtUsd(averagePriceUsd)}</p>
+      <p><strong>Total trade:</strong> ${fmtUsd(valueUsd)} • <strong>Conviction:</strong> ${conviction}</p>
+      <p><strong>Stock reaction:</strong> <span class="insider-trade-reaction insider-trade-reaction--${reactionClass}">${reactionSign}${reactionPct.toFixed(2)}%</span></p>
+      <p class="small-note">${filedAtLabel} • Source: ${item.source || 'Insider feed'}</p>
+      <p class="small-note">${item.details || item.summary || ''}</p>
     `;
     target.appendChild(card);
   });
-  if (!payload.items || payload.items.length === 0) {
+
+  if (!rows.length) {
     target.innerHTML = '<div class="pro-lock">No large insider trades available right now.</div>';
   }
 }
@@ -1104,7 +1129,14 @@ async function loadWildTakes() {
 }
 
 async function loadInsiderTrades() {
-  const payload = await fetchJson('/api/market/insider-trades?limit=8', {
+  const params = new URLSearchParams({
+    limit: '12',
+    side: activeInsiderSide,
+    symbol: activeInsiderSymbol,
+    minValueUsd: String(Math.max(0, Math.trunc(activeInsiderMinValueUsd || 0))),
+    sortBy: activeInsiderSortBy
+  });
+  const payload = await fetchJson(`/api/market/insider-trades?${params.toString()}`, {
     headers: headersWithPlan()
   });
   renderInsiderTrades(payload);
@@ -1453,17 +1485,39 @@ function setupAiSidebar() {
   const form = document.getElementById('ai-search-form');
   const trendForm = document.getElementById('trend-trades-form');
   const patternForm = document.getElementById('patterns-form');
+  const insiderForm = document.getElementById('insider-trades-form');
   const select = document.getElementById('ai-platform-select');
   const trendSourceSelect = document.getElementById('trend-source-select');
   const patternTypeSelect = document.getElementById('pattern-type-select');
+  const insiderSideSelect = document.getElementById('insider-side-select');
+  const insiderSymbolInput = document.getElementById('insider-symbol-input');
+  const insiderMinValueInput = document.getElementById('insider-min-value-input');
+  const insiderSortSelect = document.getElementById('insider-sort-select');
   const wildTakesButton = document.getElementById('wild-takes-refresh');
-  const insiderTradesButton = document.getElementById('insider-trades-refresh');
   const searchAllButton = document.getElementById('ai-search-all');
   const jumpPremiumSpikesButton = document.getElementById('jump-premium-spikes');
 
-  if (!form || !trendForm || !patternForm || !select || !trendSourceSelect || !patternTypeSelect || !wildTakesButton || !insiderTradesButton) {
+  if (
+    !form
+    || !trendForm
+    || !patternForm
+    || !insiderForm
+    || !select
+    || !trendSourceSelect
+    || !patternTypeSelect
+    || !insiderSideSelect
+    || !insiderSymbolInput
+    || !insiderMinValueInput
+    || !insiderSortSelect
+    || !wildTakesButton
+  ) {
     return;
   }
+
+  insiderSideSelect.value = activeInsiderSide;
+  insiderSortSelect.value = activeInsiderSortBy;
+  insiderSymbolInput.value = activeInsiderSymbol;
+  insiderMinValueInput.value = activeInsiderMinValueUsd > 0 ? String(activeInsiderMinValueUsd) : '';
 
   form.addEventListener('submit', async (event) => {
     event.preventDefault();
@@ -1539,7 +1593,13 @@ function setupAiSidebar() {
     }
   });
 
-  insiderTradesButton.addEventListener('click', async () => {
+  insiderForm.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    activeInsiderSide = String(insiderSideSelect.value || 'all').trim().toLowerCase();
+    activeInsiderSymbol = String(insiderSymbolInput.value || '').trim().toUpperCase();
+    const parsedMin = Number(insiderMinValueInput.value || 0);
+    activeInsiderMinValueUsd = Number.isFinite(parsedMin) && parsedMin > 0 ? Math.round(parsedMin) : 0;
+    activeInsiderSortBy = String(insiderSortSelect.value || 'value_desc').trim().toLowerCase();
     try {
       await loadInsiderTrades();
     } catch (error) {
@@ -1547,6 +1607,15 @@ function setupAiSidebar() {
       if (target) {
         target.innerHTML = `<div class="pro-lock">${error.message || 'Could not load insider trades.'}</div>`;
       }
+    }
+  });
+
+  insiderSortSelect.addEventListener('change', async () => {
+    activeInsiderSortBy = String(insiderSortSelect.value || 'value_desc').trim().toLowerCase();
+    try {
+      await loadInsiderTrades();
+    } catch (_error) {
+      // Form submit handler surfaces visible error states.
     }
   });
 

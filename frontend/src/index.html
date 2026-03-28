@@ -150,7 +150,36 @@
             <span class="chip">Free</span>
           </div>
           <p class="small-note">Track larger insider buy/sell filings and see whether price followed through.</p>
-          <button id="insider-trades-refresh" type="button">Refresh Insider Trades</button>
+          <form id="insider-trades-form" class="row-form">
+            <label>
+              Side
+              <select id="insider-side-select">
+                <option value="all">All</option>
+                <option value="buy">Buys</option>
+                <option value="sell">Sells</option>
+              </select>
+            </label>
+            <label>
+              Symbol
+              <input id="insider-symbol-input" type="text" placeholder="AAPL" maxlength="10" />
+            </label>
+            <label>
+              Min value ($)
+              <input id="insider-min-value-input" type="number" min="0" step="1000000" placeholder="10000000" />
+            </label>
+            <label>
+              Sort
+              <select id="insider-sort-select">
+                <option value="value_desc">Largest trade value</option>
+                <option value="value_asc">Smallest trade value</option>
+                <option value="filed_desc">Most recent filing</option>
+                <option value="filed_asc">Oldest filing</option>
+                <option value="reaction_desc">Largest reaction</option>
+                <option value="reaction_asc">Smallest reaction</option>
+              </select>
+            </label>
+            <button id="insider-trades-refresh" type="submit">Apply</button>
+          </form>
           <div id="insider-trades-results" class="stack"></div>
 
           <div class="section-header trend-header">

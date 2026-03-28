@@ -396,7 +396,16 @@ router.get('/premium-spikes', requirePro, (req, res) => {
 router.get('/insider-trades', (req, res) => {
   const limit = Number(req.query.limit || 10);
   const boundedLimit = Number.isFinite(limit) ? Math.max(1, Math.min(30, Math.trunc(limit))) : 10;
-  const payload = getInsiderTrades(boundedLimit);
+  const side = String(req.query.side || 'all').trim().toLowerCase();
+  const symbol = String(req.query.symbol || '').trim().toUpperCase();
+  const minValueUsd = Number(req.query.minValueUsd || 0);
+  const sortBy = String(req.query.sortBy || 'value_desc').trim().toLowerCase();
+  const payload = getInsiderTrades(boundedLimit, {
+    side,
+    symbol,
+    minValueUsd,
+    sortBy
+  });
   return res.json({
     ...payload,
     dataNature: 'simulated',

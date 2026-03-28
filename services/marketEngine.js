@@ -232,6 +232,15 @@ const INSIDER_TRADE_SOURCES = [
   'AI cross-check (ChatGPT/Claude/Grok synthesis)'
 ];
 
+const INSIDER_TRADE_SORT_OPTIONS = [
+  'value_desc',
+  'value_asc',
+  'filed_desc',
+  'filed_asc',
+  'reaction_desc',
+  'reaction_asc'
+];
+
 const REALIZED_PATTERN_LIBRARY = [
   { key: 'vol-fade', name: 'Volume Fade Continuation', type: 'volume_down', edge: 'Low-participation drift tends to continue intraday.' },
   { key: 'vol-compress', name: 'Volume Compression Breakout', type: 'volume_down', edge: 'Compression often resolves with directional expansion.' },
@@ -1416,9 +1425,33 @@ function getPremiumSpikes(limit = 10) {
   };
 }
 
-function getInsiderTrades(limit = 10) {
+function normalizeInsiderTradeSide(side) {
+  const normalized = String(side || 'all').trim().toLowerCase();
+  return normalized === 'buy' || normalized === 'sell' ? normalized : 'all';
+}
+
+function normalizeInsiderTradeSort(sortBy) {
+  const normalized = String(sortBy || 'value_desc').trim().toLowerCase();
+  if (INSIDER_TRADE_SORT_OPTIONS.includes(normalized)) {
+    return normalized;
+  }
+  return 'value_desc';
+}
+
+function sanitizeInsiderSymbolFilter(symbol) {
+  return String(symbol || '').toUpperCase().replace(/[^A-Z.]/g, '').slice(0, 10);
+}
+
+function getInsiderTrades(limit = 10, options = {}) {
   const seed = hashString(`insider-trades:${minuteBucketSeed()}`);
   const total = Math.max(1, Math.min(30, Math.trunc(limit)));
+  const sideFilter = normalizeInsiderTradeSide(options.side);
+  const symbolFilter = sanitizeInsiderSymbolFilter(options.symbol);
+  const sortBy = normalizeInsiderTradeSort(options.sortBy);
+  const rawMinValue = Number(options.minValueUsd || 0);
+  const minValueUsd = Number.isFinite(rawMinValue) && rawMinValue > 0
+    ? Math.round(rawMinValue)
+    : 0;
   const used = new Set();
   const items = [];
 
@@ -1461,12 +1494,45 @@ function getInsiderTrades(limit = 10) {
     });
   }
 
-  items.sort((a, b) => b.valueUsd - a.valueUsd);
+  let filtered = items.filter((item) => {
+    if (sideFilter !== 'all' && item.side !== sideFilter) {
+      return false;
+    }
+    if (symbolFilter && !item.symbol.includes(symbolFilter)) {
+      return false;
+    }
+    if (minValueUsd > 0 && Number(item.valueUsd || 0) < minValueUsd) {
+      return false;
+    }
+    return true;
+  });
+
+  if (sortBy === 'value_asc') {
+    filtered.sort((a, b) => a.valueUsd - b.valueUsd);
+  } else if (sortBy === 'filed_desc') {
+    filtered.sort((a, b) => new Date(b.filedAt).getTime() - new Date(a.filedAt).getTime());
+  } else if (sortBy === 'filed_asc') {
+    filtered.sort((a, b) => new Date(a.filedAt).getTime() - new Date(b.filedAt).getTime());
+  } else if (sortBy === 'reaction_desc') {
+    filtered.sort((a, b) => Math.abs(b.stockReactionPct) - Math.abs(a.stockReactionPct));
+  } else if (sortBy === 'reaction_asc') {
+    filtered.sort((a, b) => Math.abs(a.stockReactionPct) - Math.abs(b.stockReactionPct));
+  } else {
+    filtered.sort((a, b) => b.valueUsd - a.valueUsd);
+  }
 
   return {
     generatedAt: new Date().toISOString(),
     sourceDisclosure: 'Synthetic insider-activity monitor modeled from SEC Form 4 style events and AI synthesis.',
-    items
+    filters: {
+      side: sideFilter,
+      symbol: symbolFilter,
+      minValueUsd,
+      sortBy
+    },
+    availableSorts: INSIDER_TRADE_SORT_OPTIONS,
+    totalMatches: filtered.length,
+    items: filtered.slice(0, total)
   };
 }
 

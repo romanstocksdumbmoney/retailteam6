@@ -1129,6 +1129,27 @@ label {
   background: rgba(239, 68, 68, 0.12);
 }
 
+.insider-trades-summary {
+  margin: 0 0 0.15rem;
+  color: #fef08a;
+}
+
+.insider-trade-reaction {
+  font-weight: 800;
+}
+
+.insider-trade-reaction--up {
+  color: #86efac;
+}
+
+.insider-trade-reaction--down {
+  color: #fca5a5;
+}
+
+.insider-trade-reaction--flat {
+  color: #cbd5e1;
+}
+
 .earnings-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
