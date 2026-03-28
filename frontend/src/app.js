@@ -336,6 +336,10 @@ function openAutoTraderPage() {
   window.location.href = '/ai-bot-trader.html';
 }
 
+function openInsiderTradesPage() {
+  window.location.href = '/insider-trades.html';
+}
+
 async function focusPremiumSpikesSection(options = {}) {
   const sectionHeader = document.getElementById('premium-spikes-section');
   const shouldLoad = options.load !== false;
@@ -1628,6 +1632,7 @@ function setupAiSidebar() {
 
   const highIvButton = document.getElementById('high-iv-refresh');
   const premiumSpikesButton = document.getElementById('premium-spikes-refresh');
+  const insiderTradesPageButton = document.getElementById('open-insider-trades-page');
   const aiTradeButton = document.getElementById('open-ai-trade');
   const autoTraderButton = document.getElementById('open-ai-auto-trader');
   const aiAnalyzerButton = document.getElementById('open-ai-analyzer');
@@ -1647,6 +1652,12 @@ function setupAiSidebar() {
   if (premiumSpikesButton) {
     premiumSpikesButton.addEventListener('click', async () => {
       await focusPremiumSpikesSection();
+    });
+  }
+
+  if (insiderTradesPageButton) {
+    insiderTradesPageButton.addEventListener('click', () => {
+      openInsiderTradesPage();
     });
   }
 

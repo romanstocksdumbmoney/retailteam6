@@ -1150,6 +1150,17 @@ label {
   color: #cbd5e1;
 }
 
+.insider-trades-page-controls {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+  gap: 0.7rem;
+  align-items: end;
+}
+
+.insider-trades-page-controls button {
+  margin-top: 0.2rem;
+}
+
 .earnings-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
