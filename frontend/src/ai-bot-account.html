@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>DumbDollars AI Brokerage Account</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body class="payment-page-body">
+    <main class="ai-trade-page-shell">
+      <article class="ai-trade-page-card card" role="main" aria-labelledby="ai-account-title">
+        <a class="open-link" href="/ai-bot-funding.html">Back to Funding + Test Area</a>
+        <div class="pro-plan-logo-wrap" aria-hidden="true">
+          <img class="pro-plan-logo-image" src="./logo-mark.svg" alt="" />
+        </div>
+        <h1 id="ai-account-title">AI Brokerage Account View</h1>
+        <p class="pro-plan-subtitle">Track the funded AI account, open positions, cash, equity, and recent activity in one separate portfolio view.</p>
+
+        <p id="ai-account-status" class="small-note"></p>
+
+        <section class="ai-bot-actions">
+          <button id="ai-account-refresh" type="button">Refresh Account</button>
+          <button id="ai-account-run-cycle" class="btn-secondary" type="button">Run AI Cycle</button>
+          <button id="ai-account-back-funding" class="btn-secondary" type="button">Open Funding Page</button>
+        </section>
+
+        <section class="ai-bot-layout">
+          <article class="ai-trade-consensus">
+            <h3>Broker Account</h3>
+            <div id="ai-account-summary"></div>
+          </article>
+          <article class="ai-trade-consensus">
+            <h3>Portfolio Snapshot</h3>
+            <div id="ai-account-portfolio"></div>
+          </article>
+        </section>
+
+        <section class="ai-trade-consensus">
+          <h3>Open Positions</h3>
+          <div id="ai-account-open-positions" class="stack"></div>
+        </section>
+
+        <section class="ai-bot-layout">
+          <article class="ai-trade-consensus">
+            <h3>Recent Funding Activity</h3>
+            <div id="ai-account-funding-activity" class="stack"></div>
+          </article>
+          <article class="ai-trade-consensus">
+            <h3>Recent AI Cycles</h3>
+            <div id="ai-account-cycle-activity" class="stack"></div>
+          </article>
+        </section>
+
+        <section class="ai-trade-consensus">
+          <h3>Safety + Execution</h3>
+          <div id="ai-account-safety"></div>
+        </section>
+      </article>
+    </main>
+    <script src="./ai-bot-account.js"></script>
+  </body>
+</html>

@@ -1,0 +1,127 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>DumbDollars AI Bot Trader</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body class="payment-page-body">
+    <main class="ai-trade-page-shell">
+      <article class="ai-trade-page-card card" role="main" aria-labelledby="ai-bot-title">
+        <a class="open-link" href="/">Back to dashboard</a>
+        <div class="pro-plan-logo-wrap" aria-hidden="true">
+          <img class="pro-plan-logo-image" src="./logo-mark.svg" alt="" />
+        </div>
+        <h1 id="ai-bot-title">AI Bot Trader</h1>
+        <p class="pro-plan-subtitle">Set prompt, risk limits, sectors, and portfolio allocation. Then move to Test Area / Live Funding to choose paper testing or funded live mode.</p>
+
+        <form id="ai-bot-config-form" class="pro-plan-box ai-bot-form" novalidate>
+          <label>
+            Strategy prompt
+            <textarea id="ai-bot-prompt" rows="4" placeholder="Trade momentum breakouts with strict risk control, avoid earnings-day names, focus on liquid large caps." required></textarea>
+          </label>
+          <div class="ai-bot-grid">
+            <label>
+              Capital ($)
+              <input id="ai-bot-capital" type="number" min="100" step="100" value="10000" required />
+            </label>
+            <label>
+              Max risk per trade (%)
+              <input id="ai-bot-risk-pct" type="number" min="0.1" max="10" step="0.1" value="1.5" required />
+            </label>
+            <label>
+              Target holdings
+              <input id="ai-bot-target-holdings" type="number" min="1" max="25" step="1" value="6" required />
+            </label>
+            <label>
+              Max sector exposure (%)
+              <input id="ai-bot-max-sector-exposure-pct" type="number" min="5" max="100" step="1" value="35" required />
+            </label>
+            <label>
+              Max gross exposure (%)
+              <input id="ai-bot-max-gross-exposure-pct" type="number" min="10" max="200" step="1" value="100" required />
+            </label>
+            <label>
+              Target return per cycle (%)
+              <input id="ai-bot-target-return-pct" type="number" min="0.5" max="50" step="0.1" value="4.5" required />
+            </label>
+            <label>
+              Timeframe
+              <select id="ai-bot-timeframe">
+                <option value="intraday" selected>Intraday</option>
+                <option value="swing">Swing</option>
+                <option value="position">Position</option>
+              </select>
+            </label>
+            <label>
+              Trading mode
+              <select id="ai-bot-trading-mode">
+                <option value="paper" selected>Test Area (Paper Trading)</option>
+                <option value="live">Live Funding Mode</option>
+              </select>
+            </label>
+            <label>
+              Test Area capital ($)
+              <input id="ai-bot-test-capital" type="number" min="100" step="100" value="10000" required />
+            </label>
+            <label>
+              Test Area risk per trade (%)
+              <input id="ai-bot-test-risk-pct" type="number" min="0.1" max="20" step="0.1" value="1.5" required />
+            </label>
+          </div>
+          <fieldset class="ai-bot-sectors">
+            <legend>Sectors to trade</legend>
+            <label><input type="checkbox" value="Technology" checked /> Technology</label>
+            <label><input type="checkbox" value="Semiconductors" checked /> Semiconductors</label>
+            <label><input type="checkbox" value="Financials" checked /> Financials</label>
+            <label><input type="checkbox" value="Energy" /> Energy</label>
+            <label><input type="checkbox" value="Healthcare" checked /> Healthcare</label>
+            <label><input type="checkbox" value="Consumer Discretionary" checked /> Consumer Discretionary</label>
+            <label><input type="checkbox" value="Industrials" /> Industrials</label>
+            <label><input type="checkbox" value="Communication Services" checked /> Communication Services</label>
+          </fieldset>
+          <button id="ai-bot-save" type="submit">Save Risk Setup</button>
+        </form>
+
+        <p id="ai-bot-status" class="small-note"></p>
+
+        <section class="ai-bot-actions">
+          <button id="open-ai-bot-funding" type="button">Open Test Area / Funding</button>
+          <button id="open-ai-bot-account" class="btn-secondary" type="button">Open AI Brokerage Account</button>
+        </section>
+
+        <section class="ai-bot-actions">
+          <button id="ai-bot-run-cycle" type="button">Run Bot Cycle</button>
+          <button id="ai-bot-refresh" class="btn-secondary" type="button">Refresh Bot State</button>
+          <button id="ai-bot-pause" class="btn-secondary" type="button">Pause Bot</button>
+          <button id="ai-bot-resume" class="btn-secondary" type="button">Resume Bot</button>
+        </section>
+
+        <section class="ai-bot-layout">
+          <article class="ai-trade-consensus">
+            <h3>Bot Summary</h3>
+            <div id="ai-bot-summary"></div>
+          </article>
+          <article class="ai-trade-consensus">
+            <h3>Current Plan</h3>
+            <div id="ai-bot-plan"></div>
+          </article>
+        </section>
+
+        <section class="ai-trade-consensus">
+          <h3>Proposed Orders</h3>
+          <div id="ai-bot-orders" class="stack"></div>
+        </section>
+
+        <section class="ai-trade-consensus">
+          <h3>Recent Cycle Logs</h3>
+          <div id="ai-bot-logs" class="stack"></div>
+        </section>
+
+        <p class="small-note">Use Test Area for paper trading and strategy tuning. Live funding mode uses funded sizing and keeps manual execution safeguards unless broker APIs are connected.</p>
+      </article>
+    </main>
+    <script src="./ai-bot-trader.js"></script>
+  </body>
+</html>

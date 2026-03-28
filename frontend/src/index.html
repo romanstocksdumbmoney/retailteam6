@@ -1,0 +1,364 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>DumbDollars - Market Intelligence Dashboard</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <main class="container">
+      <header class="hero">
+        <div class="menu-bar">
+          <button
+            id="sidebar-menu-toggle"
+            class="sidebar-menu-toggle"
+            type="button"
+            aria-expanded="false"
+            aria-controls="sidebar-panel"
+            aria-label="Toggle sidebar menu"
+          >
+            <span class="menu-toggle-icon" aria-hidden="true">
+              <span class="menu-toggle-bar"></span>
+              <span class="menu-toggle-bar"></span>
+              <span class="menu-toggle-bar"></span>
+            </span>
+            <span class="menu-toggle-label">Open menu</span>
+          </button>
+        </div>
+        <div class="diamond-banner">
+          <div class="diamond-icon-wrap" aria-hidden="true">
+            <img class="diamond-logo-image" src="./logo-mark.svg" alt="" />
+          </div>
+          <div>
+            <p class="diamond-kicker">DumbDollars</p>
+            <p class="diamond-text">Whales, flow, and earnings momentum at a glance.</p>
+          </div>
+        </div>
+        <div class="hero-top">
+          <h1>DumbDollars</h1>
+          <span id="plan-badge" class="plan-badge plan-free">FREE ACCESS</span>
+        </div>
+        <p class="subtitle">DumbDollars helps traders track market flow, stock probabilities, options risk, and earnings momentum in one dashboard.</p>
+        <p id="status" class="status">Checking API status...</p>
+        <div class="quick-module-links">
+          <button id="jump-premium-spikes" class="btn-secondary" type="button">Open Call / Put Premium Spikes</button>
+        </div>
+
+        <section class="auth-bar">
+          <div class="auth-grid">
+            <form id="signup-form" class="auth-form">
+              <label>
+                Create account
+                <input id="signup-email" type="email" placeholder="email@domain.com" required />
+              </label>
+              <label>
+                Password
+                <input id="signup-password" type="password" placeholder="password (min 8 chars)" required />
+              </label>
+              <button type="submit">Sign up</button>
+            </form>
+            <form id="login-form" class="auth-form">
+              <label>
+                Login email
+                <input id="login-email" type="email" placeholder="email@domain.com" required />
+              </label>
+              <label>
+                Password
+                <input id="login-password" type="password" placeholder="password" required />
+              </label>
+              <button type="submit">Log in</button>
+            </form>
+          </div>
+          <div id="social-auth-row" class="social-auth-row">
+            <p class="small-note">Quick sign in with:</p>
+            <div class="social-auth-buttons">
+              <button class="btn-secondary oauth-btn" data-provider="google" type="button">Continue with Google</button>
+              <button class="btn-secondary oauth-btn" data-provider="apple" type="button">Continue with Apple</button>
+              <button class="btn-secondary oauth-btn" data-provider="github" type="button">Continue with GitHub</button>
+              <button class="btn-secondary oauth-btn" data-provider="discord" type="button">Continue with Discord</button>
+              <button class="btn-secondary oauth-btn" data-provider="x" type="button">Continue with X</button>
+            </div>
+          </div>
+          <div class="auth-actions">
+            <button id="upgrade-pro-btn" type="button">Upgrade to Pro ($15/mo)</button>
+            <button id="billing-portal-btn" class="btn-secondary" type="button">Manage Billing</button>
+            <button id="logout-btn" class="btn-secondary" type="button">Log out</button>
+          </div>
+          <article id="billing-safety-card" class="billing-safety-card hidden" aria-live="polite">
+            <h3>Secure Pro Checkout</h3>
+            <p id="billing-plan-line" class="small-note">Plan: DumbDollars Pro • $15/month</p>
+            <ul id="billing-trust-points" class="detail-list"></ul>
+            <div class="billing-actions">
+              <button id="billing-safe-continue" type="button">Continue to secure checkout</button>
+              <button id="billing-safe-cancel" class="btn-secondary" type="button">Cancel</button>
+            </div>
+          </article>
+          <p id="auth-message" class="small-note"></p>
+        </section>
+      </header>
+
+      <div class="app-layout">
+        <aside id="sidebar-panel" class="sidebar card">
+          <div class="section-header">
+            <h2>AI Discovery</h2>
+            <span class="chip">Free</span>
+          </div>
+          <form id="ai-search-form" class="row-form">
+            <label>
+              Search topic
+              <input id="ai-search-query" type="text" placeholder="NVDA earnings, Fed rates, AI chips" />
+            </label>
+            <label>
+              AI platform
+              <select id="ai-platform-select"></select>
+            </label>
+            <button type="submit">Search AI</button>
+            <button id="ai-search-all" class="btn-secondary" type="button">Search All AI Sources</button>
+          </form>
+          <a id="ai-open-link" class="open-link" href="#" target="_blank" rel="noopener noreferrer">Open selected platform</a>
+          <div id="ai-platform-details" class="stack"></div>
+
+          <div class="section-header">
+            <h2>Realized Patterns</h2>
+            <span class="chip">Free</span>
+          </div>
+          <p class="small-note">Track live volume-down and candlestick setups. Filled patterns auto-drop off the board.</p>
+          <form id="patterns-form" class="row-form">
+            <label>
+              Pattern type
+              <select id="pattern-type-select">
+                <option value="all">All patterns</option>
+                <option value="volume_down">Volume Down</option>
+                <option value="candlestick">Candlestick</option>
+              </select>
+            </label>
+            <button id="patterns-refresh" type="submit">Refresh</button>
+          </form>
+          <div id="patterns-results" class="stack"></div>
+
+          <div class="section-header">
+            <h2>Wild Takes</h2>
+            <span class="chip">Core</span>
+          </div>
+          <p class="small-note">Notification-style oddball market takes and aggressive positioning chatter.</p>
+          <button id="wild-takes-refresh" type="button">Refresh Wild Takes</button>
+          <div id="wild-takes-results" class="stack"></div>
+
+          <div class="section-header">
+            <h2>Insider Trades</h2>
+            <span class="chip">Free</span>
+          </div>
+          <p class="small-note">Track larger insider buy/sell filings and see whether price followed through.</p>
+          <a id="open-insider-trades-page" class="open-link" href="/insider-trades.html">Open full Insider Trades page</a>
+          <form id="insider-trades-form" class="row-form">
+            <label>
+              Side
+              <select id="insider-side-select">
+                <option value="all">All</option>
+                <option value="buy">Buys</option>
+                <option value="sell">Sells</option>
+              </select>
+            </label>
+            <label>
+              Symbol
+              <input id="insider-symbol-input" type="text" placeholder="AAPL" maxlength="10" />
+            </label>
+            <label>
+              Min value ($)
+              <input id="insider-min-value-input" type="number" min="0" step="1000000" placeholder="10000000" />
+            </label>
+            <label>
+              Sort
+              <select id="insider-sort-select">
+                <option value="anomaly_desc">Most unusual first</option>
+                <option value="value_desc">Largest trade value</option>
+                <option value="value_asc">Smallest trade value</option>
+                <option value="filed_desc">Most recent filing</option>
+                <option value="filed_asc">Oldest filing</option>
+                <option value="reaction_desc">Largest reaction</option>
+                <option value="reaction_asc">Smallest reaction</option>
+              </select>
+            </label>
+            <button id="insider-trades-refresh" type="submit">Apply</button>
+          </form>
+          <div id="insider-trades-results" class="stack"></div>
+
+          <div class="section-header trend-header">
+            <h2>Trend Trades</h2>
+            <span class="chip pro">Pro</span>
+          </div>
+          <p class="small-note">Top social-media trend trades across TikTok, YouTube, Reels, Spotlight, X.com, and more.</p>
+          <form id="trend-trades-form" class="row-form">
+            <label>
+              Trend source
+              <select id="trend-source-select">
+                <option value="all">All sources</option>
+                <option value="TikTok">TikTok</option>
+                <option value="YouTube Shorts">YouTube Shorts</option>
+                <option value="youtube">YouTube</option>
+                <option value="Snapchat Spotlight">Snapchat Spotlight</option>
+                <option value="Instagram Reels">Instagram Reels</option>
+                <option value="Facebook">Facebook</option>
+                <option value="X.com">X.com</option>
+              </select>
+            </label>
+            <button id="trend-trades-refresh" type="submit">Apply</button>
+          </form>
+          <div id="trend-trades-results" class="stack"></div>
+
+          <div class="section-header">
+            <h2>High IV Tracker</h2>
+            <span class="chip pro">Pro</span>
+          </div>
+          <p class="small-note">Tracks names with elevated implied volatility, IV rank, and expected move.</p>
+          <button id="high-iv-refresh" type="button">Refresh High IV</button>
+          <div id="high-iv-results" class="stack"></div>
+
+          <div id="premium-spikes-section" class="section-header">
+            <h2>Call / Put Premium Spikes</h2>
+            <span class="chip pro">Pro</span>
+          </div>
+          <p class="small-note">Tracks high-volume large-cap options premium spikes, when they happened, and whether price reacted.</p>
+          <button id="premium-spikes-refresh" type="button">Refresh Premium Spikes</button>
+          <div id="premium-spikes-results" class="stack"></div>
+
+          <div class="section-header">
+            <h2>AI Trade</h2>
+            <span class="chip">Account</span>
+          </div>
+          <p class="small-note">Upload chart patterns and get bullish/bearish consensus plus stop-loss and take-profit levels.</p>
+          <button id="open-ai-trade" type="button">Open AI Trade</button>
+
+          <div class="section-header">
+            <h2>AI Auto Trader</h2>
+            <span class="chip">Account</span>
+          </div>
+          <p class="small-note">Set prompt, capital, risk limits, and sector targets for automated AI trade planning.</p>
+          <button id="open-ai-auto-trader" type="button">Open AI Auto Trader</button>
+
+          <div class="section-header">
+            <h2>AI Analyzer</h2>
+            <span class="chip">Account</span>
+          </div>
+          <p class="small-note">Upload screenshots and review if the setup was a good trade with AI scoring.</p>
+          <button id="open-ai-analyzer" type="button">Open AI Analyzer</button>
+        </aside>
+        <div id="sidebar-backdrop" class="sidebar-backdrop hidden" aria-hidden="true"></div>
+
+        <div class="main-panels">
+          <section class="card">
+            <div class="section-header">
+              <h2>Stock Outlook Search</h2>
+              <span class="chip">Core</span>
+            </div>
+            <form id="stock-form" class="row-form">
+              <label>
+                Ticker
+                <input id="ticker-input" name="ticker" type="text" placeholder="AAPL" required />
+              </label>
+              <button type="submit">Analyze</button>
+            </form>
+            <p class="small-note">
+              Combines analyst sentiment, article sentiment, event pressure, and flow.
+            </p>
+            <div id="stock-results" class="prob-grid"></div>
+          </section>
+
+          <section class="card">
+            <div class="section-header">
+              <h2>x.com Scanner + Market Flow</h2>
+              <span class="chip pro">Pro</span>
+            </div>
+            <form id="scan-form" class="row-form">
+              <label>
+                Scan Query
+                <input id="scan-query" name="query" type="text" placeholder="NVDA, Fed, CPI, AI" required />
+              </label>
+              <label>
+                Method
+                <select id="scan-method" name="method">
+                  <option value="multi">Multi-AI consensus</option>
+                  <option value="llm-sentiment">Sentiment LLM</option>
+                  <option value="event-cluster">Event cluster detector</option>
+                  <option value="flow-extractor">Flow extractor</option>
+                </select>
+              </label>
+              <button type="submit">Run Scan</button>
+            </form>
+            <div id="scan-results" class="stack"></div>
+          </section>
+
+          <section class="card">
+            <div class="section-header">
+              <h2>Options Calculator + Gamma Exposure</h2>
+              <span class="chip pro">Pro</span>
+            </div>
+            <form id="options-form" class="row-form multi">
+              <label>
+                Symbol
+                <input id="option-symbol" name="symbol" type="text" placeholder="TSLA" required />
+              </label>
+              <label>
+                Spot
+                <input id="spot-price" name="spotPrice" type="number" min="0" step="0.01" value="180" required />
+              </label>
+              <label>
+                Strike
+                <input id="strike-price" name="strikePrice" type="number" min="0" step="0.01" value="185" required />
+              </label>
+              <label>
+                Days to Expiry
+                <input id="days-to-expiry" name="daysToExpiry" type="number" min="1" step="1" value="14" required />
+              </label>
+              <label>
+                IV (decimal)
+                <input id="iv" name="impliedVolatility" type="number" min="0.01" max="3" step="0.01" value="0.42" required />
+              </label>
+              <label>
+                Contract Type
+                <select id="contract-type" name="contractType">
+                  <option value="call">Call</option>
+                  <option value="put">Put</option>
+                </select>
+              </label>
+              <button type="submit">Calculate</button>
+            </form>
+            <div id="options-results" class="stack"></div>
+          </section>
+
+          <section class="card">
+            <div class="section-header">
+              <h2>Unusual Moves Feed</h2>
+              <span class="chip pro">Pro</span>
+            </div>
+            <p class="small-note">Live unusual flow feed.</p>
+            <button id="refresh-unusual" type="button">Refresh Feed</button>
+            <div id="unusual-results" class="stack"></div>
+          </section>
+
+          <section class="card">
+            <div class="section-header">
+              <h2>Earnings Gambling</h2>
+              <span class="chip">Core</span>
+            </div>
+            <p class="small-note">Top upcoming earnings with confirmed dates/sessions when available and directional probability cards.</p>
+            <div id="earnings-board" class="earnings-grid"></div>
+            <article id="earnings-detail" class="earnings-detail-card"></article>
+          </section>
+        </div>
+      </div>
+    </main>
+    <div id="pro-popup-backdrop" class="pro-popup-backdrop hidden" aria-hidden="true">
+      <article id="pro-popup" class="pro-popup card" role="dialog" aria-modal="true" aria-labelledby="pro-popup-title">
+        <h3 id="pro-popup-title">Pro Access Needed</h3>
+        <p id="pro-popup-text">This feature is part of DumbDollars Pro. Upgrade to unlock it.</p>
+        <div class="pro-popup-actions">
+          <button id="pro-popup-upgrade" type="button">Go Pro</button>
+          <button id="pro-popup-close" class="btn-secondary" type="button">Close</button>
+        </div>
+      </article>
+    </div>
+    <script src="./app.js"></script>
+  </body>
+</html>

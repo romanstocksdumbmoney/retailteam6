@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>DumbDollars AI Funding Payment</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body class="payment-page-body">
+    <main class="payment-page-shell">
+      <article class="payment-page-card card" role="main" aria-labelledby="ai-funding-payment-title">
+        <a class="open-link" href="/ai-bot-funding.html">Back to Funding Setup</a>
+        <div class="pro-plan-logo-wrap" aria-hidden="true">
+          <img class="pro-plan-logo-image" src="./logo-mark.svg" alt="" />
+        </div>
+        <h1 id="ai-funding-payment-title">AI Funding Payment</h1>
+        <p class="pro-plan-subtitle">
+          Enter how much you want to fund, pay securely, then apply the deposit to your AI brokerage account.
+        </p>
+
+        <section class="ai-trade-consensus">
+          <h3>Funding Payment Details</h3>
+          <form id="ai-funding-payment-form" class="ai-bot-form" novalidate>
+            <div class="ai-bot-grid">
+              <label>
+                Funding amount ($)
+                <input id="ai-funding-payment-amount" type="number" min="10" step="10" value="1000" required />
+              </label>
+              <label>
+                Account label
+                <input id="ai-funding-payment-account" type="text" maxlength="80" placeholder="live-account" />
+              </label>
+            </div>
+            <button id="ai-funding-payment-submit" type="submit">Pay Funding Amount</button>
+          </form>
+          <p id="ai-funding-payment-amount-line" class="small-note">Funding Amount: $1,000.00 (one-time funding transfer)</p>
+          <p id="ai-funding-payment-status" class="small-note"></p>
+        </section>
+
+        <section class="ai-trade-consensus">
+          <h3>After Payment</h3>
+          <p class="small-note">
+            After payment success, use the button below to apply the funded cash to your AI brokerage account profile.
+          </p>
+          <div class="ai-bot-actions">
+            <button id="ai-funding-apply-deposit" class="btn-secondary" type="button">Apply Deposit to AI Account</button>
+            <button id="ai-funding-open-account" class="btn-secondary" type="button">Open AI Brokerage Account View</button>
+          </div>
+        </section>
+      </article>
+    </main>
+    <script src="./ai-bot-funding-payment.js"></script>
+  </body>
+</html>
