@@ -237,6 +237,8 @@ const INSIDER_TRADE_SORT_OPTIONS = [
   'value_asc',
   'filed_desc',
   'filed_asc',
+  'anomaly_desc',
+  'anomaly_asc',
   'reaction_desc',
   'reaction_asc'
 ];
@@ -1431,15 +1433,23 @@ function normalizeInsiderTradeSide(side) {
 }
 
 function normalizeInsiderTradeSort(sortBy) {
-  const normalized = String(sortBy || 'value_desc').trim().toLowerCase();
+  const normalized = String(sortBy || 'anomaly_desc').trim().toLowerCase();
   if (INSIDER_TRADE_SORT_OPTIONS.includes(normalized)) {
     return normalized;
   }
-  return 'value_desc';
+  return 'anomaly_desc';
 }
 
 function sanitizeInsiderSymbolFilter(symbol) {
   return String(symbol || '').toUpperCase().replace(/[^A-Z.]/g, '').slice(0, 10);
+}
+
+function toRatioScore(value, min, max) {
+  if (!Number.isFinite(value)) {
+    return 0;
+  }
+  const bounded = clamp(Number(value), min, max);
+  return Math.round(((bounded - min) / Math.max(max - min, 0.0001)) * 100);
 }
 
 function getInsiderTrades(limit = 10, options = {}) {
@@ -1448,6 +1458,7 @@ function getInsiderTrades(limit = 10, options = {}) {
   const sideFilter = normalizeInsiderTradeSide(options.side);
   const symbolFilter = sanitizeInsiderSymbolFilter(options.symbol);
   const sortBy = normalizeInsiderTradeSort(options.sortBy);
+  const unusualOnly = String(options.unusualOnly || '').trim().toLowerCase() === 'true';
   const rawMinValue = Number(options.minValueUsd || 0);
   const minValueUsd = Number.isFinite(rawMinValue) && rawMinValue > 0
     ? Math.round(rawMinValue)
@@ -1475,6 +1486,33 @@ function getInsiderTrades(limit = 10, options = {}) {
     const stockReactionPct = Number((((pseudoRandom(seed + i * 29 + 7) - 0.5) * 7.2)).toFixed(2));
     const source = INSIDER_TRADE_SOURCES[Math.floor(pseudoRandom(seed + i * 31 + 8) * INSIDER_TRADE_SOURCES.length)];
     const conviction = valueUsd >= 100_000_000 ? 'very_high' : valueUsd >= 40_000_000 ? 'high' : 'medium';
+    const unusualVolumeMultiple = Number((1.25 + pseudoRandom(seed + i * 37 + 9) * 6.35).toFixed(2));
+    const baselineValueUsd = Math.max(1_000_000, Math.round(valueUsd / Math.max(unusualVolumeMultiple, 1)));
+    const valueScore = toRatioScore(Math.log10(Math.max(valueUsd, 1)), 6.6, 8.4);
+    const volumeScore = toRatioScore(unusualVolumeMultiple, 1, 7.6);
+    const reactionScore = toRatioScore(Math.abs(stockReactionPct), 0, 7.2);
+    const anomalyScore = clamp(
+      Math.round(valueScore * 0.45 + volumeScore * 0.38 + reactionScore * 0.17),
+      1,
+      99
+    );
+    const unusualSignals = [];
+    if (valueUsd >= 80_000_000) {
+      unusualSignals.push('Block-size insider notional');
+    }
+    if (unusualVolumeMultiple >= 3.5) {
+      unusualSignals.push(`Abnormal filing size (${unusualVolumeMultiple}x baseline)`);
+    }
+    if (Math.abs(stockReactionPct) >= 2.2) {
+      unusualSignals.push(`Fast post-filing reaction (${stockReactionPct > 0 ? '+' : ''}${stockReactionPct}%)`);
+    }
+    if (!unusualSignals.length) {
+      unusualSignals.push('Above-average insider print');
+    }
+    const isUnusual = anomalyScore >= 66 || unusualVolumeMultiple >= 3.5 || valueUsd >= 80_000_000;
+    const signalSummary = isUnusual
+      ? 'Unusual insider flow detected'
+      : 'Standard insider flow signal';
 
     items.push({
       symbol,
@@ -1484,8 +1522,16 @@ function getInsiderTrades(limit = 10, options = {}) {
       shares,
       averagePriceUsd: avgPrice,
       valueUsd,
+      baselineValueUsd,
       filedAt,
       stockReactionPct,
+      unusualVolumeMultiple,
+      flowVsAverageRatio: unusualVolumeMultiple,
+      anomalyScore,
+      unusualSignals,
+      signalSummary,
+      isUnusual,
+      screeningTag: isUnusual ? 'unusual_insider_activity' : 'standard_insider_activity',
       conviction,
       source,
       details: side === 'buy'
@@ -1504,6 +1550,9 @@ function getInsiderTrades(limit = 10, options = {}) {
     if (minValueUsd > 0 && Number(item.valueUsd || 0) < minValueUsd) {
       return false;
     }
+    if (unusualOnly && !item.isUnusual) {
+      return false;
+    }
     return true;
   });
 
@@ -1513,6 +1562,10 @@ function getInsiderTrades(limit = 10, options = {}) {
     filtered.sort((a, b) => new Date(b.filedAt).getTime() - new Date(a.filedAt).getTime());
   } else if (sortBy === 'filed_asc') {
     filtered.sort((a, b) => new Date(a.filedAt).getTime() - new Date(b.filedAt).getTime());
+  } else if (sortBy === 'anomaly_desc') {
+    filtered.sort((a, b) => b.anomalyScore - a.anomalyScore || b.valueUsd - a.valueUsd);
+  } else if (sortBy === 'anomaly_asc') {
+    filtered.sort((a, b) => a.anomalyScore - b.anomalyScore || a.valueUsd - b.valueUsd);
   } else if (sortBy === 'reaction_desc') {
     filtered.sort((a, b) => Math.abs(b.stockReactionPct) - Math.abs(a.stockReactionPct));
   } else if (sortBy === 'reaction_asc') {
@@ -1528,9 +1581,11 @@ function getInsiderTrades(limit = 10, options = {}) {
       side: sideFilter,
       symbol: symbolFilter,
       minValueUsd,
-      sortBy
+      sortBy,
+      unusualOnly
     },
     availableSorts: INSIDER_TRADE_SORT_OPTIONS,
+    unusualCount: filtered.filter((item) => item.isUnusual).length,
     totalMatches: filtered.length,
     items: filtered.slice(0, total)
   };

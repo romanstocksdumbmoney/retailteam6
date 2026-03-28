@@ -1150,6 +1150,33 @@ label {
   color: #cbd5e1;
 }
 
+.insider-trade-anomaly-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  padding: 0.14rem 0.46rem;
+  font-size: 0.72rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.01em;
+  margin-left: 0.35rem;
+  border: 1px solid rgba(148, 163, 184, 0.42);
+  color: #cbd5e1;
+  background: rgba(15, 23, 42, 0.75);
+}
+
+.insider-trade-anomaly-badge--unusual {
+  border-color: rgba(250, 204, 21, 0.62);
+  color: #fde047;
+  background: rgba(120, 53, 15, 0.33);
+}
+
+.insider-trade-anomaly-score {
+  color: #fef08a;
+  font-weight: 800;
+}
+
 .insider-trades-page-controls {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));

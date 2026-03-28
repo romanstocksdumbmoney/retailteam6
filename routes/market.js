@@ -400,11 +400,13 @@ router.get('/insider-trades', (req, res) => {
   const symbol = String(req.query.symbol || '').trim().toUpperCase();
   const minValueUsd = Number(req.query.minValueUsd || 0);
   const sortBy = String(req.query.sortBy || 'value_desc').trim().toLowerCase();
+  const unusualOnly = String(req.query.unusualOnly || '').trim().toLowerCase() === 'true';
   const payload = getInsiderTrades(boundedLimit, {
     side,
     symbol,
     minValueUsd,
-    sortBy
+    sortBy,
+    unusualOnly
   });
   return res.json({
     ...payload,

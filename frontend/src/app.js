@@ -11,7 +11,8 @@ let activePatternFilter = 'all';
 let activeInsiderSide = 'all';
 let activeInsiderSymbol = '';
 let activeInsiderMinValueUsd = 0;
-let activeInsiderSortBy = 'value_desc';
+let activeInsiderSortBy = 'anomaly_desc';
+let activeInsiderUnusualOnly = true;
 let sidebarOpen = false;
 let billingInfo = null;
 let proPopupVisible = false;
@@ -1022,7 +1023,7 @@ function renderInsiderTrades(payload) {
   const filters = payload?.filters || {};
   const summary = document.createElement('p');
   summary.className = 'small-note insider-trades-summary';
-  summary.textContent = `Matches: ${Number(payload?.totalMatches || rows.length).toLocaleString()} • Side: ${String(filters.side || 'all').toUpperCase()} • Sort: ${String(filters.sortBy || 'value_desc').replaceAll('_', ' ')}`;
+  summary.textContent = `Matches: ${Number(payload?.totalMatches || rows.length).toLocaleString()} • Weird flow: ${Number(payload?.unusualCount || 0).toLocaleString()} • Side: ${String(filters.side || 'all').toUpperCase()} • Sort: ${String(filters.sortBy || 'anomaly_desc').replaceAll('_', ' ')}`;
   target.appendChild(summary);
   rows.forEach((item) => {
     const side = String(item.side || item.action || '').toLowerCase() === 'buy' ? 'buy' : 'sell';
@@ -1032,6 +1033,8 @@ function renderInsiderTrades(payload) {
     const reactionPct = Number(item.stockReactionPct || 0);
     const reactionSign = reactionPct > 0 ? '+' : '';
     const reactionClass = reactionPct > 0 ? 'up' : reactionPct < 0 ? 'down' : 'flat';
+    const anomalyScore = Number(item.anomalyScore || 0);
+    const unusualVolumeMultiple = Number(item.unusualVolumeMultiple || 0);
     const filedAtLabel = item.filedAt
       ? new Date(item.filedAt).toLocaleString()
       : (item.filedAtLabel || 'Filed recently');
@@ -1046,6 +1049,8 @@ function renderInsiderTrades(payload) {
       <p><strong>Insider:</strong> ${item.insiderName || 'N/A'} (${role})</p>
       <p><strong>Shares:</strong> ${shares.toLocaleString()} • <strong>Avg price:</strong> ${fmtUsd(averagePriceUsd)}</p>
       <p><strong>Total trade:</strong> ${fmtUsd(valueUsd)} • <strong>Conviction:</strong> ${conviction}</p>
+      <p><strong>Anomaly score:</strong> <span class="insider-trade-anomaly-score">${anomalyScore}/100</span> • <strong>Size vs baseline:</strong> ${unusualVolumeMultiple.toFixed(2)}x</p>
+      ${(item.unusualSignals || []).length ? `<ul class="detail-list insider-trade-signals">${(item.unusualSignals || []).map((signal) => `<li>${signal}</li>`).join('')}</ul>` : ''}
       <p><strong>Stock reaction:</strong> <span class="insider-trade-reaction insider-trade-reaction--${reactionClass}">${reactionSign}${reactionPct.toFixed(2)}%</span></p>
       <p class="small-note">${filedAtLabel} • Source: ${item.source || 'Insider feed'}</p>
       <p class="small-note">${item.details || item.summary || ''}</p>
@@ -1138,7 +1143,8 @@ async function loadInsiderTrades() {
     side: activeInsiderSide,
     symbol: activeInsiderSymbol,
     minValueUsd: String(Math.max(0, Math.trunc(activeInsiderMinValueUsd || 0))),
-    sortBy: activeInsiderSortBy
+    sortBy: activeInsiderSortBy,
+    unusualOnly: activeInsiderUnusualOnly ? 'true' : 'false'
   });
   const payload = await fetchJson(`/api/market/insider-trades?${params.toString()}`, {
     headers: headersWithPlan()
@@ -1497,6 +1503,7 @@ function setupAiSidebar() {
   const insiderSymbolInput = document.getElementById('insider-symbol-input');
   const insiderMinValueInput = document.getElementById('insider-min-value-input');
   const insiderSortSelect = document.getElementById('insider-sort-select');
+  const insiderUnusualOnlyInput = document.getElementById('insider-unusual-only-input');
   const wildTakesButton = document.getElementById('wild-takes-refresh');
   const searchAllButton = document.getElementById('ai-search-all');
   const jumpPremiumSpikesButton = document.getElementById('jump-premium-spikes');
@@ -1513,6 +1520,7 @@ function setupAiSidebar() {
     || !insiderSymbolInput
     || !insiderMinValueInput
     || !insiderSortSelect
+    || !insiderUnusualOnlyInput
     || !wildTakesButton
   ) {
     return;
@@ -1522,6 +1530,7 @@ function setupAiSidebar() {
   insiderSortSelect.value = activeInsiderSortBy;
   insiderSymbolInput.value = activeInsiderSymbol;
   insiderMinValueInput.value = activeInsiderMinValueUsd > 0 ? String(activeInsiderMinValueUsd) : '';
+  insiderUnusualOnlyInput.checked = activeInsiderUnusualOnly;
 
   form.addEventListener('submit', async (event) => {
     event.preventDefault();
@@ -1603,7 +1612,8 @@ function setupAiSidebar() {
     activeInsiderSymbol = String(insiderSymbolInput.value || '').trim().toUpperCase();
     const parsedMin = Number(insiderMinValueInput.value || 0);
     activeInsiderMinValueUsd = Number.isFinite(parsedMin) && parsedMin > 0 ? Math.round(parsedMin) : 0;
-    activeInsiderSortBy = String(insiderSortSelect.value || 'value_desc').trim().toLowerCase();
+    activeInsiderSortBy = String(insiderSortSelect.value || 'anomaly_desc').trim().toLowerCase();
+    activeInsiderUnusualOnly = Boolean(insiderUnusualOnlyInput.checked);
     try {
       await loadInsiderTrades();
     } catch (error) {
@@ -1615,7 +1625,8 @@ function setupAiSidebar() {
   });
 
   insiderSortSelect.addEventListener('change', async () => {
-    activeInsiderSortBy = String(insiderSortSelect.value || 'value_desc').trim().toLowerCase();
+    activeInsiderSortBy = String(insiderSortSelect.value || 'anomaly_desc').trim().toLowerCase();
+    activeInsiderUnusualOnly = Boolean(insiderUnusualOnlyInput.checked);
     try {
       await loadInsiderTrades();
     } catch (_error) {
