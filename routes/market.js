@@ -701,7 +701,7 @@ router.post('/auto-trader/funding-payment-session', requireSignedIn, requireLive
     if (code === 'billing_not_configured' || code === 'stripe_not_configured') {
       return res.status(503).json({
         error: 'billing_not_configured',
-        message: 'Billing is not configured. Add Stripe keys and Stripe price configuration.'
+        message: 'Billing is not configured. Add Stripe secret key configuration.'
       });
     }
     return res.status(500).json({

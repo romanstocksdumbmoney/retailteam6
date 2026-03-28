@@ -74,8 +74,11 @@ Required env vars:
 - `JWT_SECRET` (strong random secret; required in production)
 - `STRIPE_SECRET_KEY`
 - `STRIPE_WEBHOOK_SECRET`
-- `STRIPE_PRICE_ID`
 - `APP_BASE_URL`
+
+Stripe pricing config:
+- Preferred: set `STRIPE_PRICE_ID` to a recurring monthly Stripe price.
+- Fallback (still Stripe-hosted): if `STRIPE_PRICE_ID` is not set, checkout uses inline Stripe recurring price data from `STRIPE_PRO_MONTHLY_PRICE_CENTS` (defaults to `1500` = $15.00).
 
 Production hardening env vars:
 - `ALLOWED_ORIGINS` (comma-separated trusted origins; required in production)

@@ -48,6 +48,20 @@ function getProPriceId() {
   return priceId;
 }
 
+function getProMonthlyAmountCents() {
+  const raw = Number(process.env.STRIPE_PRO_MONTHLY_PRICE_CENTS || 1500);
+  if (!Number.isFinite(raw)) {
+    return 1500;
+  }
+  const rounded = Math.round(raw);
+  // Guardrails: $1.00 to $500.00 per month.
+  return Math.min(50_000, Math.max(100, rounded));
+}
+
+function getProMonthlyAmountUsd() {
+  return Number((getProMonthlyAmountCents() / 100).toFixed(2));
+}
+
 async function ensureStripeCustomer(user) {
   const stripe = getStripe();
   if (!stripe) {
@@ -104,18 +118,34 @@ function appendPathQuery(pathValue, params = {}) {
 async function createCheckoutSession(user, options = {}) {
   const stripe = getStripe();
   const priceId = getProPriceId();
-  if (!stripe || !priceId) {
+  if (!stripe) {
     throw new Error('billing_not_configured');
   }
 
   const checkoutUser = resolveCheckoutUser(user, options);
   const customerId = await ensureStripeCustomer(checkoutUser);
   const base = getAppBaseUrl();
+  const lineItems = priceId
+    ? [{ price: priceId, quantity: 1 }]
+    : [
+      {
+        price_data: {
+          currency: 'usd',
+          recurring: { interval: 'month' },
+          unit_amount: getProMonthlyAmountCents(),
+          product_data: {
+            name: 'DumbDollars Pro',
+            description: 'Monthly Pro access subscription'
+          }
+        },
+        quantity: 1
+      }
+    ];
   const session = await stripe.checkout.sessions.create({
     mode: 'subscription',
     customer: customerId,
     payment_method_types: ['card'],
-    line_items: [{ price: priceId, quantity: 1 }],
+    line_items: lineItems,
     success_url: `${base}/?checkout=success&session_id={CHECKOUT_SESSION_ID}`,
     cancel_url: `${base}/?checkout=cancelled`,
     metadata: { userId: checkoutUser.id }
@@ -318,23 +348,25 @@ async function processWebhookEvent(rawBody, signature) {
 }
 
 function isBillingConfigured() {
-  return Boolean(getStripe() && getProPriceId());
+  return Boolean(getStripe());
 }
 
 function getBillingPublicInfo() {
-  const hasStripeApiCheckout = Boolean(getStripe() && getProPriceId());
+  const hasStripeApiCheckout = Boolean(getStripe());
+  const priceIdConfigured = Boolean(getProPriceId());
   const checkoutMode = hasStripeApiCheckout ? 'stripe_api' : 'unconfigured';
 
   return {
     configured: isBillingConfigured(),
     provider: 'Stripe',
     currency: 'usd',
-    amountMonthly: 15,
+    amountMonthly: getProMonthlyAmountUsd(),
     recurringInterval: 'month',
     paymentMethodTypes: ['card'],
     secureCheckoutUrl: hasStripeApiCheckout ? 'https://stripe.com/security' : '',
     billingTermsUrl: hasStripeApiCheckout ? 'https://stripe.com/legal/consumer' : '',
     checkoutMode,
+    priceConfigMode: priceIdConfigured ? 'price_id' : 'inline_price_data',
     checkoutHostedUrl: '',
     cancellationPolicy: 'Cancel anytime from the billing portal. Access remains active until the current period ends.'
   };

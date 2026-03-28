@@ -53,7 +53,7 @@ router.get('/billing/checkout-preview', (_req, res) => {
   if (!billingInfo.configured) {
     return res.status(503).json({
       error: 'billing_not_configured',
-      message: 'Stripe is not configured. Set STRIPE_SECRET_KEY and STRIPE_PRICE_ID.'
+      message: 'Stripe is not configured. Set STRIPE_SECRET_KEY.'
     });
   }
   return res.json({
@@ -170,7 +170,7 @@ router.post('/stripe/create-checkout-session', authRequired, async (req, res) =>
     if (String(error.message) === 'billing_not_configured' || String(error.message) === 'stripe_not_configured') {
       return res.status(503).json({
         error: 'billing_not_configured',
-        message: 'Stripe is not configured. Set STRIPE_SECRET_KEY and STRIPE_PRICE_ID.'
+        message: 'Stripe is not configured. Set STRIPE_SECRET_KEY.'
       });
     }
     return res.status(500).json({ error: 'checkout_failed', message: 'Could not create Stripe checkout session.' });
