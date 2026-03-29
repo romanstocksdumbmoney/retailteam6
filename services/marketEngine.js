@@ -1554,6 +1554,38 @@ function toRatioScore(value, min, max) {
   return Math.round(((bounded - min) / Math.max(max - min, 0.0001)) * 100);
 }
 
+function buildInsiderDirectionalBias(side, stockReactionPct, anomalyScore) {
+  const normalizedSide = String(side || '').toLowerCase() === 'buy' ? 'buy' : 'sell';
+  const reaction = Number.isFinite(Number(stockReactionPct)) ? Number(stockReactionPct) : 0;
+  const anomaly = Number.isFinite(Number(anomalyScore)) ? Number(anomalyScore) : 50;
+  const sidePush = normalizedSide === 'buy' ? 20 : -20;
+  const reactionPush = reaction * 9;
+  const anomalyPush = ((anomaly - 50) / 50) * 12;
+  const score = clamp(Math.round(sidePush + reactionPush + anomalyPush), -100, 100);
+  const absScore = Math.abs(score);
+
+  if (absScore < 18) {
+    return {
+      label: 'neutral',
+      confidencePct: clamp(50 + Math.round(absScore * 1.4), 50, 65),
+      score,
+      reason: 'Signals are mixed between filing side and post-filing reaction.'
+    };
+  }
+
+  const label = score > 0 ? 'bullish' : 'bearish';
+  const confidencePct = clamp(55 + Math.round(absScore * 0.42), 56, 95);
+  const reason = label === 'bullish'
+    ? 'Buy pressure and follow-through support an upside bias.'
+    : 'Sell pressure and follow-through support a downside bias.';
+  return {
+    label,
+    confidencePct,
+    score,
+    reason
+  };
+}
+
 function normalizePortfolioSort(sortBy) {
   const normalized = String(sortBy || 'score_desc').trim().toLowerCase();
   if (POWER_PORTFOLIO_SORT_OPTIONS.includes(normalized)) {
@@ -1751,6 +1783,7 @@ function getInsiderTrades(limit = 10, options = {}) {
       1,
       99
     );
+    const directionalBias = buildInsiderDirectionalBias(side, stockReactionPct, anomalyScore);
     const unusualSignals = [];
     if (valueUsd >= 80_000_000) {
       unusualSignals.push('Block-size insider notional');
@@ -1783,6 +1816,10 @@ function getInsiderTrades(limit = 10, options = {}) {
       unusualVolumeMultiple,
       flowVsAverageRatio: unusualVolumeMultiple,
       anomalyScore,
+      directionalBias: directionalBias.label,
+      directionalBiasConfidencePct: directionalBias.confidencePct,
+      directionalBiasScore: directionalBias.score,
+      directionalBiasReason: directionalBias.reason,
       unusualSignals,
       signalSummary,
       isUnusual,

@@ -18,6 +18,12 @@ function fmtUsd(value) {
   return `$${Number(value || 0).toLocaleString()}`;
 }
 
+function fmtPct(value) {
+  const numeric = Number(value || 0);
+  const sign = numeric > 0 ? '+' : '';
+  return `${sign}${numeric.toFixed(1)}%`;
+}
+
 function formatSortLabel(sortBy) {
   return String(sortBy || 'value_desc')
     .replaceAll('_', ' ')
@@ -75,6 +81,9 @@ function renderInsiderTrades(payload) {
       .replace(/\b\w/g, (char) => char.toUpperCase());
     const anomalyScore = Number(item.anomalyScore || 0);
     const unusualMultiple = Number(item.unusualVolumeMultiple || 0);
+    const biasLabel = String(item.biasSignal?.label || 'Neutral');
+    const biasClass = String(item.biasSignal?.tone || 'neutral').toLowerCase();
+    const biasPct = Number(item.biasSignal?.confidencePct || 50);
     const unusualSignals = Array.isArray(item.unusualSignals) ? item.unusualSignals : [];
     const anomalyTag = item.isUnusual ? 'UNUSUAL' : 'NORMAL';
     const anomalyClass = item.isUnusual ? 'insider-anomaly-chip--high' : 'insider-anomaly-chip--normal';
@@ -87,6 +96,7 @@ function renderInsiderTrades(payload) {
       <p><strong>Insider:</strong> ${item.insiderName || 'N/A'} (${role})</p>
       <p><strong>Shares:</strong> ${Number(item.shares || 0).toLocaleString()} • <strong>Avg price:</strong> ${fmtUsd(item.averagePriceUsd)}</p>
       <p><strong>Total trade:</strong> ${fmtUsd(item.valueUsd)} • <strong>Conviction:</strong> ${conviction}</p>
+      <p><strong>Bias:</strong> <span class="insider-bias-chip insider-bias-chip--${biasClass}">${biasLabel}</span> • <strong>Confidence:</strong> ${fmtPct(biasPct)}</p>
       <p><strong>Stock reaction:</strong> <span class="insider-trade-reaction insider-trade-reaction--${reactionClass}">${reactionSign}${reactionPct.toFixed(2)}%</span></p>
       <p><strong>Unusual signals:</strong> ${unusualSignals.join(' • ') || 'N/A'}</p>
       <p class="small-note">${filedAtLabel} • Source: ${item.source || 'Insider feed'}</p>
