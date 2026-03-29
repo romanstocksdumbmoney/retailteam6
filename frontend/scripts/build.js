@@ -22,6 +22,7 @@ async function build() {
   await fs.copyFile(path.join(srcDir, 'ai-bot-account.html'), path.join(buildDir, 'ai-bot-account.html'));
   await fs.copyFile(path.join(srcDir, 'ai-analyzer.html'), path.join(buildDir, 'ai-analyzer.html'));
   await fs.copyFile(path.join(srcDir, 'insider-trades.html'), path.join(buildDir, 'insider-trades.html'));
+  await fs.copyFile(path.join(srcDir, 'portfolios.html'), path.join(buildDir, 'portfolios.html'));
   await fs.copyFile(path.join(srcDir, 'logo-mark.svg'), path.join(buildDir, 'logo-mark.svg'));
   await fs.copyFile(path.join(srcDir, 'app.js'), path.join(buildDir, 'app.js'));
   await fs.copyFile(path.join(srcDir, 'pro.js'), path.join(buildDir, 'pro.js'));
@@ -34,6 +35,7 @@ async function build() {
   await fs.copyFile(path.join(srcDir, 'ai-bot-account.js'), path.join(buildDir, 'ai-bot-account.js'));
   await fs.copyFile(path.join(srcDir, 'ai-analyzer.js'), path.join(buildDir, 'ai-analyzer.js'));
   await fs.copyFile(path.join(srcDir, 'insider-trades.js'), path.join(buildDir, 'insider-trades.js'));
+  await fs.copyFile(path.join(srcDir, 'portfolios.js'), path.join(buildDir, 'portfolios.js'));
   await fs.copyFile(path.join(srcDir, 'styles.css'), path.join(buildDir, 'styles.css'));
   console.log('Frontend build complete: frontend/build/index.html');
 }

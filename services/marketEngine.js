@@ -243,6 +243,108 @@ const INSIDER_TRADE_SORT_OPTIONS = [
   'reaction_asc'
 ];
 
+const POWER_PORTFOLIO_SORT_OPTIONS = [
+  'score_desc',
+  'ytd_desc',
+  'aum_desc',
+  'activity_desc'
+];
+
+const POWER_PORTFOLIO_BLUEPRINTS = [
+  {
+    id: 'berkshire',
+    manager: 'Warren Buffett',
+    firm: 'Berkshire Hathaway',
+    style: 'Value + durable moats',
+    baseAumUsd: 910_000_000_000,
+    holdings: ['AAPL', 'BAC', 'AXP', 'KO', 'OXY']
+  },
+  {
+    id: 'pershing',
+    manager: 'Bill Ackman',
+    firm: 'Pershing Square',
+    style: 'Concentrated activist',
+    baseAumUsd: 18_000_000_000,
+    holdings: ['GOOGL', 'CMG', 'HLT', 'LOW', 'QSR']
+  },
+  {
+    id: 'bridgewater',
+    manager: 'Ray Dalio',
+    firm: 'Bridgewater Associates',
+    style: 'Macro + risk parity',
+    baseAumUsd: 125_000_000_000,
+    holdings: ['SPY', 'QQQ', 'JNJ', 'PG', 'XLP']
+  },
+  {
+    id: 'soros',
+    manager: 'George Soros',
+    firm: 'Soros Fund Management',
+    style: 'Macro event-driven',
+    baseAumUsd: 28_000_000_000,
+    holdings: ['NVDA', 'AMZN', 'META', 'MSFT', 'TSLA']
+  },
+  {
+    id: 'paulson',
+    manager: 'John Paulson',
+    firm: 'Paulson & Co.',
+    style: 'Event + merger arbitrage',
+    baseAumUsd: 9_000_000_000,
+    holdings: ['JPM', 'BAC', 'NKE', 'XOM', 'CVX']
+  },
+  {
+    id: 'druckenmiller',
+    manager: 'Stanley Druckenmiller',
+    firm: 'Duquesne Family Office',
+    style: 'Top-down tactical growth',
+    baseAumUsd: 15_000_000_000,
+    holdings: ['NVDA', 'AMZN', 'AAPL', 'MSFT', 'AVGO']
+  },
+  {
+    id: 'cooperman',
+    manager: 'Leon Cooperman',
+    firm: 'Omega Family Office',
+    style: 'Fundamental value',
+    baseAumUsd: 3_800_000_000,
+    holdings: ['C', 'BMY', 'MRK', 'WFC', 'CVX']
+  },
+  {
+    id: 'cathie',
+    manager: 'Cathie Wood',
+    firm: 'ARK Invest',
+    style: 'Disruptive innovation',
+    baseAumUsd: 14_000_000_000,
+    holdings: ['TSLA', 'COIN', 'ROKU', 'SQ', 'PLTR']
+  },
+  {
+    id: 'loh',
+    manager: 'Chase Coleman',
+    firm: 'Tiger Global',
+    style: 'Growth + internet platform focus',
+    baseAumUsd: 42_000_000_000,
+    holdings: ['META', 'AMZN', 'MSFT', 'GOOGL', 'NFLX']
+  },
+  {
+    id: 'tepper',
+    manager: 'David Tepper',
+    firm: 'Appaloosa',
+    style: 'Credit + opportunistic equity',
+    baseAumUsd: 13_000_000_000,
+    holdings: ['AAPL', 'META', 'AMD', 'MU', 'QQQ']
+  }
+];
+
+const PORTFOLIO_TRADE_ACTIONS = ['buy', 'sell', 'add', 'trim'];
+const PORTFOLIO_TRADE_THEMES = [
+  'earnings momentum',
+  'valuation reset',
+  'AI capex cycle',
+  'macro policy hedge',
+  'sector rotation',
+  'cash-flow durability',
+  'risk rebalance',
+  'event-driven catalyst'
+];
+
 const REALIZED_PATTERN_LIBRARY = [
   { key: 'vol-fade', name: 'Volume Fade Continuation', type: 'volume_down', edge: 'Low-participation drift tends to continue intraday.' },
   { key: 'vol-compress', name: 'Volume Compression Breakout', type: 'volume_down', edge: 'Compression often resolves with directional expansion.' },
@@ -1452,6 +1554,159 @@ function toRatioScore(value, min, max) {
   return Math.round(((bounded - min) / Math.max(max - min, 0.0001)) * 100);
 }
 
+function normalizePortfolioSort(sortBy) {
+  const normalized = String(sortBy || 'score_desc').trim().toLowerCase();
+  if (POWER_PORTFOLIO_SORT_OPTIONS.includes(normalized)) {
+    return normalized;
+  }
+  return 'score_desc';
+}
+
+function normalizePortfolioManagerQuery(rawManager) {
+  return String(rawManager || '').trim().toLowerCase();
+}
+
+function buildPortfolioHoldings(blueprint, seed, portfolioAumUsd) {
+  const baseWeights = [0.24, 0.2, 0.17, 0.14, 0.11];
+  return blueprint.holdings.map((symbol, idx) => {
+    const jitter = (pseudoRandom(seed + idx * 13 + 1) - 0.5) * 0.05;
+    const weightPct = Number((Math.max(0.04, baseWeights[idx] + jitter) * 100).toFixed(2));
+    const positionValueUsd = Math.round((weightPct / 100) * portfolioAumUsd);
+    const dayMovePct = Number((((pseudoRandom(seed + idx * 17 + 2) - 0.5) * 6.8)).toFixed(2));
+    const dayMoveSign = dayMovePct > 0 ? '+' : '';
+    const conviction = weightPct >= 19 ? 'core' : weightPct >= 13 ? 'high' : 'support';
+    return {
+      symbol,
+      weightPct,
+      positionValueUsd,
+      dayMovePct,
+      dayMoveLabel: `${dayMoveSign}${dayMovePct.toFixed(2)}%`,
+      conviction
+    };
+  });
+}
+
+function buildPortfolioRecentTrades(blueprint, seed) {
+  const trades = [];
+  const used = new Set();
+  const total = 3 + Math.floor(pseudoRandom(seed + 41) * 4);
+  for (let i = 0; i < total; i += 1) {
+    const symbol = blueprint.holdings[Math.floor(pseudoRandom(seed + i * 7 + 3) * blueprint.holdings.length)];
+    const action = PORTFOLIO_TRADE_ACTIONS[Math.floor(pseudoRandom(seed + i * 11 + 5) * PORTFOLIO_TRADE_ACTIONS.length)];
+    const dedupeKey = `${symbol}:${action}`;
+    if (used.has(dedupeKey)) {
+      continue;
+    }
+    used.add(dedupeKey);
+    const notionalUsd = Math.round((5 + pseudoRandom(seed + i * 13 + 7) * 220) * 1_000_000);
+    const theme = PORTFOLIO_TRADE_THEMES[Math.floor(pseudoRandom(seed + i * 17 + 9) * PORTFOLIO_TRADE_THEMES.length)];
+    const hoursAgo = 1 + Math.floor(pseudoRandom(seed + i * 19 + 11) * 72);
+    trades.push({
+      symbol,
+      action,
+      notionalUsd,
+      theme,
+      executedAt: new Date(Date.now() - hoursAgo * 60 * 60 * 1000).toISOString()
+    });
+  }
+  trades.sort((a, b) => new Date(b.executedAt).getTime() - new Date(a.executedAt).getTime());
+  return trades;
+}
+
+function getPowerPortfolios(limit = 8, options = {}) {
+  const total = Math.max(1, Math.min(20, Math.trunc(limit)));
+  const sortBy = normalizePortfolioSort(options.sortBy);
+  const managerQuery = normalizePortfolioManagerQuery(options.manager);
+  const seedBase = hashString(`power-portfolios:${minuteBucketSeed()}`);
+
+  let rows = POWER_PORTFOLIO_BLUEPRINTS.map((blueprint, idx) => {
+    const seed = seedBase + idx * 101;
+    const aumMultiplier = 0.9 + pseudoRandom(seed + 1) * 0.22;
+    const aumUsd = Math.round(blueprint.baseAumUsd * aumMultiplier);
+    const ytdReturnPct = Number((3 + pseudoRandom(seed + 3) * 28).toFixed(2));
+    const oneYearReturnPct = Number((7 + pseudoRandom(seed + 5) * 44).toFixed(2));
+    const sharpeRatio = Number((0.85 + pseudoRandom(seed + 7) * 1.75).toFixed(2));
+    const maxDrawdownPct = Number((-(4 + pseudoRandom(seed + 9) * 19)).toFixed(2));
+    const activity24h = 1 + Math.floor(pseudoRandom(seed + 11) * 8);
+    const holdings = buildPortfolioHoldings(blueprint, seed, aumUsd);
+    const recentTrades = buildPortfolioRecentTrades(blueprint, seed);
+    const qualityScore = clamp(
+      Math.round(
+        toRatioScore(ytdReturnPct, 0, 35) * 0.42
+        + toRatioScore(sharpeRatio, 0.7, 2.8) * 0.36
+        + toRatioScore(activity24h, 0, 9) * 0.22
+      ),
+      1,
+      99
+    );
+    return {
+      id: blueprint.id,
+      manager: blueprint.manager,
+      firm: blueprint.firm,
+      style: blueprint.style,
+      aumUsd,
+      performance: {
+        ytdPct: ytdReturnPct,
+        oneYearPct: oneYearReturnPct,
+        sharpeRatio,
+        maxDrawdownPct
+      },
+      activity: {
+        trades24h: activity24h,
+        latestTradeAt: recentTrades[0]?.executedAt || new Date().toISOString()
+      },
+      qualityScore,
+      topHoldings: holdings,
+      recentTrades
+    };
+  });
+
+  if (managerQuery) {
+    rows = rows.filter((row) => {
+      const manager = String(row.manager || '').toLowerCase();
+      const firm = String(row.firm || '').toLowerCase();
+      return manager.includes(managerQuery) || firm.includes(managerQuery);
+    });
+  }
+
+  if (sortBy === 'ytd_desc') {
+    rows.sort((a, b) => b.performance.ytdPct - a.performance.ytdPct);
+  } else if (sortBy === 'aum_desc') {
+    rows.sort((a, b) => b.aumUsd - a.aumUsd);
+  } else if (sortBy === 'activity_desc') {
+    rows.sort((a, b) => b.activity.trades24h - a.activity.trades24h || b.qualityScore - a.qualityScore);
+  } else {
+    rows.sort((a, b) => b.qualityScore - a.qualityScore || b.performance.ytdPct - a.performance.ytdPct);
+  }
+
+  const trimmed = rows.slice(0, total);
+  const topSignals = trimmed
+    .flatMap((portfolio) => (portfolio.recentTrades || []).map((trade) => ({
+      manager: portfolio.manager,
+      firm: portfolio.firm,
+      symbol: trade.symbol,
+      action: trade.action,
+      notionalUsd: trade.notionalUsd,
+      executedAt: trade.executedAt
+    })))
+    .sort((a, b) => b.notionalUsd - a.notionalUsd)
+    .slice(0, 10);
+
+  return {
+    generatedAt: new Date().toISOString(),
+    refreshCadenceSeconds: 60,
+    source: 'Public 13F-style holdings + delayed trade-intent model (simulated feed)',
+    filters: {
+      manager: managerQuery,
+      sortBy
+    },
+    availableSorts: POWER_PORTFOLIO_SORT_OPTIONS,
+    totalMatches: rows.length,
+    topSignals,
+    items: trimmed
+  };
+}
+
 function getInsiderTrades(limit = 10, options = {}) {
   const seed = hashString(`insider-trades:${minuteBucketSeed()}`);
   const total = Math.max(1, Math.min(30, Math.trunc(limit)));
@@ -2114,6 +2369,7 @@ module.exports = {
   getHighIvTracker,
   getPremiumSpikes,
   getInsiderTrades,
+  getPowerPortfolios,
   getRealizedPatterns,
   getWildTakes,
   analyzeAiTradePattern,

@@ -341,6 +341,10 @@ function openInsiderTradesPage() {
   window.location.href = '/insider-trades.html';
 }
 
+function openPortfoliosPage() {
+  window.location.href = '/portfolios.html';
+}
+
 async function focusPremiumSpikesSection(options = {}) {
   const sectionHeader = document.getElementById('premium-spikes-section');
   const shouldLoad = options.load !== false;
@@ -1644,6 +1648,7 @@ function setupAiSidebar() {
   const highIvButton = document.getElementById('high-iv-refresh');
   const premiumSpikesButton = document.getElementById('premium-spikes-refresh');
   const insiderTradesPageButton = document.getElementById('open-insider-trades-page');
+  const portfoliosPageButton = document.getElementById('open-portfolios-page');
   const aiTradeButton = document.getElementById('open-ai-trade');
   const autoTraderButton = document.getElementById('open-ai-auto-trader');
   const aiAnalyzerButton = document.getElementById('open-ai-analyzer');
@@ -1669,6 +1674,12 @@ function setupAiSidebar() {
   if (insiderTradesPageButton) {
     insiderTradesPageButton.addEventListener('click', () => {
       openInsiderTradesPage();
+    });
+  }
+
+  if (portfoliosPageButton) {
+    portfoliosPageButton.addEventListener('click', () => {
+      openPortfoliosPage();
     });
   }
 
