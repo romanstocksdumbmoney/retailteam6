@@ -429,22 +429,6 @@ router.get('/top-portfolios', (req, res) => {
   });
 });
 
-router.get('/top-portfolios', (req, res) => {
-  const limit = Number(req.query.limit || 8);
-  const boundedLimit = Number.isFinite(limit) ? Math.max(1, Math.min(20, Math.trunc(limit))) : 8;
-  const manager = String(req.query.manager || '').trim();
-  const sortBy = String(req.query.sortBy || 'quality_desc').trim().toLowerCase();
-  const payload = getPowerPortfolios(boundedLimit, {
-    manager,
-    sortBy
-  });
-  return res.json({
-    ...payload,
-    dataNature: 'simulated',
-    sourceDisclosure: 'Synthetic portfolio-tracker feed modeled on public 13F-style holdings and delayed trade-intent signals for beta testing.'
-  });
-});
-
 router.get('/realized-patterns', (req, res) => {
   const limit = Number(req.query.limit || 8);
   const boundedLimit = Number.isFinite(limit) ? Math.max(1, Math.min(20, Math.trunc(limit))) : 8;
@@ -471,12 +455,13 @@ router.get('/wild-takes', (req, res) => {
 router.get('/portfolio-tracker', (req, res) => {
   const limit = Number(req.query.limit || 8);
   const boundedLimit = Number.isFinite(limit) ? Math.max(1, Math.min(20, Math.trunc(limit))) : 8;
-  const sortBy = String(req.query.sortBy || 'performance_desc').trim().toLowerCase();
-  const payload = getPortfolioTracker(boundedLimit, { sortBy });
+  const manager = String(req.query.manager || '').trim();
+  const sortBy = String(req.query.sortBy || 'score_desc').trim().toLowerCase();
+  const payload = getPowerPortfolios(boundedLimit, { manager, sortBy });
   return res.json({
     ...payload,
     dataNature: 'simulated',
-    sourceDisclosure: 'Synthetic high-profile portfolio tracker for beta testing.'
+    sourceDisclosure: 'Synthetic portfolio tracker inspired by delayed public holdings and flow models for beta testing.'
   });
 });
 
