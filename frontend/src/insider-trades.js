@@ -21,17 +21,15 @@ function fmtUsd(value) {
 function fmtPct(value) {
   const numeric = Number(value || 0);
   const sign = numeric > 0 ? '+' : '';
-  return `${sign}${numeric.toFixed(1)}%`;
+  return `${sign}${numeric.toFixed(2)}%`;
 }
 
-function formatSortLabel(sortBy) {
-  return String(sortBy || 'value_desc')
-    .replaceAll('_', ' ')
-    .replace(/\b\w/g, (char) => char.toUpperCase());
+function fmtWholePct(value) {
+  return `${Math.max(0, Math.round(Number(value || 0)))}%`;
 }
 
 function setStatus(text, isError = false) {
-  const node = document.getElementById('insider-trades-page-status');
+  const node = document.getElementById('insider-page-status');
   if (!node) {
     return;
   }
@@ -39,182 +37,164 @@ function setStatus(text, isError = false) {
   node.className = isError ? 'small-note auth-error' : 'small-note';
 }
 
-function debounce(fn, waitMs = 280) {
-  let timeoutId = null;
-  return (...args) => {
-    if (timeoutId) {
-      clearTimeout(timeoutId);
+function getToneClass(label) {
+  const normalized = String(label || '').toLowerCase();
+  if (normalized === 'bullish') {
+    return 'bullish';
+  }
+  if (normalized === 'bearish') {
+    return 'bearish';
+  }
+  return 'neutral';
+}
+
+function buildLeaderboard(rows) {
+  if (!rows.length) {
+    return [];
+  }
+  const highestVolume = rows.reduce((best, row) => (
+    Number(row.unusualVolumeMultiple || 0) > Number(best.unusualVolumeMultiple || 0) ? row : best
+  ), rows[0]);
+  const lowestVolume = rows.reduce((best, row) => (
+    Number(row.unusualVolumeMultiple || 0) < Number(best.unusualVolumeMultiple || 0) ? row : best
+  ), rows[0]);
+  const largestTrade = rows.reduce((best, row) => (
+    Number(row.valueUsd || 0) > Number(best.valueUsd || 0) ? row : best
+  ), rows[0]);
+  const smallestTrade = rows.reduce((best, row) => (
+    Number(row.valueUsd || 0) < Number(best.valueUsd || 0) ? row : best
+  ), rows[0]);
+  return [
+    {
+      label: 'Highest Volume',
+      value: `${highestVolume.symbol} • ${Number(highestVolume.unusualVolumeMultiple || 0).toFixed(2)}x`
+    },
+    {
+      label: 'Lowest Volume',
+      value: `${lowestVolume.symbol} • ${Number(lowestVolume.unusualVolumeMultiple || 0).toFixed(2)}x`
+    },
+    {
+      label: 'Biggest Trade',
+      value: `${largestTrade.symbol} • ${fmtUsd(largestTrade.valueUsd)}`
+    },
+    {
+      label: 'Smallest Trade',
+      value: `${smallestTrade.symbol} • ${fmtUsd(smallestTrade.valueUsd)}`
     }
-    timeoutId = window.setTimeout(() => {
-      fn(...args);
-    }, waitMs);
-  };
+  ];
 }
 
-function readFilters() {
-  const side = String(document.getElementById('insider-page-side-select')?.value || 'all').trim().toLowerCase();
-  const symbol = String(document.getElementById('insider-page-symbol-input')?.value || '').trim().toUpperCase();
-  const minValueRaw = Number(document.getElementById('insider-page-min-value-input')?.value || 0);
-  const minValueUsd = Number.isFinite(minValueRaw) && minValueRaw > 0 ? Math.round(minValueRaw) : 0;
-  const sortBy = String(document.getElementById('insider-page-sort-select')?.value || 'anomaly_desc').trim().toLowerCase();
-  const unusualOnly = Boolean(document.getElementById('insider-page-unusual-only')?.checked);
-  return { side, symbol, minValueUsd, sortBy, unusualOnly };
-}
-
-function renderInsiderTrades(payload) {
-  const target = document.getElementById('insider-trades-page-results');
-  if (!target) {
+function renderPage(payload) {
+  const summaryTarget = document.getElementById('insider-page-summary');
+  const leaderboardTarget = document.getElementById('insider-page-leaderboard');
+  const listTarget = document.getElementById('insider-page-results');
+  if (!summaryTarget || !leaderboardTarget || !listTarget) {
     return;
   }
 
   const rows = Array.isArray(payload?.items) ? payload.items : [];
-  const filters = payload?.filters || {};
-  const total = Number(payload?.totalMatches || rows.length);
   const unusualCount = Number(payload?.unusualCount || 0);
-
-  target.innerHTML = `
+  summaryTarget.innerHTML = `
     <article class="ai-trade-consensus">
-      <h3>Insider Anomaly Feed</h3>
-      <p><strong>Matches:</strong> ${total.toLocaleString()} • <strong>Unusual:</strong> ${unusualCount.toLocaleString()} • <strong>Side:</strong> ${String(filters.side || 'all').toUpperCase()}</p>
-      <p><strong>Sort:</strong> ${formatSortLabel(filters.sortBy)} • <strong>Ticker filter:</strong> ${String(filters.symbol || 'ALL')} • <strong>Min value:</strong> ${fmtUsd(filters.minValueUsd || 0)}</p>
-      <p class="small-note">Generated: ${payload.generatedAt ? new Date(payload.generatedAt).toLocaleString() : 'N/A'}</p>
+      <h3>Insider Trade List</h3>
+      <p><strong>Total trades:</strong> ${rows.length.toLocaleString()} • <strong>Unusual:</strong> ${unusualCount.toLocaleString()}</p>
+      <p class="small-note">Auto-loaded. Updated ${payload.generatedAt ? new Date(payload.generatedAt).toLocaleString() : 'N/A'}</p>
     </article>
   `;
 
+  const leaderboard = buildLeaderboard(rows);
+  leaderboardTarget.innerHTML = leaderboard.length
+    ? `
+      <article class="ai-trade-consensus">
+        <h3>Quick Leaders</h3>
+        <div class="insider-trade-leader-grid">
+          ${leaderboard.map((item) => `
+            <div class="insider-trade-leader-chip">
+              <p class="insider-trade-leader-chip__label">${item.label}</p>
+              <p class="insider-trade-leader-chip__value">${item.value}</p>
+            </div>
+          `).join('')}
+        </div>
+      </article>
+    `
+    : '';
+
+  listTarget.innerHTML = '';
   rows.forEach((item) => {
-    const side = String(item.side || '').toLowerCase() === 'buy' ? 'buy' : 'sell';
-    const reactionPct = Number(item.stockReactionPct || 0);
-    const reactionSign = reactionPct > 0 ? '+' : '';
-    const reactionClass = reactionPct > 0 ? 'up' : reactionPct < 0 ? 'down' : 'flat';
-    const role = item.role || 'N/A';
+    const bias = item.directionalBias || {};
+    const toneClass = getToneClass(bias.label);
+    const confidencePct = Math.max(0, Math.min(100, Number(bias.confidencePct || 0)));
+    const side = String(item.side || '').toLowerCase() === 'buy' ? 'BUY' : 'SELL';
     const filedAtLabel = item.filedAt ? new Date(item.filedAt).toLocaleString() : 'Filed recently';
-    const conviction = String(item.conviction || 'medium')
-      .replaceAll('_', ' ')
-      .replace(/\b\w/g, (char) => char.toUpperCase());
-    const anomalyScore = Number(item.anomalyScore || 0);
-    const unusualMultiple = Number(item.unusualVolumeMultiple || 0);
-    const biasLabel = String(item.biasSignal?.label || 'Neutral');
-    const biasClass = String(item.biasSignal?.tone || 'neutral').toLowerCase();
-    const biasPct = Number(item.biasSignal?.confidencePct || 50);
-    const unusualSignals = Array.isArray(item.unusualSignals) ? item.unusualSignals : [];
-    const anomalyTag = item.isUnusual ? 'UNUSUAL' : 'NORMAL';
-    const anomalyClass = item.isUnusual ? 'insider-anomaly-chip--high' : 'insider-anomaly-chip--normal';
+    const reactionPct = Number(item.stockReactionPct || 0);
 
     const card = document.createElement('article');
-    card.className = `insider-trade-card insider-trade-card--${side}`;
+    card.className = `insider-trade-list-row insider-trade-list-row--${toneClass}`;
     card.innerHTML = `
-      <h4>${item.symbol} • ${side.toUpperCase()}</h4>
-      <p><span class="insider-anomaly-chip ${anomalyClass}">${anomalyTag}</span> <strong>Anomaly score:</strong> ${anomalyScore}/100 • <strong>Filing vs baseline:</strong> ${unusualMultiple.toFixed(2)}x</p>
-      <p><strong>Insider:</strong> ${item.insiderName || 'N/A'} (${role})</p>
-      <p><strong>Shares:</strong> ${Number(item.shares || 0).toLocaleString()} • <strong>Avg price:</strong> ${fmtUsd(item.averagePriceUsd)}</p>
-      <p><strong>Total trade:</strong> ${fmtUsd(item.valueUsd)} • <strong>Conviction:</strong> ${conviction}</p>
-      <p><strong>Bias:</strong> <span class="insider-bias-chip insider-bias-chip--${biasClass}">${biasLabel}</span> • <strong>Confidence:</strong> ${fmtPct(biasPct)}</p>
-      <p><strong>Stock reaction:</strong> <span class="insider-trade-reaction insider-trade-reaction--${reactionClass}">${reactionSign}${reactionPct.toFixed(2)}%</span></p>
-      <p><strong>Unusual signals:</strong> ${unusualSignals.join(' • ') || 'N/A'}</p>
-      <p class="small-note">${filedAtLabel} • Source: ${item.source || 'Insider feed'}</p>
-      <p class="small-note">${item.details || ''}</p>
+      <div class="insider-trade-list-row__head">
+        <h4>${item.symbol} • ${side}</h4>
+        <span class="insider-bias-chip insider-bias-chip--${toneClass}">${String(bias.label || 'neutral').toUpperCase()}</span>
+      </div>
+      <div class="insider-trade-list-row__bar">
+        <span class="insider-trade-list-row__bar-fill insider-trade-list-row__bar-fill--${toneClass}" style="width:${confidencePct}%"></span>
+      </div>
+      <p><strong>${item.insiderName || 'N/A'}</strong> (${item.role || 'N/A'})</p>
+      <p><strong>Trade size:</strong> ${fmtUsd(item.valueUsd)} • <strong>Volume:</strong> ${Number(item.unusualVolumeMultiple || 0).toFixed(2)}x • <strong>Shares:</strong> ${Number(item.shares || 0).toLocaleString()}</p>
+      <p><strong>Bias %:</strong> Bullish ${fmtWholePct(bias.bullishPct)} • Bearish ${fmtWholePct(bias.bearishPct)} • Neutral ${fmtWholePct(bias.neutralPct)}</p>
+      <p class="small-note">Reaction ${fmtPct(reactionPct)} • ${filedAtLabel}</p>
     `;
-    target.appendChild(card);
+    listTarget.appendChild(card);
   });
 
   if (!rows.length) {
-    target.innerHTML = '<div class="pro-lock">No insider trades matched this filter. Try widening your criteria.</div>';
+    listTarget.innerHTML = '<div class="pro-lock">No insider trades available right now.</div>';
   }
 }
 
 async function loadInsiderTrades() {
-  const filters = readFilters();
   const params = new URLSearchParams({
     limit: '30',
-    side: filters.side,
-    symbol: filters.symbol,
-    minValueUsd: String(filters.minValueUsd),
-    sortBy: filters.sortBy,
-    unusualOnly: String(filters.unusualOnly)
+    sortBy: 'anomaly_desc',
+    unusualOnly: 'false'
   });
   const payload = await fetchJson(`/api/market/insider-trades?${params.toString()}`);
-  renderInsiderTrades(payload);
+  renderPage(payload);
 }
 
 function setupPage() {
-  const form = document.getElementById('insider-trades-page-form');
-  const applyButton = document.getElementById('insider-page-apply');
-  const unusualOnly = document.getElementById('insider-page-unusual-only');
-  const symbolInput = document.getElementById('insider-page-symbol-input');
-  const sideSelect = document.getElementById('insider-page-side-select');
-  const minValueInput = document.getElementById('insider-page-min-value-input');
-  const sortSelect = document.getElementById('insider-page-sort-select');
-  if (!form || !applyButton) {
+  const refreshButton = document.getElementById('insider-page-refresh');
+  if (!refreshButton) {
     return;
   }
-
-  const autoRefreshFilters = debounce(async () => {
+  refreshButton.addEventListener('click', async () => {
     try {
-      setStatus('Updating insider trades...');
+      refreshButton.disabled = true;
+      setStatus('Refreshing insider list...');
       await loadInsiderTrades();
-      setStatus('Insider trades updated.');
+      setStatus('Insider list updated.');
     } catch (error) {
-      setStatus(error.message || 'Could not update insider trades.', true);
-    }
-  });
-
-  form.addEventListener('submit', async (event) => {
-    event.preventDefault();
-    try {
-      setStatus('Loading insider trades...');
-      applyButton.disabled = true;
-      await loadInsiderTrades();
-      setStatus('Insider trades updated.');
-    } catch (error) {
-      setStatus(error.message || 'Could not load insider trades.', true);
+      setStatus(error.message || 'Could not refresh insider list.', true);
     } finally {
-      applyButton.disabled = false;
+      refreshButton.disabled = false;
     }
   });
-
-  if (unusualOnly) {
-    unusualOnly.addEventListener('change', async () => {
-      try {
-        setStatus('Refreshing insider anomaly feed...');
-        await loadInsiderTrades();
-        setStatus('Insider anomaly feed updated.');
-      } catch (error) {
-        setStatus(error.message || 'Could not refresh insider anomaly feed.', true);
-      }
-    });
-  }
-
-  if (symbolInput) {
-    symbolInput.addEventListener('input', () => {
-      autoRefreshFilters();
-    });
-  }
-  if (sideSelect) {
-    sideSelect.addEventListener('change', () => {
-      autoRefreshFilters();
-    });
-  }
-  if (minValueInput) {
-    minValueInput.addEventListener('input', () => {
-      autoRefreshFilters();
-    });
-  }
-  if (sortSelect) {
-    sortSelect.addEventListener('change', () => {
-      autoRefreshFilters();
-    });
-  }
 }
 
 async function init() {
   setupPage();
   try {
-    setStatus('Loading insider trades...');
+    setStatus('Loading insider list...');
     await loadInsiderTrades();
-    setStatus('Insider trades ready.');
+    setStatus('Insider list ready.');
   } catch (error) {
-    setStatus(error.message || 'Could not load insider trades.', true);
+    setStatus(error.message || 'Could not load insider list.', true);
   }
+
+  window.setInterval(() => {
+    loadInsiderTrades().catch((_error) => {
+      // Status text handles explicit refresh failures.
+    });
+  }, 60_000);
 }
 
 init();

@@ -14,47 +14,17 @@
           <img class="pro-plan-logo-image" src="./logo-mark.svg" alt="" />
         </div>
         <h1 id="insider-trades-page-title">Insider Trades</h1>
-        <p class="pro-plan-subtitle">Big unusual insider trades load automatically with anomaly signals, weird filing volume, and follow-through reaction.</p>
+        <p class="pro-plan-subtitle">Auto-loaded list of insider trades with bullish/bearish/neutral bias, trade size, and filing-volume signals.</p>
 
-        <form id="insider-page-form" class="pro-plan-box row-form insider-trades-page-controls" novalidate>
-          <label class="insider-page-toggle">
-            <input id="insider-page-unusual-only" type="checkbox" checked />
-            <span>Unusual only</span>
-          </label>
-          <label>
-            Side
-            <select id="insider-page-side-select">
-              <option value="all">All</option>
-              <option value="buy">Buys</option>
-              <option value="sell">Sells</option>
-            </select>
-          </label>
-          <label>
-            Symbol
-            <input id="insider-page-symbol-input" type="text" placeholder="AAPL" maxlength="10" />
-          </label>
-          <label>
-            Min value ($)
-            <input id="insider-page-min-value-input" type="number" min="0" step="1000000" placeholder="10000000" />
-          </label>
-          <label>
-            Sort
-            <select id="insider-page-sort-select">
-              <option value="anomaly_desc">Most unusual first</option>
-              <option value="value_desc">Largest trade value</option>
-              <option value="value_asc">Smallest trade value</option>
-              <option value="filed_desc">Most recent filing</option>
-              <option value="filed_asc">Oldest filing</option>
-              <option value="reaction_desc">Largest reaction</option>
-              <option value="reaction_asc">Smallest reaction</option>
-            </select>
-          </label>
-          <button id="insider-page-refresh" type="submit">Apply</button>
-        </form>
+        <section class="pro-plan-box insider-page-toolbar">
+          <p class="small-note">No typing needed. This list refreshes automatically.</p>
+          <button id="insider-page-refresh" type="button">Refresh List</button>
+        </section>
 
         <p id="insider-page-status" class="small-note"></p>
         <div id="insider-page-summary" class="stack"></div>
-        <div id="insider-page-results" class="stack"></div>
+        <div id="insider-page-leaderboard" class="stack"></div>
+        <div id="insider-page-results" class="stack insider-bar-list"></div>
       </article>
     </main>
     <script src="./insider-trades.js"></script>

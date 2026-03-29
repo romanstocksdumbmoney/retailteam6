@@ -233,6 +233,8 @@ const INSIDER_TRADE_SOURCES = [
 ];
 
 const INSIDER_TRADE_SORT_OPTIONS = [
+  'volume_desc',
+  'volume_asc',
   'value_desc',
   'value_asc',
   'filed_desc',
@@ -1850,6 +1852,10 @@ function getInsiderTrades(limit = 10, options = {}) {
 
   if (sortBy === 'value_asc') {
     filtered.sort((a, b) => a.valueUsd - b.valueUsd);
+  } else if (sortBy === 'volume_desc') {
+    filtered.sort((a, b) => b.flowVsAverageRatio - a.flowVsAverageRatio || b.valueUsd - a.valueUsd);
+  } else if (sortBy === 'volume_asc') {
+    filtered.sort((a, b) => a.flowVsAverageRatio - b.flowVsAverageRatio || a.valueUsd - b.valueUsd);
   } else if (sortBy === 'filed_desc') {
     filtered.sort((a, b) => new Date(b.filedAt).getTime() - new Date(a.filedAt).getTime());
   } else if (sortBy === 'filed_asc') {
