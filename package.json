@@ -6,7 +6,8 @@
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
-    "dev": "node server.js"
+    "dev": "node server.js",
+    "audit:data": "node scripts/data-integrity-audit.js"
   },
   "engines": {
     "node": ">=18"

@@ -48,6 +48,35 @@ function getToneClass(label) {
   return 'neutral';
 }
 
+function readDirectionalBias(item) {
+  const raw = item?.directionalBias;
+  if (raw && typeof raw === 'object' && !Array.isArray(raw)) {
+    const label = String(raw.label || item?.directionalBiasLabel || 'neutral').toLowerCase();
+    const confidencePct = Number(raw.confidencePct ?? item?.directionalBiasConfidencePct ?? 0);
+    const bullishPct = Number(raw.bullishPct ?? 0);
+    const bearishPct = Number(raw.bearishPct ?? 0);
+    const neutralPct = Number(raw.neutralPct ?? Math.max(0, 100 - bullishPct - bearishPct));
+    return {
+      label,
+      confidencePct,
+      bullishPct,
+      bearishPct,
+      neutralPct
+    };
+  }
+
+  // Backward-compat for legacy payloads that exposed directionalBias as a plain label string.
+  const label = String(raw || item?.directionalBiasLabel || 'neutral').toLowerCase();
+  const confidencePct = Number(item?.directionalBiasConfidencePct || 0);
+  if (label === 'bullish') {
+    return { label, confidencePct, bullishPct: 62, bearishPct: 28, neutralPct: 10 };
+  }
+  if (label === 'bearish') {
+    return { label, confidencePct, bullishPct: 28, bearishPct: 62, neutralPct: 10 };
+  }
+  return { label: 'neutral', confidencePct, bullishPct: 35, bearishPct: 35, neutralPct: 30 };
+}
+
 function buildLeaderboard(rows) {
   if (!rows.length) {
     return [];
@@ -121,7 +150,7 @@ function renderPage(payload) {
 
   listTarget.innerHTML = '';
   rows.forEach((item) => {
-    const bias = item.directionalBias || {};
+    const bias = readDirectionalBias(item);
     const toneClass = getToneClass(bias.label);
     const confidencePct = Math.max(0, Math.min(100, Number(bias.confidencePct || 0)));
     const side = String(item.side || '').toLowerCase() === 'buy' ? 'BUY' : 'SELL';

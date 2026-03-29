@@ -1560,31 +1560,45 @@ function buildInsiderDirectionalBias(side, stockReactionPct, anomalyScore) {
   const normalizedSide = String(side || '').toLowerCase() === 'buy' ? 'buy' : 'sell';
   const reaction = Number.isFinite(Number(stockReactionPct)) ? Number(stockReactionPct) : 0;
   const anomaly = Number.isFinite(Number(anomalyScore)) ? Number(anomalyScore) : 50;
-  const sidePush = normalizedSide === 'buy' ? 20 : -20;
+  const sidePush = normalizedSide === 'buy' ? 24 : -24;
   const reactionPush = reaction * 9;
   const anomalyPush = ((anomaly - 50) / 50) * 12;
   const score = clamp(Math.round(sidePush + reactionPush + anomalyPush), -100, 100);
   const absScore = Math.abs(score);
+  const label = absScore < 10 ? 'neutral' : score > 0 ? 'bullish' : 'bearish';
+  const confidencePct = label === 'neutral'
+    ? clamp(52 + Math.round(absScore * 0.9), 52, 70)
+    : clamp(58 + Math.round(absScore * 0.38), 58, 95);
 
-  if (absScore < 18) {
-    return {
-      label: 'neutral',
-      confidencePct: clamp(50 + Math.round(absScore * 1.4), 50, 65),
-      score,
-      reason: 'Signals are mixed between filing side and post-filing reaction.'
-    };
+  const baseBullish = normalizedSide === 'buy' ? 62 : 38;
+  const reactionAdjustment = clamp(Math.round(reaction * 6), -24, 24);
+  const scoreAdjustment = clamp(Math.round(score * 0.18), -18, 18);
+  const directionalBullish = clamp(baseBullish + reactionAdjustment + scoreAdjustment, 5, 95);
+
+  let neutralPct = 0;
+  if (label === 'neutral') {
+    neutralPct = clamp(45 + Math.round((10 - absScore) * 2.5), 45, 70);
+  } else {
+    neutralPct = clamp(10 + Math.round((100 - absScore) * 0.12), 5, 24);
   }
+  const directionalBudget = 100 - neutralPct;
+  const bullishPct = clamp(Math.round((directionalBullish / 100) * directionalBudget), 3, 97);
+  const bearishPct = clamp(directionalBudget - bullishPct, 3, 97);
+  neutralPct = 100 - bullishPct - bearishPct;
 
-  const label = score > 0 ? 'bullish' : 'bearish';
-  const confidencePct = clamp(55 + Math.round(absScore * 0.42), 56, 95);
   const reason = label === 'bullish'
-    ? 'Buy pressure and follow-through support an upside bias.'
-    : 'Sell pressure and follow-through support a downside bias.';
+    ? 'Buy pressure and post-filing reaction support an upside tilt.'
+    : label === 'bearish'
+      ? 'Sell pressure and post-filing reaction support a downside tilt.'
+      : 'Signals are mixed between filing side and post-filing reaction.';
   return {
     label,
     confidencePct,
     score,
-    reason
+    reason,
+    bullishPct,
+    bearishPct,
+    neutralPct
   };
 }
 
@@ -1818,7 +1832,16 @@ function getInsiderTrades(limit = 10, options = {}) {
       unusualVolumeMultiple,
       flowVsAverageRatio: unusualVolumeMultiple,
       anomalyScore,
-      directionalBias: directionalBias.label,
+      directionalBias: {
+        label: directionalBias.label,
+        confidencePct: directionalBias.confidencePct,
+        score: directionalBias.score,
+        reason: directionalBias.reason,
+        bullishPct: directionalBias.bullishPct,
+        bearishPct: directionalBias.bearishPct,
+        neutralPct: directionalBias.neutralPct
+      },
+      directionalBiasLabel: directionalBias.label,
       directionalBiasConfidencePct: directionalBias.confidencePct,
       directionalBiasScore: directionalBias.score,
       directionalBiasReason: directionalBias.reason,
