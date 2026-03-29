@@ -1510,7 +1510,6 @@ function setupAiSidebar() {
   const insiderUnusualOnlyInput = document.getElementById('insider-unusual-only-input');
   const wildTakesButton = document.getElementById('wild-takes-refresh');
   const searchAllButton = document.getElementById('ai-search-all');
-  const jumpPremiumSpikesButton = document.getElementById('jump-premium-spikes');
 
   if (
     !form
@@ -1680,12 +1679,6 @@ function setupAiSidebar() {
   if (portfoliosPageButton) {
     portfoliosPageButton.addEventListener('click', () => {
       openPortfoliosPage();
-    });
-  }
-
-  if (jumpPremiumSpikesButton) {
-    jumpPremiumSpikesButton.addEventListener('click', async () => {
-      await focusPremiumSpikesSection();
     });
   }
 

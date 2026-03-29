@@ -5,7 +5,7 @@ async function fetchJson(url, options = {}) {
     try {
       body = await response.json();
     } catch (_error) {
-      body = { message: 'Unknown API error' };
+      body = { message: `Request failed (${response.status})` };
     }
     const error = new Error(body.message || `Request failed: ${response.status}`);
     error.status = response.status;
@@ -159,7 +159,16 @@ async function loadPortfolios() {
     manager: filters.manager,
     sortBy: filters.sortBy
   });
-  const payload = await fetchJson(`/api/market/top-portfolios?${params.toString()}`);
+  let payload;
+  try {
+    payload = await fetchJson(`/api/market/top-portfolios?${params.toString()}`);
+  } catch (error) {
+    if (error.status !== 404) {
+      throw error;
+    }
+    // Backward-compatible fallback if a stale server build still exposes legacy route naming.
+    payload = await fetchJson(`/api/market/portfolio-tracker?${params.toString()}`);
+  }
   renderPortfolios(payload, filters);
 }
 
