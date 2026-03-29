@@ -39,6 +39,18 @@ function setStatus(text, isError = false) {
   node.className = isError ? 'small-note auth-error' : 'small-note';
 }
 
+function debounce(fn, waitMs = 280) {
+  let timeoutId = null;
+  return (...args) => {
+    if (timeoutId) {
+      clearTimeout(timeoutId);
+    }
+    timeoutId = window.setTimeout(() => {
+      fn(...args);
+    }, waitMs);
+  };
+}
+
 function readFilters() {
   const side = String(document.getElementById('insider-page-side-select')?.value || 'all').trim().toLowerCase();
   const symbol = String(document.getElementById('insider-page-symbol-input')?.value || '').trim().toUpperCase();
@@ -128,9 +140,23 @@ function setupPage() {
   const form = document.getElementById('insider-trades-page-form');
   const applyButton = document.getElementById('insider-page-apply');
   const unusualOnly = document.getElementById('insider-page-unusual-only');
+  const symbolInput = document.getElementById('insider-page-symbol-input');
+  const sideSelect = document.getElementById('insider-page-side-select');
+  const minValueInput = document.getElementById('insider-page-min-value-input');
+  const sortSelect = document.getElementById('insider-page-sort-select');
   if (!form || !applyButton) {
     return;
   }
+
+  const autoRefreshFilters = debounce(async () => {
+    try {
+      setStatus('Updating insider trades...');
+      await loadInsiderTrades();
+      setStatus('Insider trades updated.');
+    } catch (error) {
+      setStatus(error.message || 'Could not update insider trades.', true);
+    }
+  });
 
   form.addEventListener('submit', async (event) => {
     event.preventDefault();
@@ -155,6 +181,27 @@ function setupPage() {
       } catch (error) {
         setStatus(error.message || 'Could not refresh insider anomaly feed.', true);
       }
+    });
+  }
+
+  if (symbolInput) {
+    symbolInput.addEventListener('input', () => {
+      autoRefreshFilters();
+    });
+  }
+  if (sideSelect) {
+    sideSelect.addEventListener('change', () => {
+      autoRefreshFilters();
+    });
+  }
+  if (minValueInput) {
+    minValueInput.addEventListener('input', () => {
+      autoRefreshFilters();
+    });
+  }
+  if (sortSelect) {
+    sortSelect.addEventListener('change', () => {
+      autoRefreshFilters();
     });
   }
 }

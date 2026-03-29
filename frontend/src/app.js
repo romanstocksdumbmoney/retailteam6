@@ -13,6 +13,7 @@ let activeInsiderSymbol = '';
 let activeInsiderMinValueUsd = 0;
 let activeInsiderSortBy = 'anomaly_desc';
 let activeInsiderUnusualOnly = true;
+let insiderAutoRefreshTimerId = null;
 let sidebarOpen = false;
 let billingInfo = null;
 let proPopupVisible = false;
@@ -1535,6 +1536,16 @@ function setupAiSidebar() {
   insiderMinValueInput.value = activeInsiderMinValueUsd > 0 ? String(activeInsiderMinValueUsd) : '';
   insiderUnusualOnlyInput.checked = activeInsiderUnusualOnly;
 
+  function syncAndLoadInsiders() {
+    activeInsiderSide = String(insiderSideSelect.value || 'all').trim().toLowerCase();
+    activeInsiderSymbol = String(insiderSymbolInput.value || '').trim().toUpperCase();
+    const parsedMin = Number(insiderMinValueInput.value || 0);
+    activeInsiderMinValueUsd = Number.isFinite(parsedMin) && parsedMin > 0 ? Math.round(parsedMin) : 0;
+    activeInsiderSortBy = String(insiderSortSelect.value || 'anomaly_desc').trim().toLowerCase();
+    activeInsiderUnusualOnly = Boolean(insiderUnusualOnlyInput.checked);
+    return loadInsiderTrades();
+  }
+
   form.addEventListener('submit', async (event) => {
     event.preventDefault();
     const query = document.getElementById('ai-search-query').value.trim() || activeTicker;
@@ -1611,14 +1622,8 @@ function setupAiSidebar() {
 
   insiderForm.addEventListener('submit', async (event) => {
     event.preventDefault();
-    activeInsiderSide = String(insiderSideSelect.value || 'all').trim().toLowerCase();
-    activeInsiderSymbol = String(insiderSymbolInput.value || '').trim().toUpperCase();
-    const parsedMin = Number(insiderMinValueInput.value || 0);
-    activeInsiderMinValueUsd = Number.isFinite(parsedMin) && parsedMin > 0 ? Math.round(parsedMin) : 0;
-    activeInsiderSortBy = String(insiderSortSelect.value || 'anomaly_desc').trim().toLowerCase();
-    activeInsiderUnusualOnly = Boolean(insiderUnusualOnlyInput.checked);
     try {
-      await loadInsiderTrades();
+      await syncAndLoadInsiders();
     } catch (error) {
       const target = document.getElementById('insider-trades-results');
       if (target) {
@@ -1628,13 +1633,36 @@ function setupAiSidebar() {
   });
 
   insiderSortSelect.addEventListener('change', async () => {
-    activeInsiderSortBy = String(insiderSortSelect.value || 'anomaly_desc').trim().toLowerCase();
-    activeInsiderUnusualOnly = Boolean(insiderUnusualOnlyInput.checked);
     try {
-      await loadInsiderTrades();
+      await syncAndLoadInsiders();
     } catch (_error) {
       // Form submit handler surfaces visible error states.
     }
+  });
+
+  insiderSideSelect.addEventListener('change', async () => {
+    try {
+      await syncAndLoadInsiders();
+    } catch (_error) {
+      // Form submit handler surfaces visible error states.
+    }
+  });
+
+  insiderUnusualOnlyInput.addEventListener('change', async () => {
+    try {
+      await syncAndLoadInsiders();
+    } catch (_error) {
+      // Form submit handler surfaces visible error states.
+    }
+  });
+
+  insiderSymbolInput.addEventListener('input', () => {
+    window.clearTimeout(insiderAutoRefreshTimerId);
+    insiderAutoRefreshTimerId = window.setTimeout(() => {
+      syncAndLoadInsiders().catch((_error) => {
+        // Form submit handler surfaces visible error states.
+      });
+    }, 300);
   });
 
   if (searchAllButton) {
