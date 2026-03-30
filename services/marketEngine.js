@@ -461,6 +461,45 @@ function resolveEarningsTargetDate(rawTargetDate) {
   return addDaysToIsoDate(todayIsoDate(), 1);
 }
 
+function normalizeEarningsSessionFilter(rawSession) {
+  const normalized = String(rawSession || '').trim().toLowerCase();
+  if (normalized === 'pre-market' || normalized === 'premarket' || normalized === 'pre') {
+    return 'pre-market';
+  }
+  if (normalized === 'after-hours' || normalized === 'afterhours' || normalized === 'after') {
+    return 'after-hours';
+  }
+  return 'all';
+}
+
+function matchesEarningsSession(entry, sessionFilter) {
+  if (sessionFilter === 'all') {
+    return true;
+  }
+  const reportTime = String(entry?.reportTime || '').toLowerCase();
+  if (sessionFilter === 'pre-market') {
+    return reportTime.includes('pre-market') || reportTime.includes('before-market');
+  }
+  if (sessionFilter === 'after-hours') {
+    return reportTime.includes('after-hours') || reportTime.includes('after-market');
+  }
+  return true;
+}
+
+function getEarningsSessionRank(reportTimeLabel) {
+  const reportTime = String(reportTimeLabel || '').toLowerCase();
+  if (reportTime.includes('pre-market') || reportTime.includes('before-market')) {
+    return 0;
+  }
+  if (reportTime.includes('after-hours') || reportTime.includes('after-market')) {
+    return 1;
+  }
+  if (reportTime.includes('session unconfirmed') || reportTime.includes('unknown')) {
+    return 2;
+  }
+  return 3;
+}
+
 function humanizeEarningsScheduleLabel(targetDate, effectiveDate) {
   const target = String(targetDate || '').trim();
   const effective = String(effectiveDate || '').trim();
@@ -1219,11 +1258,13 @@ async function getEarningsGamblingBoard(limit = 5, options = {}) {
   const seed = hashString(`earnings:${daySeed()}`);
   const boundedLimit = Math.max(1, Math.min(8, Math.trunc(limit)));
   const requestedDate = resolveEarningsTargetDate(options.targetDate);
+  const requestedSession = normalizeEarningsSessionFilter(options.session);
   const calendarRows = await fetchNasdaqEarningsCalendar();
 
   let source = 'nasdaq';
   let scheduleDate = requestedDate;
   let scheduleLabel = humanizeEarningsScheduleLabel(requestedDate, requestedDate);
+  let appliedSession = requestedSession;
 
   let selectedRows = calendarRows.filter((entry) => entry.earningsDate === requestedDate);
   if (selectedRows.length === 0) {
@@ -1238,17 +1279,49 @@ async function getEarningsGamblingBoard(limit = 5, options = {}) {
   if (!includeCompleted) {
     selectedRows = filterCompletedEarnings(selectedRows);
   }
+  if (requestedSession !== 'all') {
+    const filteredBySession = selectedRows.filter((entry) => matchesEarningsSession(entry, requestedSession));
+    if (filteredBySession.length > 0) {
+      selectedRows = filteredBySession;
+    } else {
+      appliedSession = 'all';
+    }
+  }
 
   if (selectedRows.length === 0 && calendarRows.length > 0) {
     const availableDates = [...new Set(calendarRows.map((entry) => entry.earningsDate).filter(Boolean))].sort();
     const nowEtDate = todayIsoDate();
-    const selectedDate = availableDates.find((isoDate) => isoDate > nowEtDate)
+    const selectDateBySession = (dateFilter) => availableDates.find((isoDate) => {
+      if (!dateFilter(isoDate)) {
+        return false;
+      }
+      let rows = calendarRows.filter((entry) => entry.earningsDate === isoDate);
+      if (!includeCompleted) {
+        rows = filterCompletedEarnings(rows);
+      }
+      if (requestedSession !== 'all') {
+        rows = rows.filter((entry) => matchesEarningsSession(entry, requestedSession));
+      }
+      return rows.length > 0;
+    });
+    const selectedDate = selectDateBySession((isoDate) => isoDate > nowEtDate)
+      || selectDateBySession((isoDate) => isoDate >= requestedDate)
+      || availableDates.find((isoDate) => isoDate > nowEtDate)
       || availableDates.find((isoDate) => isoDate >= requestedDate)
       || availableDates[0]
       || requestedDate;
     selectedRows = calendarRows.filter((entry) => entry.earningsDate === selectedDate);
     if (!includeCompleted) {
       selectedRows = filterCompletedEarnings(selectedRows);
+    }
+    if (requestedSession !== 'all') {
+      const filteredBySession = selectedRows.filter((entry) => matchesEarningsSession(entry, requestedSession));
+      if (filteredBySession.length > 0) {
+        selectedRows = filteredBySession;
+        appliedSession = requestedSession;
+      } else {
+        appliedSession = 'all';
+      }
     }
     scheduleDate = selectedDate;
     scheduleLabel = humanizeEarningsScheduleLabel(requestedDate, selectedDate);
@@ -1279,10 +1352,11 @@ async function getEarningsGamblingBoard(limit = 5, options = {}) {
 
   if (rankedByVolume.length === 0) {
     const fallbackDate = requestedDate;
+    const fallbackSessionLabel = requestedSession === 'after-hours' ? 'After-Hours' : 'Pre-Market';
     rankedByVolume = TOMORROW_EARNINGS_CALLS.map((symbol) => ({
       symbol,
       earningsDate: fallbackDate,
-      reportTime: 'Unknown',
+      reportTime: fallbackSessionLabel,
       estimatedVolume: estimateEarningsDayVolume(symbol, fallbackDate),
       volumeSource: 'model_estimate',
       verification: buildEarningsVerification(
@@ -1297,9 +1371,18 @@ async function getEarningsGamblingBoard(limit = 5, options = {}) {
     source = 'simulated';
     scheduleDate = fallbackDate;
     scheduleLabel = `Estimated earnings board (${formatIsoDate(fallbackDate)} ET)`;
+    appliedSession = requestedSession === 'all' ? 'pre-market' : requestedSession;
   }
 
-  rankedByVolume = rankedByVolume.sort((a, b) => b.estimatedVolume - a.estimatedVolume).slice(0, boundedLimit);
+  rankedByVolume = rankedByVolume
+    .sort((a, b) => {
+      const bySession = getEarningsSessionRank(a.reportTime) - getEarningsSessionRank(b.reportTime);
+      if (bySession !== 0) {
+        return bySession;
+      }
+      return b.estimatedVolume - a.estimatedVolume;
+    })
+    .slice(0, boundedLimit);
 
   if (!scheduleDate) {
     scheduleDate = rankedByVolume[0]?.earningsDate || null;
@@ -1345,6 +1428,8 @@ async function getEarningsGamblingBoard(limit = 5, options = {}) {
     source,
     scheduleDate,
     scheduleLabel,
+    requestedSession,
+    appliedSession,
     items
   };
 }

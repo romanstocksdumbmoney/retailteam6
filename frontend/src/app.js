@@ -1078,15 +1078,23 @@ async function loadOutlook(ticker) {
 async function loadEarningsBoard() {
   let payload;
   try {
-    payload = await fetchJson('/api/market/earnings-gambling?targetDate=today', {
+    payload = await fetchJson('/api/market/earnings-gambling?targetDate=tomorrow&session=pre-market', {
       headers: headersWithPlan()
     });
   } catch (_error) {
     payload = null;
   }
-  const hasTodayItems = payload && Array.isArray(payload.items) && payload.items.length > 0;
-  if (!hasTodayItems) {
-    payload = await fetchJson('/api/market/earnings-gambling?targetDate=today&includeCompleted=true', {
+  const hasTomorrowItems = payload && Array.isArray(payload.items) && payload.items.length > 0;
+  if (!hasTomorrowItems) {
+    payload = await fetchJson('/api/market/earnings-gambling?targetDate=tomorrow&session=pre-market&includeCompleted=true', {
+      headers: headersWithPlan()
+    });
+  }
+  const hasPreMarket = payload
+    && Array.isArray(payload.items)
+    && payload.items.some((item) => String(item.reportTimeLabel || '').toLowerCase().includes('pre-market'));
+  if (!hasPreMarket) {
+    payload = await fetchJson('/api/market/earnings-gambling?targetDate=tomorrow&includeCompleted=true', {
       headers: headersWithPlan()
     });
   }

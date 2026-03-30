@@ -109,6 +109,35 @@ function validateEarnings(payload) {
   });
 }
 
+function parseSessionWeight(reportTimeLabel) {
+  const value = String(reportTimeLabel || '').toLowerCase();
+  if (value.includes('pre-market')) {
+    return 0;
+  }
+  if (value.includes('after-hours')) {
+    return 1;
+  }
+  if (value.includes('session unconfirmed') || value.includes('unknown')) {
+    return 2;
+  }
+  return 3;
+}
+
+function validateEarningsSessionOrdering(payload, expectationLabel) {
+  if (!payload) {
+    return;
+  }
+  const items = Array.isArray(payload.items) ? payload.items : [];
+  if (items.length <= 1) {
+    return;
+  }
+  for (let i = 1; i < items.length; i += 1) {
+    const prev = parseSessionWeight(items[i - 1]?.reportTimeLabel);
+    const curr = parseSessionWeight(items[i]?.reportTimeLabel);
+    assert(prev <= curr, `${expectationLabel}: earnings session ordering is not pre-market first`);
+  }
+}
+
 function validateInsider(payload) {
   if (!payload) {
     return;
@@ -199,6 +228,9 @@ async function run() {
   const endpoints = await Promise.all([
     fetchJson('/health'),
     fetchJson('/api/market/earnings-gambling?targetDate=today&includeCompleted=true&limit=8'),
+    fetchJson('/api/market/earnings-gambling?targetDate=tomorrow&includeCompleted=false&limit=8'),
+    fetchJson('/api/market/earnings-gambling?targetDate=tomorrow&includeCompleted=true&limit=8'),
+    fetchJson('/api/market/earnings-gambling?targetDate=tomorrow&includeCompleted=false&limit=5'),
     fetchJson('/api/market/insider-trades?limit=30&sortBy=anomaly_desc&unusualOnly=false'),
     authToken ? fetchAuthedJson('/api/market/premium-spikes?limit=20', authToken, { acceptableStatuses: [200, 403] }) : Promise.resolve(null),
     authToken ? fetchAuthedJson('/api/market/high-iv?limit=20', authToken, { acceptableStatuses: [200, 403] }) : Promise.resolve(null),
@@ -210,7 +242,10 @@ async function run() {
 
   const [
     healthPayload,
-    earningsPayload,
+    earningsTodayPayload,
+    earningsTomorrowPayload,
+    earningsTomorrowWithCompletedPayload,
+    earningsTomorrowCompactPayload,
     insiderPayload,
     premiumSpikesPayload,
     highIvPayload,
@@ -221,7 +256,20 @@ async function run() {
   ] = endpoints;
 
   assert(healthPayload?.status === 'ok', '/health status is not ok');
-  validateEarnings(earningsPayload);
+  validateEarnings(earningsTodayPayload);
+  validateEarnings(earningsTomorrowPayload);
+  validateEarnings(earningsTomorrowWithCompletedPayload);
+  validateEarnings(earningsTomorrowCompactPayload);
+  validateEarningsSessionOrdering(earningsTomorrowPayload, 'tomorrow includeCompleted=false');
+  validateEarningsSessionOrdering(earningsTomorrowWithCompletedPayload, 'tomorrow includeCompleted=true');
+
+  const tomorrowDate = String(earningsTomorrowPayload?.scheduleDate || '');
+  const tomorrowRows = Array.isArray(earningsTomorrowPayload?.items) ? earningsTomorrowPayload.items : [];
+  if (tomorrowDate && tomorrowRows.length) {
+    const mismatchedDate = tomorrowRows.find((row) => String(row.eventDate || '').trim() !== tomorrowDate);
+    assert(!mismatchedDate, 'tomorrow earnings payload includes rows from a different date');
+  }
+
   validateInsider(insiderPayload);
   validatePremiumSpikes(premiumSpikesPayload);
   validateHighIv(highIvPayload);

@@ -298,8 +298,9 @@ router.get('/earnings-gambling', async (req, res) => {
   const limit = Number(req.query.limit || 5);
   const boundedLimit = Number.isFinite(limit) ? Math.max(1, Math.min(8, Math.trunc(limit))) : 5;
   const targetDate = String(req.query.targetDate || '').trim();
+  const session = String(req.query.session || '').trim();
   const includeCompleted = String(req.query.includeCompleted || '').trim().toLowerCase() === 'true';
-  const board = await buildEarningsGambling(boundedLimit, { targetDate, includeCompleted });
+  const board = await buildEarningsGambling(boundedLimit, { targetDate, session, includeCompleted });
   const raw = board.items || [];
   const boardDate = board.scheduleDate || null;
 
@@ -308,6 +309,8 @@ router.get('/earnings-gambling', async (req, res) => {
     dataNature: board.source === 'nasdaq' || board.source === 'alphavantage' ? 'mixed_live' : 'simulated',
     scheduleDate: boardDate,
     scheduleLabel: board.scheduleLabel || (boardDate ? `Upcoming earnings (${boardDate})` : 'Upcoming earnings'),
+    requestedSession: board.requestedSession || 'all',
+    appliedSession: board.appliedSession || 'all',
     items: raw.map((item) => ({
       ticker: item.symbol,
       reportTimeLabel: item.reportTime,
