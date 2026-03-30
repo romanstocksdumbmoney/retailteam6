@@ -62,9 +62,12 @@ router.get('/billing/checkout-preview', (_req, res) => {
     currency: billingInfo.currency,
     securePaymentProvider: billingInfo.provider,
     benefits: [
-      'Unlock Trend Trades (Pro social trend signals)',
-      'Use advanced options calculator + gamma exposure',
-      'Access unusual moves feed and full scanner methods'
+      'Trend Trades from TikTok, YouTube, Reels, Spotlight, Facebook, and X in one pro feed',
+      'High IV Tracker with IV rank, IV percentile, catalysts, and expected move context',
+      'Call / Put Premium Spikes monitor showing timing, spike size, and post-spike reaction',
+      'Advanced options pricing + gamma exposure toolkit for risk and scenario planning',
+      'Full scanner methods and unusual flow modules for earlier signal detection',
+      'Pro-only module unlocks, faster refresh cadence, and consolidated market workflow'
     ],
     cancellationPolicy: 'Cancel anytime from Manage Billing.',
     renewalPolicy: 'Recurring monthly subscription until canceled.'

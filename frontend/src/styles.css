@@ -626,6 +626,26 @@ h1 {
   color: #fde68a;
 }
 
+.mission-box {
+  margin-top: 0.85rem;
+  border: 1px solid rgba(250, 204, 21, 0.45);
+  border-radius: 12px;
+  background: linear-gradient(180deg, rgba(120, 53, 15, 0.32), rgba(15, 23, 42, 0.9));
+  padding: 0.8rem 0.9rem;
+}
+
+.mission-box h3 {
+  margin: 0 0 0.35rem;
+  color: #fde68a;
+  font-size: 1rem;
+}
+
+.mission-box p {
+  margin: 0;
+  color: #fef9c3;
+  font-size: 0.92rem;
+}
+
 .status {
   margin-top: 0.5rem;
   color: #fef9c3;
