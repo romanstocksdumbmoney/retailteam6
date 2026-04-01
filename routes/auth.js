@@ -17,7 +17,8 @@ const {
   createBillingPortalSession,
   confirmCheckoutSessionForUser,
   processWebhookEvent,
-  getBillingPublicInfo
+  getBillingPublicInfo,
+  getBillingReadinessSnapshot
 } = require('../services/stripeService');
 
 const router = express.Router();
@@ -46,6 +47,32 @@ function authRequired(req, res, next) {
 
 router.get('/billing-info', (_req, res) => {
   return res.json(getBillingPublicInfo());
+});
+
+router.get('/billing/readiness', async (_req, res) => {
+  try {
+    const snapshot = await getBillingReadinessSnapshot();
+    const checks = snapshot.checks || {};
+    const isReady = Boolean(
+      snapshot.configured
+      && checks.secretKeyFormatValid
+      && checks.webhookSecretPresent
+      && snapshot.stripeAccount?.reachable
+      && snapshot.price?.valid
+    );
+    const report = {
+      ...snapshot,
+      ready: isReady
+    };
+    const httpStatus = report.ready ? 200 : 503;
+    return res.status(httpStatus).json(report);
+  } catch (_error) {
+    return res.status(500).json({
+      ready: false,
+      error: 'readiness_check_failed',
+      message: 'Could not run Stripe readiness checks.'
+    });
+  }
 });
 
 router.get('/billing/checkout-preview', (_req, res) => {

@@ -351,6 +351,100 @@ function isBillingConfigured() {
   return Boolean(getStripe());
 }
 
+async function getBillingReadinessSnapshot() {
+  const stripe = getStripe();
+  const secretKey = String(process.env.STRIPE_SECRET_KEY || '').trim();
+  const webhookSecret = String(process.env.STRIPE_WEBHOOK_SECRET || '').trim();
+  const priceId = getProPriceId();
+  const appBaseUrl = getAppBaseUrl();
+  const mode = secretKey.startsWith('sk_live_') ? 'live' : secretKey.startsWith('sk_test_') ? 'test' : 'unknown';
+  const snapshot = {
+    configured: Boolean(stripe),
+    mode,
+    appBaseUrl,
+    checks: {
+      secretKeyFormatValid: Boolean(stripe),
+      webhookSecretPresent: Boolean(webhookSecret && !isPlaceholderValue(webhookSecret)),
+      priceIdConfigured: Boolean(priceId)
+    },
+    stripeAccount: {
+      reachable: false,
+      id: '',
+      displayName: ''
+    },
+    price: {
+      configuredId: priceId || '',
+      valid: false,
+      currency: '',
+      unitAmount: 0,
+      recurringInterval: ''
+    },
+    webhook: {
+      endpoint: `${appBaseUrl}/api/auth/stripe/webhook`,
+      signingSecretConfigured: Boolean(webhookSecret && !isPlaceholderValue(webhookSecret))
+    }
+  };
+
+  if (!stripe) {
+    return snapshot;
+  }
+
+  try {
+    const account = await stripe.accounts.retrieve();
+    snapshot.stripeAccount = {
+      reachable: true,
+      id: String(account?.id || ''),
+      displayName: String(account?.business_profile?.name || account?.settings?.dashboard?.display_name || '')
+    };
+  } catch (_error) {
+    snapshot.stripeAccount.reachable = false;
+  }
+
+  if (!priceId) {
+    // Inline price_data mode still works; treat as valid fallback.
+    snapshot.price.valid = true;
+    snapshot.price.currency = 'usd';
+    snapshot.price.unitAmount = getProMonthlyAmountCents();
+    snapshot.price.recurringInterval = 'month';
+    return snapshot;
+  }
+
+  try {
+    const price = await stripe.prices.retrieve(priceId);
+    snapshot.price.valid = Boolean(price && price.id === priceId && price.active !== false);
+    snapshot.price.currency = String(price?.currency || '').toLowerCase();
+    snapshot.price.unitAmount = Number(price?.unit_amount || 0);
+    snapshot.price.recurringInterval = String(price?.recurring?.interval || '');
+  } catch (_error) {
+    snapshot.price.valid = false;
+  }
+
+  return snapshot;
+}
+
+async function getStripeReadinessReport() {
+  const snapshot = await getBillingReadinessSnapshot();
+  const blockers = [];
+  if (!snapshot.checks.secretKeyFormatValid) {
+    blockers.push('STRIPE_SECRET_KEY is missing, placeholder, or invalid format.');
+  }
+  if (!snapshot.stripeAccount.reachable) {
+    blockers.push('Could not reach Stripe account with current secret key.');
+  }
+  if (!snapshot.checks.webhookSecretPresent) {
+    blockers.push('STRIPE_WEBHOOK_SECRET is missing.');
+  }
+  if (!snapshot.price.valid) {
+    blockers.push('Configured STRIPE_PRICE_ID is missing/invalid/inactive.');
+  }
+
+  return {
+    ready: blockers.length === 0,
+    blockers,
+    ...snapshot
+  };
+}
+
 function getBillingPublicInfo() {
   const hasStripeApiCheckout = Boolean(getStripe());
   const priceIdConfigured = Boolean(getProPriceId());
@@ -379,6 +473,8 @@ module.exports = {
   confirmCheckoutSessionForUser,
   processWebhookEvent,
   getBillingPublicInfo,
+  getBillingReadinessSnapshot,
+  getStripeReadinessReport,
   isBillingConfigured,
   getAppBaseUrl
 };
