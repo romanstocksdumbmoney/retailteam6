@@ -1805,7 +1805,7 @@ function setupStockForm() {
       await loadEarningsBoard();
     } catch (error) {
       console.error(error);
-      renderStatus('Failed to load stock outlook.');
+      renderStatus(error?.message || 'Failed to load stock outlook.');
     }
   });
 }

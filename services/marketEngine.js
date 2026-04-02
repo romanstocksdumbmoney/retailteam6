@@ -85,6 +85,7 @@ let earningsCalendarCache = {
 };
 let newsCache = new Map();
 let quoteVolumeCache = new Map();
+let tickerValidationCache = new Map();
 
 const AI_DISCOVERY_PLATFORMS = [
   {
@@ -727,6 +728,203 @@ async function safeFetchText(url, options = {}) {
   } catch (_error) {
     return null;
   }
+}
+
+function normalizeYahooTicker(symbol) {
+  return String(symbol || '').trim().toUpperCase().replace(/\./g, '-');
+}
+
+async function validateTickerViaYahooQuote(symbol) {
+  const yahooSymbol = normalizeYahooTicker(symbol);
+  const url = `https://query1.finance.yahoo.com/v7/finance/quote?symbols=${encodeURIComponent(yahooSymbol)}`;
+  const payload = await safeFetchJson(url, { timeoutMs: 5000 });
+  if (!payload) {
+    return {
+      valid: false,
+      definitiveInvalid: false
+    };
+  }
+  const rows = payload?.quoteResponse?.result;
+  if (!Array.isArray(rows) || rows.length === 0) {
+    return {
+      valid: false,
+      definitiveInvalid: true
+    };
+  }
+  const match = rows.find((row) => String(row?.symbol || '').toUpperCase() === yahooSymbol) || rows[0];
+  if (!match) {
+    return {
+      valid: false,
+      definitiveInvalid: true
+    };
+  }
+  const quoteType = String(match.quoteType || '').toUpperCase();
+  const hasName = Boolean(String(match.shortName || '').trim() || String(match.longName || '').trim());
+  const hasPrice = Number.isFinite(Number(match.regularMarketPrice));
+  const isTradableType = ['EQUITY', 'ETF', 'MUTUALFUND', 'INDEX'].includes(quoteType);
+  if ((isTradableType && hasName) || hasPrice) {
+    return {
+      valid: true,
+      definitiveInvalid: false
+    };
+  }
+  return {
+    valid: false,
+    definitiveInvalid: true
+  };
+}
+
+async function validateTickerViaYahooChart(symbol) {
+  const yahooSymbol = normalizeYahooTicker(symbol);
+  const url = `https://query2.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(yahooSymbol)}?range=1d&interval=1d`;
+  const payload = await safeFetchJson(url, { timeoutMs: 5000 });
+  if (!payload) {
+    return {
+      valid: false,
+      definitiveInvalid: false
+    };
+  }
+  const chartErrorCode = String(payload?.chart?.error?.code || '').toLowerCase();
+  if (chartErrorCode.includes('not found')) {
+    return {
+      valid: false,
+      definitiveInvalid: true
+    };
+  }
+  const hasResult = Array.isArray(payload?.chart?.result) && payload.chart.result.length > 0;
+  return {
+    valid: hasResult,
+    definitiveInvalid: !hasResult
+  };
+}
+
+async function validateTickerViaStooq(symbol) {
+  const lower = String(symbol || '').trim().toLowerCase();
+  const stooqUrl = `https://stooq.com/q/l/?s=${encodeURIComponent(`${lower}.us`)}&i=d`;
+  const text = await safeFetchText(stooqUrl, { timeoutMs: 5000 });
+  if (!text) {
+    return {
+      valid: false,
+      definitiveInvalid: false
+    };
+  }
+  const lines = text
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+  const dataLine = lines.find((line) => line && !line.toLowerCase().startsWith('symbol,'));
+  if (!dataLine) {
+    return {
+      valid: false,
+      definitiveInvalid: true
+    };
+  }
+  const parts = dataLine.split(',');
+  const symbolPart = String(parts[0] || '').trim().toLowerCase();
+  const closePart = String(parts[6] || '').trim().toUpperCase();
+  const hasExpectedSymbol = symbolPart === `${lower}.us`;
+  if (!hasExpectedSymbol || closePart === 'N/D') {
+    return {
+      valid: false,
+      definitiveInvalid: true
+    };
+  }
+  return {
+    valid: true,
+    definitiveInvalid: false
+  };
+}
+
+async function validateTickerSymbol(symbol) {
+  const normalized = normalizeSymbol(symbol);
+  if (!normalized) {
+    return {
+      valid: false,
+      reason: 'invalid_ticker_format',
+      source: 'input_validation'
+    };
+  }
+
+  const cacheKey = normalized;
+  const cached = tickerValidationCache.get(cacheKey);
+  const now = Date.now();
+  const cacheTtlMs = 10 * 60 * 1000;
+  if (cached && now - cached.fetchedAt < cacheTtlMs) {
+    return cached.result;
+  }
+
+  const quoteCheck = await validateTickerViaYahooQuote(normalized);
+  if (quoteCheck.valid) {
+    const result = {
+      valid: true,
+      reason: 'verified',
+      source: 'yahoo_quote',
+      symbol: normalized
+    };
+    tickerValidationCache.set(cacheKey, { fetchedAt: now, result });
+    return result;
+  }
+  if (quoteCheck.definitiveInvalid) {
+    const result = {
+      valid: false,
+      reason: 'ticker_not_found',
+      source: 'yahoo_quote',
+      symbol: normalized
+    };
+    tickerValidationCache.set(cacheKey, { fetchedAt: now, result });
+    return result;
+  }
+
+  const chartCheck = await validateTickerViaYahooChart(normalized);
+  if (chartCheck.valid) {
+    const result = {
+      valid: true,
+      reason: 'verified',
+      source: 'yahoo_chart',
+      symbol: normalized
+    };
+    tickerValidationCache.set(cacheKey, { fetchedAt: now, result });
+    return result;
+  }
+  if (chartCheck.definitiveInvalid) {
+    const result = {
+      valid: false,
+      reason: 'ticker_not_found',
+      source: 'yahoo_chart',
+      symbol: normalized
+    };
+    tickerValidationCache.set(cacheKey, { fetchedAt: now, result });
+    return result;
+  }
+
+  const stooqCheck = await validateTickerViaStooq(normalized);
+  if (stooqCheck.valid) {
+    const result = {
+      valid: true,
+      reason: 'verified',
+      source: 'stooq',
+      symbol: normalized
+    };
+    tickerValidationCache.set(cacheKey, { fetchedAt: now, result });
+    return result;
+  }
+  if (stooqCheck.definitiveInvalid) {
+    const result = {
+      valid: false,
+      reason: 'ticker_not_found',
+      source: 'stooq',
+      symbol: normalized
+    };
+    tickerValidationCache.set(cacheKey, { fetchedAt: now, result });
+    return result;
+  }
+
+  return {
+    valid: false,
+    reason: 'verification_unavailable',
+    source: 'network',
+    symbol: normalized
+  };
 }
 
 function normalizeNasdaqRows(rows, fallbackIsoDate) {
@@ -2505,6 +2703,7 @@ module.exports = {
   AI_ENGINES,
   normalizeSymbol,
   normalizeTicker: normalizeSymbol,
+  validateRealTicker: validateTickerSymbol,
   getProbabilitySet,
   buildStockOutlook: getProbabilitySet,
   getScanResult,
@@ -2523,6 +2722,7 @@ module.exports = {
   getPowerPortfolios,
   getRealizedPatterns,
   getWildTakes,
+  validateTickerSymbol,
   analyzeAiTradePattern,
   analyzeAiTradeScreenshot
 };

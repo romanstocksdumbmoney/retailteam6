@@ -15,7 +15,8 @@ const {
   getRealizedPatterns,
   getWildTakes,
   analyzeAiTradePattern,
-  analyzeAiTradeScreenshot
+  analyzeAiTradeScreenshot,
+  validateTickerSymbol
 } = require('../services/marketEngine');
 const {
   configureAutoTrader,
@@ -185,28 +186,55 @@ function buildScannerPayload({ ticker, method, plan }) {
   };
 }
 
-function stockOutlookHandler(req, res) {
+async function stockOutlookHandler(req, res) {
   const ticker = normalizeTicker(req.query.ticker || req.query.q || 'AAPL');
   if (!ticker) {
     return res.status(400).json({ error: 'invalid_ticker', message: 'Provide ?ticker=TSLA' });
   }
-
-  return res.json(buildStockOutlookPayload(ticker));
-}
-
-function stockByParamHandler(req, res) {
-  const ticker = normalizeTicker(req.params.ticker);
-  if (!ticker) {
-    return res.status(400).json({ error: 'invalid_ticker' });
+  const validation = await validateTickerSymbol(ticker);
+  if (!validation.valid) {
+    return res.status(404).json({
+      error: 'unknown_ticker',
+      message: 'Ticker not found in live market listings.',
+      ticker,
+      source: validation.source || 'yahoo_lookup'
+    });
   }
 
   return res.json(buildStockOutlookPayload(ticker));
 }
 
-function stockSearchHandler(req, res) {
+async function stockByParamHandler(req, res) {
+  const ticker = normalizeTicker(req.params.ticker);
+  if (!ticker) {
+    return res.status(400).json({ error: 'invalid_ticker' });
+  }
+  const validation = await validateTickerSymbol(ticker);
+  if (!validation.valid) {
+    return res.status(404).json({
+      error: 'unknown_ticker',
+      message: 'Ticker not found in live market listings.',
+      ticker,
+      source: validation.source || 'yahoo_lookup'
+    });
+  }
+
+  return res.json(buildStockOutlookPayload(ticker));
+}
+
+async function stockSearchHandler(req, res) {
   const ticker = normalizeTicker(req.query.q || req.query.ticker);
   if (!ticker) {
     return res.status(400).json({ error: 'missing_query', message: 'Use ?q=TSLA' });
+  }
+  const validation = await validateTickerSymbol(ticker);
+  if (!validation.valid) {
+    return res.status(404).json({
+      error: 'unknown_ticker',
+      message: 'Ticker not found in live market listings.',
+      ticker,
+      source: validation.source || 'yahoo_lookup'
+    });
   }
 
   return res.json(buildStockOutlookPayload(ticker));
