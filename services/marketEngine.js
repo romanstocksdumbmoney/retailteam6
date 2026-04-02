@@ -388,6 +388,18 @@ function clamp(value, min, max) {
   return Math.max(min, Math.min(max, value));
 }
 
+function normalizePairPercents(upValue, downValue) {
+  const upRaw = clamp(Number.isFinite(Number(upValue)) ? Number(upValue) : 0, 0, 100);
+  const downRaw = clamp(Number.isFinite(Number(downValue)) ? Number(downValue) : 0, 0, 100);
+  const total = upRaw + downRaw;
+  if (total <= 0) {
+    return { up: 50, down: 50 };
+  }
+  const up = Math.round((upRaw / total) * 100);
+  const down = 100 - up;
+  return { up, down };
+}
+
 function hashString(input) {
   let hash = 0;
   for (let i = 0; i < input.length; i += 1) {
@@ -1269,14 +1281,19 @@ function getProbabilitySet(symbol) {
     impact: item.impact
   }));
 
+  const dayPair = normalizePairPercents(dayUp, 100 - dayUp);
+  const weekPair = normalizePairPercents(weekUp, 100 - weekUp);
+  const monthPair = normalizePairPercents(monthUp, 100 - monthUp);
+  const yearPair = normalizePairPercents(yearUp, 100 - yearUp);
+
   return {
     symbol: normalized,
     generatedAt: new Date().toISOString(),
     probabilities: {
-      day: { up: dayUp, down: 100 - dayUp },
-      week: { up: weekUp, down: 100 - weekUp },
-      month: { up: monthUp, down: 100 - monthUp },
-      year: { up: yearUp, down: 100 - yearUp }
+      day: dayPair,
+      week: weekPair,
+      month: monthPair,
+      year: yearPair
     },
     analystRatings: analyst,
     coverage,

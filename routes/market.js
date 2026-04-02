@@ -502,10 +502,18 @@ router.post('/ai-trade/analyze', requireSignedIn, (req, res) => {
     const imageDataUrl = String(req.body?.imageDataUrl || '');
     const symbol = String(req.body?.symbol || '');
     const timeframe = String(req.body?.timeframe || '');
+    const currentPrice = Number(req.body?.currentPrice || 0);
+    const imageName = req.body?.imageName;
+    const imageSize = req.body?.imageSize;
+    const imageHash = req.body?.imageHash;
     const analysis = analyzeAiTradePattern({
       imageDataUrl,
       symbol,
-      timeframe
+      timeframe,
+      currentPrice,
+      imageName,
+      imageSize,
+      imageHash
     });
     return res.json({
       ...analysis,

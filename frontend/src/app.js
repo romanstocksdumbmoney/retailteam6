@@ -207,11 +207,35 @@ function loadPreferredEmail() {
 }
 
 function fmtPct(value) {
-  return `${Number(value).toFixed(0)}%`;
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) {
+    return '0%';
+  }
+  return `${Math.round(numeric)}%`;
 }
 
 function fmtUsd(value) {
   return `$${Number(value || 0).toLocaleString()}`;
+}
+
+function clampPercent(value) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) {
+    return 0;
+  }
+  return Math.max(0, Math.min(100, numeric));
+}
+
+function normalizePairPercents(upValue, downValue) {
+  const upRaw = clampPercent(upValue);
+  const downRaw = clampPercent(downValue);
+  const total = upRaw + downRaw;
+  if (total <= 0) {
+    return { up: 50, down: 50 };
+  }
+  const up = Math.round((upRaw / total) * 100);
+  const down = 100 - up;
+  return { up, down };
 }
 
 function toEtNow() {
@@ -540,13 +564,17 @@ function renderAuthState() {
 function renderOutlook(payload) {
   const target = document.getElementById('stock-results');
   const outlook = payload.outlook;
+  const day = normalizePairPercents(outlook?.day?.up, outlook?.day?.down);
+  const week = normalizePairPercents(outlook?.week?.up, outlook?.week?.down);
+  const month = normalizePairPercents(outlook?.month?.up, outlook?.month?.down);
+  const year = normalizePairPercents(outlook?.year?.up, outlook?.year?.down);
   target.innerHTML = `
     <article class="prob-card">
       <h3>${payload.ticker} Outlook</h3>
-      <p><strong>Day:</strong> ${fmtPct(outlook.day.up)} up / ${fmtPct(outlook.day.down)} down</p>
-      <p><strong>Week:</strong> ${fmtPct(outlook.week.up)} up / ${fmtPct(outlook.week.down)} down</p>
-      <p><strong>Month:</strong> ${fmtPct(outlook.month.up)} up / ${fmtPct(outlook.month.down)} down</p>
-      <p><strong>Year:</strong> ${fmtPct(outlook.year.up)} up / ${fmtPct(outlook.year.down)} down</p>
+      <p><strong>Day:</strong> ${fmtPct(day.up)} up / ${fmtPct(day.down)} down</p>
+      <p><strong>Week:</strong> ${fmtPct(week.up)} up / ${fmtPct(week.down)} down</p>
+      <p><strong>Month:</strong> ${fmtPct(month.up)} up / ${fmtPct(month.down)} down</p>
+      <p><strong>Year:</strong> ${fmtPct(year.up)} up / ${fmtPct(year.down)} down</p>
       <p class="small-note">Analysts tracked: ${payload.coverage.analystsTracked.toLocaleString()}</p>
       <p class="small-note">Articles analyzed: ${payload.coverage.articlesAnalyzed.toLocaleString()}</p>
     </article>
@@ -700,8 +728,9 @@ function renderEarningsBoard(payload) {
   const activeItems = (payload.items || []).filter((item) => isEarningsItemStillActive(item));
   const displayItems = activeItems.length > 0 ? activeItems : (payload.items || []);
   displayItems.forEach((item) => {
-    const up = Number(item.predictedMove.up || 0);
-    const down = Number(item.predictedMove.down || 0);
+    const pair = normalizePairPercents(item?.predictedMove?.up, item?.predictedMove?.down);
+    const up = pair.up;
+    const down = pair.down;
     const directionClass = up >= down ? 'up' : 'down';
     const spread = Math.abs(up - down);
     const dateLabel = item.eventDateLabel || item.eventDate || scheduleLabel;
@@ -770,8 +799,12 @@ function renderEarningsDetail(item) {
   const sourceLabel = target.getAttribute('data-source-label') || 'Estimated board';
 
   const fallbackIntel = item.unusualWhalesIntel || item.intel || {};
-  const upPct = item.predictedMove?.up ?? item.probabilityUp ?? 0;
-  const downPct = item.predictedMove?.down ?? item.probabilityDown ?? 0;
+  const movePair = normalizePairPercents(
+    item.predictedMove?.up ?? item.probabilityUp ?? 0,
+    item.predictedMove?.down ?? item.probabilityDown ?? 0
+  );
+  const upPct = movePair.up;
+  const downPct = movePair.down;
   const plays = item.unusualWhales?.plays || fallbackIntel.unusualPlays || [];
   const commentary = item.unusualWhales?.commentary || fallbackIntel.notes || [];
   const growth = item.futureGrowthSignals || fallbackIntel.notes || [];
@@ -816,7 +849,7 @@ function renderEarningsDetail(item) {
       <p><strong>Date:</strong> ${item.eventDateLabel || item.eventDate || scheduleLabel}</p>
       <p><strong>Session:</strong> ${item.reportTimeLabel || 'Pre-Market'}</p>
       <p class="small-note"><strong>Calendar source:</strong> ${sourceLabel}</p>
-      <p><strong>Direction:</strong> ${item.direction.toUpperCase()} • ${upPct}% up / ${downPct}% down</p>
+      <p><strong>Direction:</strong> ${item.direction.toUpperCase()} • ${fmtPct(upPct)} up / ${fmtPct(downPct)} down</p>
       <p><strong>Estimated volume:</strong> ${Number(item.volume || 0).toLocaleString()}</p>
       <h4>Analyst Pushes</h4>
       <ul class="detail-list">${analystPushesHtml || '<li>No fresh analyst pushes detected.</li>'}</ul>
@@ -1519,6 +1552,63 @@ function setupAiSidebar() {
   const insiderUnusualOnlyInput = document.getElementById('insider-unusual-only-input');
   const wildTakesButton = document.getElementById('wild-takes-refresh');
   const searchAllButton = document.getElementById('ai-search-all');
+  const highIvButton = document.getElementById('high-iv-refresh');
+  const premiumSpikesButton = document.getElementById('premium-spikes-refresh');
+  const insiderTradesPageButton = document.getElementById('open-insider-trades-page');
+  const portfoliosPageButton = document.getElementById('open-portfolios-page');
+  const aiTradeButton = document.getElementById('open-ai-trade');
+  const autoTraderButton = document.getElementById('open-ai-auto-trader');
+  const aiAnalyzerButton = document.getElementById('open-ai-analyzer');
+
+  // Bind module navigation/actions early so these links still work even if one sidebar filter control is absent.
+  if (highIvButton) {
+    highIvButton.addEventListener('click', async () => {
+      try {
+        await loadHighIvTracker();
+      } catch (error) {
+        renderHighIvLocked(error.message || 'Could not load High IV Tracker.');
+        if (error.status === 403) {
+          openProPopup('Pro access needed for High IV Tracker.');
+        }
+      }
+    });
+  }
+
+  if (premiumSpikesButton) {
+    premiumSpikesButton.addEventListener('click', async () => {
+      await focusPremiumSpikesSection();
+    });
+  }
+
+  if (insiderTradesPageButton) {
+    insiderTradesPageButton.addEventListener('click', () => {
+      openInsiderTradesPage();
+    });
+  }
+
+  if (portfoliosPageButton) {
+    portfoliosPageButton.addEventListener('click', () => {
+      openPortfoliosPage();
+    });
+  }
+
+  if (aiTradeButton) {
+    aiTradeButton.addEventListener('click', () => {
+      window.location.href = '/ai-trade.html';
+    });
+  }
+
+  if (autoTraderButton) {
+    autoTraderButton.addEventListener('click', () => {
+      openAutoTraderPage();
+    });
+  }
+
+  if (aiAnalyzerButton) {
+    aiAnalyzerButton.addEventListener('click', () => {
+      window.location.href = '/ai-analyzer.html';
+    });
+  }
 
   if (
     !form
@@ -1532,7 +1622,6 @@ function setupAiSidebar() {
     || !insiderSymbolInput
     || !insiderMinValueInput
     || !insiderSortSelect
-    || !insiderUnusualOnlyInput
     || !wildTakesButton
   ) {
     return;
@@ -1542,7 +1631,9 @@ function setupAiSidebar() {
   insiderSortSelect.value = activeInsiderSortBy;
   insiderSymbolInput.value = activeInsiderSymbol;
   insiderMinValueInput.value = activeInsiderMinValueUsd > 0 ? String(activeInsiderMinValueUsd) : '';
-  insiderUnusualOnlyInput.checked = activeInsiderUnusualOnly;
+  if (insiderUnusualOnlyInput) {
+    insiderUnusualOnlyInput.checked = activeInsiderUnusualOnly;
+  }
 
   function syncAndLoadInsiders() {
     activeInsiderSide = String(insiderSideSelect.value || 'all').trim().toLowerCase();
@@ -1550,7 +1641,9 @@ function setupAiSidebar() {
     const parsedMin = Number(insiderMinValueInput.value || 0);
     activeInsiderMinValueUsd = Number.isFinite(parsedMin) && parsedMin > 0 ? Math.round(parsedMin) : 0;
     activeInsiderSortBy = String(insiderSortSelect.value || 'anomaly_desc').trim().toLowerCase();
-    activeInsiderUnusualOnly = Boolean(insiderUnusualOnlyInput.checked);
+    activeInsiderUnusualOnly = insiderUnusualOnlyInput
+      ? Boolean(insiderUnusualOnlyInput.checked)
+      : activeInsiderUnusualOnly;
     return loadInsiderTrades();
   }
 
@@ -1656,13 +1749,15 @@ function setupAiSidebar() {
     }
   });
 
-  insiderUnusualOnlyInput.addEventListener('change', async () => {
-    try {
-      await syncAndLoadInsiders();
-    } catch (_error) {
-      // Form submit handler surfaces visible error states.
-    }
-  });
+  if (insiderUnusualOnlyInput) {
+    insiderUnusualOnlyInput.addEventListener('change', async () => {
+      try {
+        await syncAndLoadInsiders();
+      } catch (_error) {
+        // Form submit handler surfaces visible error states.
+      }
+    });
+  }
 
   insiderSymbolInput.addEventListener('input', () => {
     window.clearTimeout(insiderAutoRefreshTimerId);
@@ -1680,61 +1775,6 @@ function setupAiSidebar() {
     });
   }
 
-  const highIvButton = document.getElementById('high-iv-refresh');
-  const premiumSpikesButton = document.getElementById('premium-spikes-refresh');
-  const insiderTradesPageButton = document.getElementById('open-insider-trades-page');
-  const portfoliosPageButton = document.getElementById('open-portfolios-page');
-  const aiTradeButton = document.getElementById('open-ai-trade');
-  const autoTraderButton = document.getElementById('open-ai-auto-trader');
-  const aiAnalyzerButton = document.getElementById('open-ai-analyzer');
-  if (highIvButton) {
-    highIvButton.addEventListener('click', async () => {
-      try {
-        await loadHighIvTracker();
-      } catch (error) {
-        renderHighIvLocked(error.message || 'Could not load High IV Tracker.');
-        if (error.status === 403) {
-          openProPopup('Pro access needed for High IV Tracker.');
-        }
-      }
-    });
-  }
-
-  if (premiumSpikesButton) {
-    premiumSpikesButton.addEventListener('click', async () => {
-      await focusPremiumSpikesSection();
-    });
-  }
-
-  if (insiderTradesPageButton) {
-    insiderTradesPageButton.addEventListener('click', () => {
-      openInsiderTradesPage();
-    });
-  }
-
-  if (portfoliosPageButton) {
-    portfoliosPageButton.addEventListener('click', () => {
-      openPortfoliosPage();
-    });
-  }
-
-  if (aiTradeButton) {
-    aiTradeButton.addEventListener('click', async () => {
-      window.location.href = '/ai-trade.html';
-    });
-  }
-
-  if (autoTraderButton) {
-    autoTraderButton.addEventListener('click', () => {
-      openAutoTraderPage();
-    });
-  }
-
-  if (aiAnalyzerButton) {
-    aiAnalyzerButton.addEventListener('click', () => {
-      window.location.href = '/ai-analyzer.html';
-    });
-  }
 }
 
 function setupModuleDeepLinks() {
