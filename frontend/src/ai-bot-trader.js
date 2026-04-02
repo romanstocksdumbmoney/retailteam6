@@ -256,6 +256,7 @@ function setupForm() {
   const resumeButton = document.getElementById('ai-bot-resume');
   const fundingButton = document.getElementById('open-ai-bot-funding');
   const accountButton = document.getElementById('open-ai-bot-account');
+  const brokerageButton = document.getElementById('open-live-brokerage-account');
 
   if (fundingButton) {
     fundingButton.addEventListener('click', () => {
@@ -266,6 +267,12 @@ function setupForm() {
   if (accountButton) {
     accountButton.addEventListener('click', () => {
       window.location.href = '/ai-bot-account.html';
+    });
+  }
+
+  if (brokerageButton) {
+    brokerageButton.addEventListener('click', () => {
+      window.location.href = '/brokerage-onboarding.html';
     });
   }
 

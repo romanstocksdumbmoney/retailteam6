@@ -298,6 +298,7 @@ function setupForm() {
   const fundingForm = document.getElementById('ai-funding-form');
   const openFundingPaymentButton = document.getElementById('ai-open-funding-payment');
   const openAccountViewButton = document.getElementById('ai-open-account-view');
+  const openBrokerageOnboardingButton = document.getElementById('ai-open-broker-onboarding');
 
   if (openFundingPaymentButton) {
     openFundingPaymentButton.addEventListener('click', async () => {
@@ -316,6 +317,12 @@ function setupForm() {
   if (openAccountViewButton) {
     openAccountViewButton.addEventListener('click', () => {
       window.location.href = '/ai-bot-account.html';
+    });
+  }
+
+  if (openBrokerageOnboardingButton) {
+    openBrokerageOnboardingButton.addEventListener('click', () => {
+      window.location.href = '/brokerage-onboarding.html';
     });
   }
 

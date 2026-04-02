@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>DumbDollars AI Trade Access</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body class="payment-page-body">
+    <main class="ai-trade-page-shell">
+      <article class="ai-trade-page-card card" role="main" aria-labelledby="ai-trade-access-title">
+        <a class="open-link" href="/">Back to dashboard</a>
+        <div class="pro-plan-logo-wrap" aria-hidden="true">
+          <img class="pro-plan-logo-image" src="./logo-mark.svg" alt="" />
+        </div>
+        <h1 id="ai-trade-access-title">AI Trade Sign Up</h1>
+        <p class="pro-plan-subtitle">Create your account (or log in) to unlock AI-powered trade analysis and the AI auto trader tools.</p>
+
+        <section class="pro-plan-box">
+          <h3>Use AI to trade with better structure</h3>
+          <ul class="detail-list">
+            <li>Upload a chart and get bullish/bearish AI consensus.</li>
+            <li>Get stop loss and take profit guidance.</li>
+            <li>Access AI Auto Trader planning, Test Area, and account view.</li>
+          </ul>
+          <p class="small-note">You must be signed in to continue.</p>
+        </section>
+
+        <section class="auth-bar">
+          <div class="auth-grid">
+            <form id="ai-access-signup-form" class="auth-form">
+              <label>
+                Create account
+                <input id="ai-access-signup-email" type="email" placeholder="email@domain.com" required />
+              </label>
+              <label>
+                Password
+                <input id="ai-access-signup-password" type="password" placeholder="password (min 8 chars)" required />
+              </label>
+              <button type="submit">Sign up and continue</button>
+            </form>
+
+            <form id="ai-access-login-form" class="auth-form">
+              <label>
+                Login email
+                <input id="ai-access-login-email" type="email" placeholder="email@domain.com" required />
+              </label>
+              <label>
+                Password
+                <input id="ai-access-login-password" type="password" placeholder="password" required />
+              </label>
+              <button type="submit">Log in and continue</button>
+            </form>
+          </div>
+
+          <div class="social-auth-row">
+            <p class="small-note">Quick sign in with:</p>
+            <div class="social-auth-buttons">
+              <button class="btn-secondary oauth-btn ai-access-oauth-btn" data-provider="google" type="button">Continue with Google</button>
+              <button class="btn-secondary oauth-btn ai-access-oauth-btn" data-provider="apple" type="button">Continue with Apple</button>
+              <button class="btn-secondary oauth-btn ai-access-oauth-btn" data-provider="github" type="button">Continue with GitHub</button>
+              <button class="btn-secondary oauth-btn ai-access-oauth-btn" data-provider="discord" type="button">Continue with Discord</button>
+              <button class="btn-secondary oauth-btn ai-access-oauth-btn" data-provider="x" type="button">Continue with X</button>
+            </div>
+          </div>
+        </section>
+
+        <p id="ai-access-status" class="small-note"></p>
+      </article>
+    </main>
+    <script src="./ai-trade-access.js"></script>
+  </body>
+</html>

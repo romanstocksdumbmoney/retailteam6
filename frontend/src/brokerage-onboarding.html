@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>DumbDollars Open Live Brokerage Account</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body class="payment-page-body">
+    <main class="ai-trade-page-shell">
+      <article class="ai-trade-page-card card" role="main" aria-labelledby="brokerage-onboarding-title">
+        <a class="open-link" href="/ai-bot-funding.html">Back to Funding + Test Area</a>
+        <div class="pro-plan-logo-wrap" aria-hidden="true">
+          <img class="pro-plan-logo-image" src="./logo-mark.svg" alt="" />
+        </div>
+        <h1 id="brokerage-onboarding-title">Open a Live Brokerage Account</h1>
+        <p class="pro-plan-subtitle">Pick a broker and open your live account. After you finish account setup with your broker, return here and connect it to AI funding mode.</p>
+
+        <section class="pro-plan-box">
+          <h3>Before you open an account</h3>
+          <ul class="detail-list">
+            <li>Use your legal name and matching identity documents.</li>
+            <li>Enable two-factor authentication on the broker account.</li>
+            <li>After approval, come back to DumbDollars and set your broker in Live Funding Mode.</li>
+          </ul>
+        </section>
+
+        <form id="brokerage-picker-form" class="pro-plan-box ai-bot-form" novalidate>
+          <label>
+            Select broker
+            <select id="brokerage-picker-select">
+              <option value="robinhood">Robinhood</option>
+              <option value="webull">Webull</option>
+              <option value="interactive-brokers">Interactive Brokers</option>
+              <option value="tradestation">TradeStation</option>
+            </select>
+          </label>
+          <div class="ai-bot-actions">
+            <button id="brokerage-open-account" type="submit">Open Broker Signup</button>
+            <button id="brokerage-copy-link" class="btn-secondary" type="button">Copy Broker Signup Link</button>
+            <button id="brokerage-go-funding" class="btn-secondary" type="button">Continue to Live Funding Setup</button>
+          </div>
+        </form>
+
+        <section id="brokerage-selection-summary" class="ai-trade-consensus"></section>
+        <section class="ai-trade-consensus">
+          <h3>Direct broker links</h3>
+          <ul class="detail-list">
+            <li><a class="open-link" href="https://robinhood.com/us/en/support/articles/opening-an-account/" target="_blank" rel="noopener noreferrer">Robinhood account opening</a></li>
+            <li><a class="open-link" href="https://www.webull.com/help/category/47-Open-an-account" target="_blank" rel="noopener noreferrer">Webull account opening</a></li>
+            <li><a class="open-link" href="https://www.interactivebrokers.com/en/accounts/open_account_pro.php" target="_blank" rel="noopener noreferrer">Interactive Brokers account opening</a></li>
+            <li><a class="open-link" href="https://www.tradestation.com/open-an-account/" target="_blank" rel="noopener noreferrer">TradeStation account opening</a></li>
+          </ul>
+        </section>
+        <p id="brokerage-onboarding-status" class="small-note"></p>
+      </article>
+    </main>
+    <script src="./brokerage-onboarding.js"></script>
+  </body>
+</html>

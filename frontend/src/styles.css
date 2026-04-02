@@ -48,6 +48,27 @@ body {
   width: min(94vw, 760px);
 }
 
+.ai-trade-access-card {
+  width: min(94vw, 760px);
+}
+
+.ai-trade-access-stack {
+  display: grid;
+  gap: 0.8rem;
+}
+
+.ai-trade-access-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+  gap: 0.6rem;
+}
+
+.ai-trade-access-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.55rem;
+}
+
 .hosted-checkout-page-card {
   width: min(94vw, 760px);
 }
@@ -726,6 +747,38 @@ h1 {
 .oauth-btn {
   padding: 0.42rem 0.62rem;
   font-size: 0.84rem;
+}
+
+.onboarding-links {
+  margin-top: 0.75rem;
+  display: grid;
+  gap: 0.55rem;
+}
+
+.broker-onboarding-grid {
+  display: grid;
+  gap: 0.75rem;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+}
+
+.broker-card {
+  border: 1px solid rgba(250, 204, 21, 0.25);
+  border-radius: 10px;
+  background: rgba(15, 23, 42, 0.7);
+  padding: 0.7rem;
+}
+
+.broker-card h4 {
+  margin: 0 0 0.45rem;
+}
+
+.broker-card p {
+  margin: 0.25rem 0;
+}
+
+.broker-card .open-link {
+  display: inline-block;
+  margin-top: 0.45rem;
 }
 
 input,

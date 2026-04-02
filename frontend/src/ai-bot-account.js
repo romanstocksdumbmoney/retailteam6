@@ -194,10 +194,17 @@ function setupActions() {
   const refreshButton = document.getElementById('ai-account-refresh');
   const runCycleButton = document.getElementById('ai-account-run-cycle');
   const openFundingButton = document.getElementById('ai-account-back-funding');
+  const openBrokerOnboardingButton = document.getElementById('ai-account-open-brokerage');
 
   if (openFundingButton) {
     openFundingButton.addEventListener('click', () => {
       window.location.href = '/ai-bot-funding.html';
+    });
+  }
+
+  if (openBrokerOnboardingButton) {
+    openBrokerOnboardingButton.addEventListener('click', () => {
+      window.location.href = '/brokerage-onboarding.html';
     });
   }
 
