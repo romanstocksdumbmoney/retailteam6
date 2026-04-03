@@ -348,15 +348,6 @@ const PORTFOLIO_TRADE_THEMES = [
   'event-driven catalyst'
 ];
 
-const REALIZED_PATTERN_LIBRARY = [
-  { key: 'vol-fade', name: 'Volume Fade Continuation', type: 'volume_down', edge: 'Low-participation drift tends to continue intraday.' },
-  { key: 'vol-compress', name: 'Volume Compression Breakout', type: 'volume_down', edge: 'Compression often resolves with directional expansion.' },
-  { key: 'hammer-reclaim', name: 'Hammer + VWAP Reclaim', type: 'candlestick', edge: 'Reclaim after hammer can trigger short covering.' },
-  { key: 'engulf-reversal', name: 'Bullish/Bearish Engulfing Flip', type: 'candlestick', edge: 'Engulfing around support/resistance can front-run trend change.' },
-  { key: 'inside-break', name: 'Inside Bar Expansion', type: 'candlestick', edge: 'Inside bar break often starts momentum bursts.' },
-  { key: 'quiet-gap-hold', name: 'Quiet Gap Hold', type: 'volume_down', edge: 'Thin volume gap holds can trend while liquidity is light.' }
-];
-
 const REALIZED_PATTERN_TYPES = ['all', 'volume_down', 'candlestick'];
 
 const WILD_TAKE_THEMES = [
@@ -2212,57 +2203,421 @@ function getInsiderTrades(limit = 10, options = {}) {
   };
 }
 
-function getRealizedPatterns(limit = 8, patternType = 'all') {
-  const seed = hashString(`realized-patterns:${minuteBucketSeed()}`);
+async function fetchYahooDailyCandles(symbol, options = {}) {
+  const normalized = normalizeSymbol(symbol);
+  if (!isLikelyUsCommonTicker(normalized)) {
+    return [];
+  }
+  const range = String(options.range || '3mo').trim() || '3mo';
+  const interval = String(options.interval || '1d').trim() || '1d';
+  const url = `https://query2.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(normalized)}?range=${encodeURIComponent(range)}&interval=${encodeURIComponent(interval)}`;
+  const payload = await safeFetchJson(url, { timeoutMs: 8000 });
+  const chart = payload?.chart?.result?.[0];
+  const timestamps = Array.isArray(chart?.timestamp) ? chart.timestamp : [];
+  const quote = chart?.indicators?.quote?.[0] || {};
+  const opens = Array.isArray(quote?.open) ? quote.open : [];
+  const highs = Array.isArray(quote?.high) ? quote.high : [];
+  const lows = Array.isArray(quote?.low) ? quote.low : [];
+  const closes = Array.isArray(quote?.close) ? quote.close : [];
+  const volumes = Array.isArray(quote?.volume) ? quote.volume : [];
+  if (!timestamps.length) {
+    return [];
+  }
+  const candles = [];
+  for (let i = 0; i < timestamps.length; i += 1) {
+    const tsSeconds = Number(timestamps[i] || 0);
+    const open = Number(opens[i]);
+    const high = Number(highs[i]);
+    const low = Number(lows[i]);
+    const close = Number(closes[i]);
+    const volume = Number(volumes[i] || 0);
+    if (
+      !Number.isFinite(tsSeconds)
+      || !Number.isFinite(open)
+      || !Number.isFinite(high)
+      || !Number.isFinite(low)
+      || !Number.isFinite(close)
+      || !Number.isFinite(volume)
+      || tsSeconds <= 0
+      || high < low
+      || open <= 0
+      || close <= 0
+      || volume < 0
+    ) {
+      continue;
+    }
+    const timestampMs = Math.round(tsSeconds * 1000);
+    candles.push({
+      timestampMs,
+      isoDate: new Date(timestampMs).toISOString().slice(0, 10),
+      open,
+      high,
+      low,
+      close,
+      volume: Math.round(volume)
+    });
+  }
+  candles.sort((a, b) => a.timestampMs - b.timestampMs);
+  return candles;
+}
+
+function avg(values) {
+  const usable = (Array.isArray(values) ? values : []).filter((value) => Number.isFinite(Number(value)));
+  if (!usable.length) {
+    return 0;
+  }
+  return usable.reduce((sum, value) => sum + Number(value), 0) / usable.length;
+}
+
+function averageVolumeFromCandles(candles, length, endExclusive) {
+  const end = Number.isInteger(endExclusive) ? endExclusive : candles.length;
+  const start = Math.max(0, end - Math.max(1, Math.trunc(length)));
+  return avg(candles.slice(start, end).map((row) => Number(row.volume || 0)));
+}
+
+function smaFromCandles(candles, length, endExclusive) {
+  const end = Number.isInteger(endExclusive) ? endExclusive : candles.length;
+  const start = Math.max(0, end - Math.max(1, Math.trunc(length)));
+  return avg(candles.slice(start, end).map((row) => Number(row.close || 0)));
+}
+
+function volumeWeightedCloseFromCandles(candles, length, endExclusive) {
+  const end = Number.isInteger(endExclusive) ? endExclusive : candles.length;
+  const start = Math.max(0, end - Math.max(1, Math.trunc(length)));
+  let weighted = 0;
+  let totalVolume = 0;
+  candles.slice(start, end).forEach((row) => {
+    const close = Number(row.close || 0);
+    const volume = Number(row.volume || 0);
+    if (Number.isFinite(close) && Number.isFinite(volume) && close > 0 && volume > 0) {
+      weighted += close * volume;
+      totalVolume += volume;
+    }
+  });
+  if (totalVolume <= 0) {
+    return 0;
+  }
+  return weighted / totalVolume;
+}
+
+function candleBodySize(candle) {
+  return Math.abs(Number(candle?.close || 0) - Number(candle?.open || 0));
+}
+
+function candleRangeSize(candle) {
+  return Math.max(0, Number(candle?.high || 0) - Number(candle?.low || 0));
+}
+
+function rangePct(candle) {
+  const close = Number(candle?.close || 0);
+  if (!Number.isFinite(close) || close <= 0) {
+    return 0;
+  }
+  return (candleRangeSize(candle) / close) * 100;
+}
+
+function realizedPatternTypeLabel(patternType) {
+  return patternType === 'volume_down' ? 'Volume Down' : 'Candlestick';
+}
+
+function buildPatternItem({
+  symbol,
+  key,
+  patternName,
+  patternType,
+  confidence,
+  direction,
+  triggerCandle,
+  note,
+  evidence
+}) {
+  const triggerDateLabel = formatIsoDate(triggerCandle.isoDate);
+  return {
+    id: `${symbol}:${key}:${triggerCandle.isoDate}`,
+    symbol,
+    ticker: symbol,
+    patternName,
+    patternType,
+    patternTypeLabel: realizedPatternTypeLabel(patternType),
+    confidence: clamp(Math.round(Number(confidence || 0)), 1, 99),
+    direction,
+    session: 'regular',
+    sessionLabel: 'Daily Close',
+    triggerAt: `Detected on ${triggerDateLabel}`,
+    volume: Math.round(Number(triggerCandle.volume || 0)),
+    note,
+    source: 'yahoo_chart_ohlcv',
+    candleDate: triggerCandle.isoDate,
+    evidence
+  };
+}
+
+function detectVolumeFadeContinuation(symbol, candles) {
+  if (!Array.isArray(candles) || candles.length < 24) {
+    return null;
+  }
+  const end = candles.length;
+  const c0 = candles[end - 1];
+  const c1 = candles[end - 2];
+  const c2 = candles[end - 3];
+  const avgVolume20 = averageVolumeFromCandles(candles, 20, end - 1);
+  const sma10 = smaFromCandles(candles, 10, end);
+  if (avgVolume20 <= 0 || sma10 <= 0) {
+    return null;
+  }
+  const volumeSteppingDown = c2.volume > c1.volume && c1.volume > c0.volume;
+  const relativeVolume = Number((c0.volume / avgVolume20).toFixed(2));
+  const isBullish = c0.close > c1.close && c0.close > sma10;
+  const isBearish = c0.close < c1.close && c0.close < sma10;
+  if (!volumeSteppingDown || relativeVolume > 0.82 || (!isBullish && !isBearish)) {
+    return null;
+  }
+  const confidence = 56 + Math.round((0.82 - relativeVolume) * 60) + (isBullish || isBearish ? 10 : 0);
+  const note = `3-day volume fade with RVOL ${relativeVolume} vs 20D average while price stayed ${isBullish ? 'above' : 'below'} 10D trend.`;
+  return buildPatternItem({
+    symbol,
+    key: 'vol-fade',
+    patternName: 'Volume Fade Continuation',
+    patternType: 'volume_down',
+    confidence,
+    direction: isBullish ? 'bullish' : 'bearish',
+    triggerCandle: c0,
+    note,
+    evidence: {
+      relativeVolume,
+      avgVolume20: Math.round(avgVolume20),
+      volumeSeries: [c2.volume, c1.volume, c0.volume],
+      sma10: Number(sma10.toFixed(2))
+    }
+  });
+}
+
+function detectVolumeCompressionBreakout(symbol, candles) {
+  if (!Array.isArray(candles) || candles.length < 26) {
+    return null;
+  }
+  const end = candles.length;
+  const breakout = candles[end - 1];
+  const preBreak = candles.slice(end - 4, end - 1);
+  const baseline = candles.slice(end - 14, end - 4);
+  const previousFive = candles.slice(end - 6, end - 1);
+  const avgCompressionRangePct = avg(preBreak.map((row) => rangePct(row)));
+  const avgBaselineRangePct = avg(baseline.map((row) => rangePct(row)));
+  const avgVolume20 = averageVolumeFromCandles(candles, 20, end - 1);
+  if (avgBaselineRangePct <= 0 || avgVolume20 <= 0 || previousFive.length < 3) {
+    return null;
+  }
+  const compressionRatio = Number((avgCompressionRangePct / avgBaselineRangePct).toFixed(2));
+  const preBreakRelativeVolume = Number((avg(preBreak.map((row) => Number(row.volume || 0))) / avgVolume20).toFixed(2));
+  const priorHigh = Math.max(...previousFive.map((row) => Number(row.high || 0)));
+  const priorLow = Math.min(...previousFive.map((row) => Number(row.low || 0)));
+  const brokeUp = breakout.close > priorHigh;
+  const brokeDown = breakout.close < priorLow;
+  if (compressionRatio > 0.82 || preBreakRelativeVolume > 0.9 || (!brokeUp && !brokeDown)) {
+    return null;
+  }
+  const confidence = 55 + Math.round((0.82 - compressionRatio) * 70);
+  const note = `Range compression (${compressionRatio}x of baseline) with muted pre-break volume (${preBreakRelativeVolume}x) then directional break.`;
+  return buildPatternItem({
+    symbol,
+    key: 'vol-compress',
+    patternName: 'Volume Compression Breakout',
+    patternType: 'volume_down',
+    confidence,
+    direction: brokeUp ? 'bullish' : 'bearish',
+    triggerCandle: breakout,
+    note,
+    evidence: {
+      compressionRatio,
+      preBreakRelativeVolume,
+      priorHigh: Number(priorHigh.toFixed(2)),
+      priorLow: Number(priorLow.toFixed(2))
+    }
+  });
+}
+
+function detectHammerVwapReclaim(symbol, candles) {
+  if (!Array.isArray(candles) || candles.length < 24) {
+    return null;
+  }
+  const end = candles.length;
+  const latest = candles[end - 1];
+  const previous = candles[end - 2];
+  const vwap20Proxy = volumeWeightedCloseFromCandles(candles, 20, end - 1);
+  if (vwap20Proxy <= 0) {
+    return null;
+  }
+  const body = candleBodySize(latest);
+  const range = candleRangeSize(latest);
+  if (range <= 0) {
+    return null;
+  }
+  const lowerShadow = Math.min(latest.open, latest.close) - latest.low;
+  const upperShadow = latest.high - Math.max(latest.open, latest.close);
+  const bodyToRange = body / range;
+  const isHammer = lowerShadow >= body * 2 && upperShadow <= Math.max(body * 0.9, range * 0.2) && bodyToRange <= 0.45;
+  const reclaimed = previous.close < vwap20Proxy && latest.close > vwap20Proxy;
+  if (!isHammer || !reclaimed) {
+    return null;
+  }
+  const reclaimPct = Number((((latest.close - vwap20Proxy) / vwap20Proxy) * 100).toFixed(2));
+  const confidence = 58 + Math.round(Math.min(lowerShadow / Math.max(body, 0.01), 4) * 6) + Math.round(Math.max(reclaimPct, 0));
+  const note = `Hammer structure reclaimed 20D volume-weighted close proxy by ${reclaimPct > 0 ? '+' : ''}${reclaimPct}% on close.`;
+  return buildPatternItem({
+    symbol,
+    key: 'hammer-reclaim',
+    patternName: 'Hammer + VWAP Reclaim',
+    patternType: 'candlestick',
+    confidence,
+    direction: 'bullish',
+    triggerCandle: latest,
+    note,
+    evidence: {
+      reclaimPct,
+      lowerShadow: Number(lowerShadow.toFixed(2)),
+      upperShadow: Number(upperShadow.toFixed(2)),
+      bodyToRange: Number(bodyToRange.toFixed(2)),
+      vwap20Proxy: Number(vwap20Proxy.toFixed(2))
+    }
+  });
+}
+
+function detectEngulfingFlip(symbol, candles) {
+  if (!Array.isArray(candles) || candles.length < 22) {
+    return null;
+  }
+  const end = candles.length;
+  const latest = candles[end - 1];
+  const previous = candles[end - 2];
+  const previousBull = previous.close > previous.open;
+  const previousBear = previous.close < previous.open;
+  const latestBull = latest.close > latest.open;
+  const latestBear = latest.close < latest.open;
+  const bullishEngulf = previousBear && latestBull && latest.open <= previous.close && latest.close >= previous.open;
+  const bearishEngulf = previousBull && latestBear && latest.open >= previous.close && latest.close <= previous.open;
+  if (!bullishEngulf && !bearishEngulf) {
+    return null;
+  }
+  const previousBody = Math.max(candleBodySize(previous), 0.01);
+  const latestBody = candleBodySize(latest);
+  const bodyExpansion = Number((latestBody / previousBody).toFixed(2));
+  const avgVolume20 = averageVolumeFromCandles(candles, 20, end - 1);
+  const relativeVolume = avgVolume20 > 0 ? Number((latest.volume / avgVolume20).toFixed(2)) : 0;
+  if (bodyExpansion < 1.05 || relativeVolume < 0.9) {
+    return null;
+  }
+  const confidence = 54 + Math.round((bodyExpansion - 1) * 14) + Math.round(Math.max(relativeVolume - 1, 0) * 8);
+  const note = `Body engulfed prior candle (${bodyExpansion}x body size) with ${relativeVolume}x relative volume on confirmation day.`;
+  return buildPatternItem({
+    symbol,
+    key: 'engulf-reversal',
+    patternName: 'Bullish/Bearish Engulfing Flip',
+    patternType: 'candlestick',
+    confidence,
+    direction: bullishEngulf ? 'bullish' : 'bearish',
+    triggerCandle: latest,
+    note,
+    evidence: {
+      bodyExpansion,
+      relativeVolume
+    }
+  });
+}
+
+function detectInsideBarExpansion(symbol, candles) {
+  if (!Array.isArray(candles) || candles.length < 24) {
+    return null;
+  }
+  const end = candles.length;
+  const mother = candles[end - 3];
+  const inside = candles[end - 2];
+  const breakout = candles[end - 1];
+  const isInside = inside.high < mother.high && inside.low > mother.low;
+  const brokeUp = breakout.close > inside.high && breakout.high > mother.high;
+  const brokeDown = breakout.close < inside.low && breakout.low < mother.low;
+  const avgVolume20 = averageVolumeFromCandles(candles, 20, end - 1);
+  const relativeVolume = avgVolume20 > 0 ? Number((breakout.volume / avgVolume20).toFixed(2)) : 0;
+  if (!isInside || (!brokeUp && !brokeDown) || relativeVolume < 0.8) {
+    return null;
+  }
+  const confidence = 53 + Math.round(Math.max(relativeVolume - 0.8, 0) * 20);
+  const note = `Inside bar resolved with expansion break and ${relativeVolume}x relative volume confirmation.`;
+  return buildPatternItem({
+    symbol,
+    key: 'inside-break',
+    patternName: 'Inside Bar Expansion',
+    patternType: 'candlestick',
+    confidence,
+    direction: brokeUp ? 'bullish' : 'bearish',
+    triggerCandle: breakout,
+    note,
+    evidence: {
+      relativeVolume,
+      motherHigh: Number(mother.high.toFixed(2)),
+      motherLow: Number(mother.low.toFixed(2))
+    }
+  });
+}
+
+function detectRealizedPatternsForSymbol(symbol, candles) {
+  if (!Array.isArray(candles) || candles.length < 20) {
+    return [];
+  }
+  const detections = [
+    detectVolumeFadeContinuation(symbol, candles),
+    detectVolumeCompressionBreakout(symbol, candles),
+    detectHammerVwapReclaim(symbol, candles),
+    detectEngulfingFlip(symbol, candles),
+    detectInsideBarExpansion(symbol, candles)
+  ].filter(Boolean);
+
+  const dedupe = new Set();
+  return detections.filter((item) => {
+    const key = `${item.symbol}:${item.patternName}`;
+    if (dedupe.has(key)) {
+      return false;
+    }
+    dedupe.add(key);
+    return true;
+  });
+}
+
+async function getRealizedPatterns(limit = 8, patternType = 'all') {
   const normalizedType = String(patternType || 'all').trim().toLowerCase();
   const selectedType = REALIZED_PATTERN_TYPES.includes(normalizedType) ? normalizedType : 'all';
   const total = Math.max(1, Math.min(20, Math.trunc(limit)));
-  const items = [];
-  const uniqueKey = new Set();
+  const patternUniverse = [...new Set([...PREMIUM_SPIKE_LARGE_CAPS, ...EARNINGS_WATCHLIST, ...HIGH_IV_UNIVERSE])]
+    .filter((symbol) => isLikelyUsCommonTicker(symbol))
+    .slice(0, 24);
 
-  for (let i = 0; i < total * 4; i += 1) {
-    const pattern = REALIZED_PATTERN_LIBRARY[Math.floor(pseudoRandom(seed + i * 3) * REALIZED_PATTERN_LIBRARY.length)];
-    if (selectedType !== 'all' && pattern.type !== selectedType) {
-      continue;
-    }
+  const scans = await Promise.all(patternUniverse.map(async (symbol) => {
+    const candles = await fetchYahooDailyCandles(symbol, { range: '3mo', interval: '1d' });
+    return {
+      symbol,
+      candles
+    };
+  }));
 
-    const ticker = EARNINGS_WATCHLIST[Math.floor(pseudoRandom(seed + i * 5 + 1) * EARNINGS_WATCHLIST.length)];
-    const dedupe = `${ticker}:${pattern.key}`;
-    if (uniqueKey.has(dedupe)) {
-      continue;
-    }
-    uniqueKey.add(dedupe);
-
-    // Once a pattern "hits", it drops off this board.
-    const hasTriggered = pseudoRandom(seed + i * 7 + 2) > 0.74;
-    if (hasTriggered) {
-      continue;
-    }
-
-    const volume = Math.max(1_000_000, Math.round(estimateEarningsDayVolume(ticker) * (0.4 + pseudoRandom(seed + i * 11 + 3) * 0.8)));
-    const triggerMinute = Math.floor(pseudoRandom(seed + i * 13 + 4) * 59);
-    const session = i % 2 === 0 ? 'pre-market' : 'after-hours';
-    const triggerAt = session === 'pre-market' ? `09:${String(triggerMinute).padStart(2, '0')} ET` : `16:${String(triggerMinute).padStart(2, '0')} ET`;
-
-    items.push({
-      id: `${dedupe}:${i}`,
-      ticker,
-      patternName: pattern.name,
-      patternType: pattern.type,
-      patternTypeLabel: pattern.type === 'volume_down' ? 'Volume Down' : 'Candlestick',
-      session,
-      sessionLabel: session === 'pre-market' ? 'Pre-Market' : 'After-Hours',
-      triggerAt,
-      volume,
-      note: pattern.edge
+  const items = scans.flatMap((scan) => detectRealizedPatternsForSymbol(scan.symbol, scan.candles));
+  const filteredItems = items
+    .filter((item) => selectedType === 'all' || item.patternType === selectedType)
+    .sort((a, b) => {
+      const confidenceDiff = Number(b.confidence || 0) - Number(a.confidence || 0);
+      if (confidenceDiff !== 0) {
+        return confidenceDiff;
+      }
+      return Number(b.volume || 0) - Number(a.volume || 0);
     });
-  }
 
   return {
     generatedAt: new Date().toISOString(),
     availableFilters: REALIZED_PATTERN_TYPES,
     selectedFilter: selectedType,
-    items: items.slice(0, total)
+    dataNature: 'live',
+    sourceDisclosure: 'Realized pattern detections are computed from live Yahoo Finance OHLCV candles (query2 chart endpoint).',
+    scanUniverseSize: patternUniverse.length,
+    scannedSymbols: scans.filter((scan) => Array.isArray(scan.candles) && scan.candles.length >= 20).length,
+    items: filteredItems.slice(0, total)
   };
 }
 

@@ -38,7 +38,7 @@ async function createAuditUserAndToken() {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       email,
-      password: 'password123'
+      password: 'Audit#Pass1234!'
     })
   });
   assert(response.ok, `/api/auth/signup for audit user returned HTTP ${response.status}`);
@@ -223,6 +223,34 @@ function validateSimpleList(path, payload) {
   assert(items.length > 0, `${path} returned no items`);
 }
 
+function validateRealizedPatterns(payload) {
+  if (!payload) {
+    return;
+  }
+  assert(String(payload.dataNature || '').toLowerCase() === 'live', '/api/market/realized-patterns dataNature should be live');
+  assert(
+    String(payload.sourceDisclosure || '').toLowerCase().includes('yahoo'),
+    '/api/market/realized-patterns sourceDisclosure should mention Yahoo OHLCV source'
+  );
+  const items = Array.isArray(payload.items) ? payload.items : [];
+  assert(items.length > 0, '/api/market/realized-patterns returned no items');
+  items.forEach((item, idx) => {
+    assert(Boolean(item.symbol || item.ticker), `realizedPatterns[${idx}] missing symbol`);
+    assert(Boolean(item.patternName), `realizedPatterns[${idx}] missing patternName`);
+    const patternType = String(item.patternType || '').toLowerCase();
+    assert(['volume_down', 'candlestick'].includes(patternType), `realizedPatterns[${idx}] invalid patternType`);
+    const confidence = Number(item.confidence || 0);
+    assert(Number.isFinite(confidence) && confidence >= 1 && confidence <= 99, `realizedPatterns[${idx}] confidence out of range`);
+    const volume = Number(item.volume || 0);
+    assert(Number.isFinite(volume) && volume > 0, `realizedPatterns[${idx}] non-positive volume`);
+    const source = String(item.source || '').toLowerCase();
+    assert(source.includes('yahoo'), `realizedPatterns[${idx}] source should indicate Yahoo OHLCV`);
+    assert(Boolean(item.candleDate), `realizedPatterns[${idx}] missing candleDate`);
+    const evidence = item.evidence;
+    assert(Boolean(evidence) && typeof evidence === 'object', `realizedPatterns[${idx}] missing evidence object`);
+  });
+}
+
 async function run() {
   const authToken = await createAuditUserAndToken();
   const endpoints = await Promise.all([
@@ -274,7 +302,7 @@ async function run() {
   validatePremiumSpikes(premiumSpikesPayload);
   validateHighIv(highIvPayload);
   validatePortfolios(portfoliosPayload);
-  validateSimpleList('/api/market/realized-patterns', realizedPatternsPayload);
+  validateRealizedPatterns(realizedPatternsPayload);
   validateSimpleList('/api/market/wild-takes', wildTakesPayload);
   assert(Array.isArray(trendTradeSourcesPayload?.options), '/api/market/trend-trades-sources missing options[]');
 

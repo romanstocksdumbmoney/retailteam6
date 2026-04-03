@@ -461,15 +461,15 @@ router.get('/top-portfolios', (req, res) => {
   });
 });
 
-router.get('/realized-patterns', (req, res) => {
+router.get('/realized-patterns', async (req, res) => {
   const limit = Number(req.query.limit || 8);
   const boundedLimit = Number.isFinite(limit) ? Math.max(1, Math.min(20, Math.trunc(limit))) : 8;
   const patternType = String(req.query.type || 'all');
-  const payload = getRealizedPatterns(boundedLimit, patternType);
+  const payload = await getRealizedPatterns(boundedLimit, patternType);
   return res.json({
     ...payload,
-    dataNature: 'simulated',
-    sourceDisclosure: 'Synthetic realized-pattern tracker for beta testing.'
+    dataNature: payload.dataNature || 'live',
+    sourceDisclosure: payload.sourceDisclosure || 'Realized patterns computed from live OHLCV data.'
   });
 });
 
