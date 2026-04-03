@@ -80,6 +80,23 @@ async function socialSignIn(provider, email) {
   saveEmail(email);
 }
 
+function goToSocialAuthPage(provider, email) {
+  const normalizedProvider = String(provider || '').trim().toLowerCase();
+  const normalizedEmail = normalizeEmailInput(email);
+  if (!normalizedProvider) {
+    setStatus('Choose a provider first.', true);
+    return;
+  }
+  if (!isLikelyValidEmail(normalizedEmail)) {
+    setStatus('Enter a valid email first, then continue with social sign in.', true);
+    return;
+  }
+  const next = encodeURIComponent('/ai-trade.html');
+  const providerParam = encodeURIComponent(normalizedProvider);
+  const emailParam = encodeURIComponent(normalizedEmail);
+  window.location.href = `/social-auth.html?provider=${providerParam}&email=${emailParam}&next=${next}`;
+}
+
 function goToAiTrade() {
   window.location.href = '/ai-trade.html';
 }
@@ -247,16 +264,11 @@ function setupForms() {
         setStatus('Enter a valid email first, then choose Google/Apple/etc.', true);
         return;
       }
-      try {
-        button.disabled = true;
-        await socialSignIn(provider, email);
-        setStatus('Social sign in successful. Opening AI Trade...');
-        goToAiTrade();
-      } catch (error) {
-        setStatus(error.message || 'Social sign in failed.', true);
-      } finally {
+      button.disabled = true;
+      goToSocialAuthPage(provider, email);
+      window.setTimeout(() => {
         button.disabled = false;
-      }
+      }, 1000);
     });
   });
 }

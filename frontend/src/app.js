@@ -1465,6 +1465,23 @@ async function socialSignIn(provider, email) {
   return payload;
 }
 
+function openSocialAuthPage(provider, email, redirectPath) {
+  const normalizedProvider = String(provider || '').trim().toLowerCase();
+  const params = new URLSearchParams();
+  if (normalizedProvider) {
+    params.set('provider', normalizedProvider);
+  }
+  const normalizedEmail = String(email || '').trim().toLowerCase();
+  if (normalizedEmail) {
+    params.set('email', normalizedEmail);
+  }
+  if (redirectPath && String(redirectPath).startsWith('/')) {
+    params.set('next', String(redirectPath));
+  }
+  const query = params.toString();
+  window.location.href = `/social-auth.html${query ? `?${query}` : ''}`;
+}
+
 function setupAuthForms() {
   const loginForm = document.getElementById('login-form');
   const signupForm = document.getElementById('signup-form');
@@ -1547,22 +1564,8 @@ function setupAuthForms() {
       const signupInput = document.getElementById('signup-email');
       const fallbackEmail = loadPreferredEmail() || getSavedAuthEmail();
       const preferred = String(loginInput?.value || signupInput?.value || fallbackEmail || '').trim().toLowerCase();
-      if (!preferred || !isLikelyRealEmail(preferred)) {
-        setAuthMessage('Enter a valid email first, then choose Google/Apple/etc.', true);
-        return;
-      }
-      try {
-        button.disabled = true;
-        const payload = await socialSignIn(provider, preferred);
-        savePreferredEmail(preferred);
-        const providerLabel = payload.providerLabel || provider;
-        setAuthMessage(`${providerLabel} sign in successful.`);
-        await Promise.all([refreshBaseline(), loadUnusualFeed(), loadTrendTrades()]);
-      } catch (error) {
-        setAuthMessage(error.message || 'Social sign in failed.', true);
-      } finally {
-        button.disabled = false;
-      }
+      button.disabled = true;
+      openSocialAuthPage(provider, preferred, window.location.pathname || '/');
     });
   });
 

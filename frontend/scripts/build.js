@@ -17,6 +17,7 @@ async function build() {
   await fs.copyFile(path.join(srcDir, 'checkout.html'), path.join(buildDir, 'checkout.html'));
   await fs.copyFile(path.join(srcDir, 'ai-trade.html'), path.join(buildDir, 'ai-trade.html'));
   await fs.copyFile(path.join(srcDir, 'ai-trade-access.html'), path.join(buildDir, 'ai-trade-access.html'));
+  await fs.copyFile(path.join(srcDir, 'social-auth.html'), path.join(buildDir, 'social-auth.html'));
   await fs.copyFile(path.join(srcDir, 'ai-bot-trader.html'), path.join(buildDir, 'ai-bot-trader.html'));
   await fs.copyFile(path.join(srcDir, 'ai-bot-funding.html'), path.join(buildDir, 'ai-bot-funding.html'));
   await fs.copyFile(path.join(srcDir, 'ai-bot-funding-payment.html'), path.join(buildDir, 'ai-bot-funding-payment.html'));
@@ -33,6 +34,7 @@ async function build() {
   await fs.copyFile(path.join(srcDir, 'checkout.js'), path.join(buildDir, 'checkout.js'));
   await fs.copyFile(path.join(srcDir, 'ai-trade.js'), path.join(buildDir, 'ai-trade.js'));
   await fs.copyFile(path.join(srcDir, 'ai-trade-access.js'), path.join(buildDir, 'ai-trade-access.js'));
+  await fs.copyFile(path.join(srcDir, 'social-auth.js'), path.join(buildDir, 'social-auth.js'));
   await fs.copyFile(path.join(srcDir, 'ai-bot-trader.js'), path.join(buildDir, 'ai-bot-trader.js'));
   await fs.copyFile(path.join(srcDir, 'ai-bot-funding.js'), path.join(buildDir, 'ai-bot-funding.js'));
   await fs.copyFile(path.join(srcDir, 'ai-bot-funding-payment.js'), path.join(buildDir, 'ai-bot-funding-payment.js'));

@@ -762,6 +762,12 @@ h1 {
   gap: 0.45rem;
 }
 
+.social-auth-buttons--stack {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 0.5rem;
+}
+
 .oauth-btn {
   padding: 0.42rem 0.62rem;
   font-size: 0.84rem;
