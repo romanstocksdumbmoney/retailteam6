@@ -5,11 +5,85 @@ const usersById = new Map();
 const usersByEmail = new Map();
 const usersByStripeCustomerId = new Map();
 const SUPPORTED_AUTH_PROVIDERS = new Set(['password', 'google', 'apple', 'github', 'discord', 'x']);
+const DISPOSABLE_EMAIL_DOMAINS = new Set([
+  'mailinator.com',
+  'guerrillamail.com',
+  '10minutemail.com',
+  'tempmail.com',
+  'trashmail.com',
+  'yopmail.com'
+]);
 
 function normalizeEmail(email) {
   return String(email || '')
     .trim()
     .toLowerCase();
+}
+
+function isValidEmailFormat(email) {
+  const normalized = normalizeEmail(email);
+  if (!normalized || normalized.length > 254) {
+    return false;
+  }
+  const parts = normalized.split('@');
+  if (parts.length !== 2) {
+    return false;
+  }
+  const [localPart, domainPart] = parts;
+  if (!localPart || !domainPart) {
+    return false;
+  }
+  if (localPart.length > 64 || domainPart.length > 253) {
+    return false;
+  }
+  if (!/^[a-z0-9.!#$%&'*+/=?^_`{|}~-]+$/i.test(localPart)) {
+    return false;
+  }
+  if (!/^[a-z0-9.-]+\.[a-z]{2,}$/i.test(domainPart)) {
+    return false;
+  }
+  if (domainPart.includes('..') || domainPart.startsWith('.') || domainPart.endsWith('.')) {
+    return false;
+  }
+  if (DISPOSABLE_EMAIL_DOMAINS.has(domainPart)) {
+    return false;
+  }
+  return true;
+}
+
+function evaluatePasswordStrength(password) {
+  const value = String(password || '');
+  if (value.length < 10) {
+    return {
+      ok: false,
+      reason: 'length'
+    };
+  }
+  if (!/[A-Z]/.test(value)) {
+    return {
+      ok: false,
+      reason: 'uppercase'
+    };
+  }
+  if (!/[a-z]/.test(value)) {
+    return {
+      ok: false,
+      reason: 'lowercase'
+    };
+  }
+  if (!/[0-9]/.test(value)) {
+    return {
+      ok: false,
+      reason: 'number'
+    };
+  }
+  if (!/[^A-Za-z0-9]/.test(value)) {
+    return {
+      ok: false,
+      reason: 'symbol'
+    };
+  }
+  return { ok: true, reason: 'ok' };
 }
 
 function planFromSubscriptionStatus(status) {
@@ -53,12 +127,18 @@ function createUser({ email, password, passwordHash, authProvider = 'password' }
   if (!normalizedEmail) {
     throw new Error('email_required');
   }
+  if (!isValidEmailFormat(normalizedEmail)) {
+    throw new Error('invalid_email');
+  }
 
   const chosenHash = String(passwordHash || '');
   const chosenPassword = String(password || '');
   const provider = normalizeAuthProvider(authProvider);
-  if (provider === 'password' && !chosenHash && chosenPassword.length < 8) {
-    throw new Error('weak_password');
+  if (provider === 'password' && !chosenHash) {
+    const passwordCheck = evaluatePasswordStrength(chosenPassword);
+    if (!passwordCheck.ok) {
+      throw new Error(`weak_password_${passwordCheck.reason}`);
+    }
   }
   if (usersByEmail.has(normalizedEmail)) {
     throw new Error('email_exists');
@@ -185,6 +265,9 @@ function findOrCreateUserByAuthProvider({ email, authProvider }) {
   if (!normalizedEmail) {
     throw new Error('email_required');
   }
+  if (!isValidEmailFormat(normalizedEmail)) {
+    throw new Error('invalid_email');
+  }
   const provider = normalizeAuthProvider(authProvider);
   if (provider === 'password') {
     throw new Error('invalid_auth_provider');
@@ -265,5 +348,7 @@ module.exports = {
   getUserByStripeCustomerId,
   setUserPlanById,
   setUserPlanByCustomerId,
-  setSubscriptionStatus
+  setSubscriptionStatus,
+  isValidEmailFormat,
+  evaluatePasswordStrength
 };

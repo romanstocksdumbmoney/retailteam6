@@ -110,21 +110,100 @@ function setButtonBusy(button, isBusy, idleLabel, busyLabel) {
   button.textContent = isBusy ? busyLabel : idleLabel;
 }
 
+function normalizeEmailInput(rawEmail) {
+  return String(rawEmail || '').trim().toLowerCase();
+}
+
+function isLikelyValidEmail(email) {
+  const value = normalizeEmailInput(email);
+  if (!value || value.length < 6 || value.length > 254) {
+    return false;
+  }
+  if (value.includes('..') || value.includes(' ')) {
+    return false;
+  }
+  const match = value.match(/^([a-z0-9._%+-]+)@([a-z0-9.-]+)\.([a-z]{2,})$/i);
+  if (!match) {
+    return false;
+  }
+  const local = match[1];
+  const domain = match[2];
+  if (local.startsWith('.') || local.endsWith('.') || domain.startsWith('-') || domain.endsWith('-')) {
+    return false;
+  }
+  if (domain.split('.').some((part) => !part || part.startsWith('-') || part.endsWith('-'))) {
+    return false;
+  }
+  return true;
+}
+
+function checkPasswordStrength(password) {
+  const value = String(password || '');
+  const lengthOk = value.length >= 10;
+  const upperOk = /[A-Z]/.test(value);
+  const lowerOk = /[a-z]/.test(value);
+  const digitOk = /\d/.test(value);
+  const symbolOk = /[^A-Za-z0-9]/.test(value);
+  const passes = [lengthOk, upperOk, lowerOk, digitOk, symbolOk].filter(Boolean).length;
+  const strong = passes >= 4 && lengthOk && upperOk && lowerOk && digitOk;
+  return {
+    strong,
+    score: passes,
+    checks: { lengthOk, upperOk, lowerOk, digitOk, symbolOk }
+  };
+}
+
+function describePasswordStrength(password) {
+  const result = checkPasswordStrength(password);
+  if (result.score <= 2) {
+    return 'Weak password. Use at least 10 chars with upper, lower, number, and symbol.';
+  }
+  if (!result.strong) {
+    return 'Decent password, but add more complexity (upper/lower/number/symbol).';
+  }
+  return 'Strong password.';
+}
+
+function setPasswordHint(targetId, password) {
+  const node = document.getElementById(targetId);
+  if (!node) {
+    return;
+  }
+  const text = describePasswordStrength(password);
+  const strong = checkPasswordStrength(password).strong;
+  node.textContent = text;
+  node.className = strong ? 'small-note auth-ok' : 'small-note';
+}
+
 function setupForms() {
   const signupForm = document.getElementById('ai-access-signup-form');
   const loginForm = document.getElementById('ai-access-login-form');
   const socialButtons = Array.from(document.querySelectorAll('.oauth-btn'));
+  const signupPasswordInput = document.getElementById('ai-access-signup-password');
   if (!signupForm || !loginForm) {
     return;
   }
 
+  if (signupPasswordInput instanceof HTMLInputElement) {
+    signupPasswordInput.addEventListener('input', () => {
+      setPasswordHint('ai-access-signup-password-hint', signupPasswordInput.value);
+    });
+    setPasswordHint('ai-access-signup-password-hint', signupPasswordInput.value || '');
+  }
+
   signupForm.addEventListener('submit', async (event) => {
     event.preventDefault();
-    const email = String(document.getElementById('ai-access-signup-email')?.value || '').trim().toLowerCase();
+    const email = normalizeEmailInput(document.getElementById('ai-access-signup-email')?.value || '');
     const password = String(document.getElementById('ai-access-signup-password')?.value || '');
     const submitButton = signupForm.querySelector('button[type="submit"]');
     const idleLabel = submitButton?.textContent || 'Create account';
     try {
+      if (!isLikelyValidEmail(email)) {
+        throw new Error('Please enter a valid email address.');
+      }
+      if (!checkPasswordStrength(password).strong) {
+        throw new Error('Use a stronger password: 10+ chars with upper/lower/number/symbol.');
+      }
       setButtonBusy(submitButton, true, idleLabel, 'Creating...');
       await signUp(email, password);
       setStatus('Account created. Opening AI Trade...');
@@ -138,11 +217,14 @@ function setupForms() {
 
   loginForm.addEventListener('submit', async (event) => {
     event.preventDefault();
-    const email = String(document.getElementById('ai-access-login-email')?.value || '').trim().toLowerCase();
+    const email = normalizeEmailInput(document.getElementById('ai-access-login-email')?.value || '');
     const password = String(document.getElementById('ai-access-login-password')?.value || '');
     const submitButton = loginForm.querySelector('button[type="submit"]');
     const idleLabel = submitButton?.textContent || 'Log in';
     try {
+      if (!isLikelyValidEmail(email)) {
+        throw new Error('Please enter a valid email address.');
+      }
       setButtonBusy(submitButton, true, idleLabel, 'Signing in...');
       await logIn(email, password);
       setStatus('Login successful. Opening AI Trade...');
@@ -157,12 +239,12 @@ function setupForms() {
   socialButtons.forEach((button) => {
     button.addEventListener('click', async () => {
       const provider = String(button.getAttribute('data-provider') || '').trim().toLowerCase();
-      const loginEmail = String(document.getElementById('ai-access-login-email')?.value || '').trim().toLowerCase();
-      const signupEmail = String(document.getElementById('ai-access-signup-email')?.value || '').trim().toLowerCase();
-      const savedEmail = String(localStorage.getItem('dumbdollars_saved_email') || '').trim().toLowerCase();
+      const loginEmail = normalizeEmailInput(document.getElementById('ai-access-login-email')?.value || '');
+      const signupEmail = normalizeEmailInput(document.getElementById('ai-access-signup-email')?.value || '');
+      const savedEmail = normalizeEmailInput(localStorage.getItem('dumbdollars_saved_email') || '');
       const email = loginEmail || signupEmail || savedEmail;
-      if (!email) {
-        setStatus('Enter your email first, then choose Google/Apple/etc.', true);
+      if (!email || !isLikelyValidEmail(email)) {
+        setStatus('Enter a valid email first, then choose Google/Apple/etc.', true);
         return;
       }
       try {

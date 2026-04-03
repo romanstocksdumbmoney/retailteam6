@@ -854,6 +854,31 @@ label {
   color: #fca5a5;
 }
 
+.auth-ok {
+  color: #86efac;
+}
+
+.auth-success {
+  color: #86efac;
+}
+
+.password-strength {
+  margin: -0.2rem 0 0.55rem;
+  font-size: 0.82rem;
+}
+
+.password-strength--weak {
+  color: #fca5a5;
+}
+
+.password-strength--medium {
+  color: #fcd34d;
+}
+
+.password-strength--strong {
+  color: #86efac;
+}
+
 .link-button {
   border: none;
   background: transparent;

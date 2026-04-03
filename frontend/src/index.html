@@ -59,8 +59,16 @@
               </label>
               <label>
                 Password
-                <input id="signup-password" type="password" placeholder="password (min 8 chars)" required />
+                <input
+                  id="signup-password"
+                  type="password"
+                  placeholder="min 10 chars, upper/lower/number/symbol"
+                  minlength="10"
+                  autocomplete="new-password"
+                  required
+                />
               </label>
+              <p id="signup-password-strength" class="small-note auth-hint"></p>
               <button type="submit">Sign up</button>
             </form>
             <form id="login-form" class="auth-form">
@@ -70,7 +78,7 @@
               </label>
               <label>
                 Password
-                <input id="login-password" type="password" placeholder="password" required />
+                <input id="login-password" type="password" placeholder="password" autocomplete="current-password" required />
               </label>
               <button type="submit">Log in</button>
             </form>

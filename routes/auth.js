@@ -22,6 +22,14 @@ const {
 } = require('../services/stripeService');
 
 const router = express.Router();
+const PASSWORD_REQUIREMENT_MESSAGES = {
+  weak_password_length: 'Use at least 10 characters.',
+  weak_password_uppercase: 'Add at least one uppercase letter.',
+  weak_password_lowercase: 'Add at least one lowercase letter.',
+  weak_password_number: 'Add at least one number.',
+  weak_password_symbol: 'Add at least one special character.',
+  weak_password: 'Use at least 10 characters with uppercase, lowercase, number, and special character.'
+};
 const OAUTH_PROVIDER_LABELS = {
   google: 'Google',
   apple: 'Apple',
@@ -29,6 +37,8 @@ const OAUTH_PROVIDER_LABELS = {
   discord: 'Discord',
   x: 'X'
 };
+
+const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/i;
 
 function authRequired(req, res, next) {
   const parsed = parseAuthToken(req.header('authorization'));
@@ -105,6 +115,12 @@ router.post('/signup', (req, res) => {
   try {
     const email = String(req.body?.email || '').trim().toLowerCase();
     const password = String(req.body?.password || '');
+    if (!EMAIL_PATTERN.test(email)) {
+      return res.status(400).json({
+        error: 'invalid_email',
+        message: 'Enter a valid email address.'
+      });
+    }
     const user = createUser({ email, password });
     const token = signAuthToken({ userId: user.id, email: user.email });
     return res.status(201).json({ token, user });
@@ -112,8 +128,19 @@ router.post('/signup', (req, res) => {
     if (String(error.message) === 'email_exists') {
       return res.status(409).json({ error: 'email_in_use', message: 'An account already exists for this email.' });
     }
-    if (String(error.message) === 'weak_password') {
-      return res.status(400).json({ error: 'weak_password', message: 'Password must be at least 8 characters.' });
+    if (String(error.message).startsWith('weak_password')) {
+      const key = String(error.message);
+      const message = PASSWORD_REQUIREMENT_MESSAGES[key] || PASSWORD_REQUIREMENT_MESSAGES.weak_password;
+      return res.status(400).json({
+        error: key,
+        message
+      });
+    }
+    if (String(error.message) === 'invalid_email') {
+      return res.status(400).json({
+        error: 'invalid_email',
+        message: 'Enter a valid email address.'
+      });
     }
     return res.status(400).json({ error: 'invalid_request', message: 'Invalid signup payload.' });
   }
@@ -133,6 +160,12 @@ router.post('/oauth/signin', (req, res) => {
       return res.status(400).json({
         error: 'email_required',
         message: 'Email is required for social sign in.'
+      });
+    }
+    if (!EMAIL_PATTERN.test(email)) {
+      return res.status(400).json({
+        error: 'invalid_email',
+        message: 'Enter a valid email address.'
       });
     }
     if (!Object.prototype.hasOwnProperty.call(OAUTH_PROVIDER_LABELS, provider)) {
@@ -165,6 +198,12 @@ router.post('/oauth/signin', (req, res) => {
 router.post('/login', async (req, res) => {
   const email = String(req.body?.email || '').trim().toLowerCase();
   const password = String(req.body?.password || '');
+  if (!EMAIL_PATTERN.test(email)) {
+    return res.status(400).json({
+      error: 'invalid_email',
+      message: 'Enter a valid email address.'
+    });
+  }
   const user = findUserByEmail(email);
   if (!user) {
     return res.status(401).json({ error: 'invalid_credentials', message: 'Invalid email or password.' });

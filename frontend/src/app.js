@@ -206,6 +206,101 @@ function loadPreferredEmail() {
   return String(localStorage.getItem(SAVED_EMAIL_KEY) || '').trim().toLowerCase();
 }
 
+function isLikelyRealEmail(email) {
+  const value = String(email || '').trim().toLowerCase();
+  if (!value || value.length > 254) {
+    return false;
+  }
+  // Balanced strictness: prevent obvious junk while allowing valid addresses.
+  const pattern = /^[a-z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)+$/i;
+  if (!pattern.test(value)) {
+    return false;
+  }
+  const domain = value.split('@')[1] || '';
+  if (domain.endsWith('.local') || domain.endsWith('.invalid') || domain.endsWith('.example')) {
+    return false;
+  }
+  return true;
+}
+
+function getPasswordStrength(password) {
+  const raw = String(password || '');
+  let score = 0;
+  if (raw.length >= 8) {
+    score += 1;
+  }
+  if (raw.length >= 12) {
+    score += 1;
+  }
+  if (/[A-Z]/.test(raw)) {
+    score += 1;
+  }
+  if (/[a-z]/.test(raw)) {
+    score += 1;
+  }
+  if (/\d/.test(raw)) {
+    score += 1;
+  }
+  if (/[^A-Za-z0-9]/.test(raw)) {
+    score += 1;
+  }
+  const label = score >= 6 ? 'Strong' : score >= 4 ? 'Good' : score >= 3 ? 'Fair' : 'Weak';
+  const hints = [];
+  if (raw.length < 12) {
+    hints.push('use at least 12 characters');
+  }
+  if (!/[A-Z]/.test(raw)) {
+    hints.push('add an uppercase letter');
+  }
+  if (!/[a-z]/.test(raw)) {
+    hints.push('add a lowercase letter');
+  }
+  if (!/\d/.test(raw)) {
+    hints.push('add a number');
+  }
+  if (!/[^A-Za-z0-9]/.test(raw)) {
+    hints.push('add a symbol');
+  }
+  return {
+    score,
+    label,
+    hints
+  };
+}
+
+function isSignupPasswordStrong(password) {
+  const value = String(password || '');
+  return (
+    value.length >= 10
+    && /[A-Z]/.test(value)
+    && /[a-z]/.test(value)
+    && /\d/.test(value)
+    && /[^A-Za-z0-9]/.test(value)
+  );
+}
+
+function updatePasswordHint(inputId, targetId) {
+  const input = document.getElementById(inputId);
+  const target = document.getElementById(targetId);
+  if (!(input instanceof HTMLInputElement) || !target) {
+    return;
+  }
+  const update = () => {
+    const value = String(input.value || '');
+    if (!value) {
+      target.textContent = 'Use 12+ chars with uppercase, lowercase, number, and symbol.';
+      target.className = 'small-note';
+      return;
+    }
+    const strength = getPasswordStrength(value);
+    const hintsText = strength.hints.length ? ` • Try to ${strength.hints.slice(0, 2).join(' and ')}` : '';
+    target.textContent = `Password strength: ${strength.label}${hintsText}`;
+    target.className = strength.label === 'Weak' ? 'small-note auth-error' : 'small-note auth-ok';
+  };
+  input.addEventListener('input', update);
+  update();
+}
+
 function fmtPct(value) {
   const numeric = Number(value);
   if (!Number.isFinite(numeric)) {
@@ -1397,6 +1492,7 @@ function setupAuthForms() {
   }
 
   applySavedEmailToForms();
+  updatePasswordHint('signup-password', 'signup-password-hint');
 
   loginForm.addEventListener('submit', async (event) => {
     event.preventDefault();
@@ -1423,6 +1519,14 @@ function setupAuthForms() {
     const password = document.getElementById('signup-password').value;
     const submitButton = signupForm.querySelector('button[type="submit"]');
     const idleLabel = submitButton?.textContent || 'Sign up';
+    if (!isLikelyRealEmail(email)) {
+      setAuthMessage('Please enter a valid real email address.', true);
+      return;
+    }
+    if (!isSignupPasswordStrong(password)) {
+      setAuthMessage('Use at least 10 characters with uppercase, lowercase, number, and symbol.', true);
+      return;
+    }
     try {
       setButtonBusy(submitButton, true, idleLabel, 'Creating...');
       await signup(email, password);
@@ -1443,8 +1547,8 @@ function setupAuthForms() {
       const signupInput = document.getElementById('signup-email');
       const fallbackEmail = loadPreferredEmail() || getSavedAuthEmail();
       const preferred = String(loginInput?.value || signupInput?.value || fallbackEmail || '').trim().toLowerCase();
-      if (!preferred) {
-        setAuthMessage('Enter your email first, then choose Google/Apple/etc.', true);
+      if (!preferred || !isLikelyRealEmail(preferred)) {
+        setAuthMessage('Enter a valid email first, then choose Google/Apple/etc.', true);
         return;
       }
       try {
