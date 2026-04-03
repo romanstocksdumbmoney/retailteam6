@@ -50,6 +50,17 @@ function fmtPct(value) {
   return `${Number(value || 0).toFixed(2)}%`;
 }
 
+function buildPaperConnectUrl() {
+  const startingCapitalUsd = parseNumberInput('ai-test-balance', 10000);
+  const targetReturnPct = parseNumberInput('ai-test-target-return', 12);
+  const riskPerTradePct = parseNumberInput('ai-test-risk', 1.5);
+  const params = new URLSearchParams();
+  params.set('startingCapitalUsd', String(startingCapitalUsd));
+  params.set('targetReturnPct', String(targetReturnPct));
+  params.set('riskPerTradePct', String(riskPerTradePct));
+  return `/ai-bot-paper-connect.html?${params.toString()}`;
+}
+
 function getFundingToken() {
   return localStorage.getItem('dumbdollars_live_funding_checkout_token') || '';
 }
@@ -295,10 +306,22 @@ async function saveTestAreaSettings() {
 function setupForm() {
   const buyButton = document.getElementById('ai-live-buy-access');
   const testForm = document.getElementById('ai-test-area-form');
+  const createPaperConnectButton = document.getElementById('ai-test-create-paper-account');
   const fundingForm = document.getElementById('ai-funding-form');
   const openFundingPaymentButton = document.getElementById('ai-open-funding-payment');
   const openAccountViewButton = document.getElementById('ai-open-account-view');
   const openBrokerageOnboardingButton = document.getElementById('ai-open-broker-onboarding');
+
+  if (createPaperConnectButton) {
+    createPaperConnectButton.addEventListener('click', () => {
+      try {
+        setTestStatus('Opening TradingView paper account connect...');
+        window.location.href = buildPaperConnectUrl();
+      } catch (error) {
+        setTestStatus(error.message || 'Could not open TradingView paper connect.', true);
+      }
+    });
+  }
 
   if (openFundingPaymentButton) {
     openFundingPaymentButton.addEventListener('click', async () => {

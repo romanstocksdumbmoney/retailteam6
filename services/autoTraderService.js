@@ -92,6 +92,15 @@ function defaultState() {
       fundedAt: null,
       status: 'not_funded'
     },
+    paperTrading: {
+      provider: 'tradingview',
+      isConnected: false,
+      tradingviewEmail: '',
+      tradingviewUsername: '',
+      aiAccessEnabled: false,
+      connectedAt: null,
+      status: 'not_connected'
+    },
     config: defaultConfig(),
     openPositions: [],
     fundingTransactions: [],
@@ -99,6 +108,14 @@ function defaultState() {
     lastCycle: null,
     updatedAt: nowIso()
   };
+}
+
+function isValidEmail(email) {
+  const value = String(email || '').trim();
+  if (!value) {
+    return false;
+  }
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
 }
 
 function getState(userId) {
@@ -606,6 +623,70 @@ function saveAutoTraderLiveTradingProfile(user, details = {}) {
   return state;
 }
 
+function saveAutoTraderPaperTradingProfile(user, details = {}) {
+  const userId = user?.id;
+  if (!userId) {
+    throw new Error('missing_user');
+  }
+  const provider = String(details.provider || 'tradingview').trim().toLowerCase();
+  if (provider !== 'tradingview') {
+    throw new Error('invalid_paper_provider');
+  }
+  const tradingviewEmail = String(details.tradingviewEmail || details.email || '').trim().toLowerCase();
+  if (!isValidEmail(tradingviewEmail)) {
+    throw new Error('invalid_paper_email');
+  }
+  const startingCapitalUsd = roundUsd(Number(details.startingCapitalUsd));
+  if (!Number.isFinite(startingCapitalUsd) || startingCapitalUsd < 100 || startingCapitalUsd > 10_000_000) {
+    throw new Error('invalid_paper_capital');
+  }
+  const targetReturnRaw = Number(details.targetReturnPct);
+  const riskPerTradeRaw = Number(details.riskPerTradePct);
+  const targetReturnPct = roundUsd(clamp(Number.isFinite(targetReturnRaw) ? targetReturnRaw : 12, 1, 200));
+  const riskPerTradePct = roundUsd(clamp(Number.isFinite(riskPerTradeRaw) ? riskPerTradeRaw : 1.5, 0.1, 25));
+  const aiAccessEnabled = Boolean(details.aiAccessEnabled);
+  if (!aiAccessEnabled) {
+    throw new Error('invalid_paper_ai_access');
+  }
+
+  const state = getState(userId);
+  state.tradingMode = 'paper';
+  state.configured = true;
+  state.isActive = true;
+  state.cashUsd = startingCapitalUsd;
+  state.totalDepositedUsd = startingCapitalUsd;
+  state.config.targetReturnPct = targetReturnPct;
+  state.config.riskPerTradePct = riskPerTradePct;
+  state.paperTrading = {
+    provider,
+    isConnected: true,
+    tradingviewEmail,
+    tradingviewUsername: String(details.tradingviewUsername || '').trim().slice(0, 60),
+    aiAccessEnabled: true,
+    connectedAt: nowIso(),
+    status: 'connected'
+  };
+  state.updatedAt = nowIso();
+  return state;
+}
+
+function getAutoTraderPaperTradingProfile(user) {
+  const userId = user?.id;
+  if (!userId) {
+    throw new Error('missing_user');
+  }
+  const state = getState(userId);
+  return {
+    configured: state.configured,
+    tradingMode: state.tradingMode,
+    cashUsd: state.cashUsd,
+    totalDepositedUsd: state.totalDepositedUsd,
+    config: state.config,
+    paperTrading: state.paperTrading || defaultState().paperTrading,
+    updatedAt: state.updatedAt
+  };
+}
+
 function getLiveFundingProfile(user) {
   const userId = user?.id;
   if (!userId) {
@@ -620,6 +701,7 @@ function getLiveFundingProfile(user) {
     totalDepositedUsd: state.totalDepositedUsd,
     config: state.config,
     liveFunding: state.liveFunding || defaultState().liveFunding,
+    paperTrading: state.paperTrading || defaultState().paperTrading,
     fundingTransactions: (state.fundingTransactions || []).slice(0, 12),
     cycleHistory: (state.cycleHistory || []).slice(0, 12),
     updatedAt: state.updatedAt
@@ -673,8 +755,10 @@ function getAutoTraderAccountView(user) {
       recentCycles: (state.cycleHistory || []).slice(0, 20)
     },
     config: state.config,
+    paperTrading: state.paperTrading || defaultState().paperTrading,
     safety: {
       mode: state.tradingMode === 'live' ? 'live_funding_mode' : 'paper_trading',
+      paperTradingConnected: Boolean(state.paperTrading?.isConnected),
       disclaimer: state.tradingMode === 'live'
         ? 'Live funding is enabled. Direct broker order placement still requires broker API integration.'
         : 'Paper mode only. No real brokerage orders are sent.'
@@ -695,6 +779,7 @@ function getAutoTraderStatus(user) {
     cashUsd: state.cashUsd,
     totalDepositedUsd: state.totalDepositedUsd,
     liveFunding: state.liveFunding || defaultState().liveFunding,
+    paperTrading: state.paperTrading || defaultState().paperTrading,
     config: state.config,
     openPositions: state.openPositions,
     fundingTransactions: (state.fundingTransactions || []).slice(0, 10),
@@ -708,6 +793,7 @@ function getAutoTraderStatus(user) {
     safety: {
       mode: state.tradingMode === 'live' ? 'live_funding_mode' : 'paper_trading',
       liveBrokerConnected: false,
+      paperTradingConnected: Boolean(state.paperTrading?.isConnected),
       disclaimer: state.tradingMode === 'live'
         ? 'Live funding is enabled, but direct broker placement still requires broker API integration.'
         : 'This bot is simulation-only and does not place real brokerage orders.'
@@ -725,6 +811,8 @@ module.exports = {
   setAutoTraderFundingMode,
   fundAutoTrader,
   getLiveFundingProfile,
+  getAutoTraderPaperTradingProfile,
+  saveAutoTraderPaperTradingProfile,
   saveAutoTraderLiveTradingProfile,
   getAutoTraderAccountView,
   runAutoTraderCycle,

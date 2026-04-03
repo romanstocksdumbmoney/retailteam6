@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>DumbDollars TradingView Paper Connect</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body class="payment-page-body">
+    <main class="ai-trade-page-shell">
+      <article class="ai-trade-page-card card" role="main" aria-labelledby="paper-connect-title">
+        <a class="open-link" href="/ai-bot-funding.html">Back to Funding + Test Area</a>
+        <div class="pro-plan-logo-wrap" aria-hidden="true">
+          <img class="pro-plan-logo-image" src="./logo-mark.svg" alt="" />
+        </div>
+        <h1 id="paper-connect-title">Connect TradingView Paper Trading</h1>
+        <p class="pro-plan-subtitle">
+          Use your TradingView email to link paper trading access. After connecting, AI paper mode can run with your Test Area capital and risk setup.
+        </p>
+
+        <section class="pro-plan-box">
+          <h3>How this works</h3>
+          <ol class="detail-list">
+            <li>Set your paper trading amount and risk profile.</li>
+            <li>Sign in to TradingView in a new tab.</li>
+            <li>Enter the same TradingView email here and connect AI paper access.</li>
+          </ol>
+          <a class="open-link" href="https://www.tradingview.com/accounts/signin/" target="_blank" rel="noopener noreferrer">
+            Open TradingView Sign In
+          </a>
+        </section>
+
+        <form id="paper-connect-form" class="pro-plan-box ai-bot-form" novalidate>
+          <div class="ai-bot-grid">
+            <label>
+              TradingView email
+              <input id="paper-connect-email" type="email" autocomplete="email" placeholder="you@example.com" required />
+            </label>
+            <label>
+              TradingView username (optional)
+              <input id="paper-connect-username" type="text" maxlength="60" placeholder="username" />
+            </label>
+            <label>
+              Paper trading capital ($)
+              <input id="paper-connect-capital" type="number" min="100" step="100" value="10000" required />
+            </label>
+            <label>
+              Target return (%)
+              <input id="paper-connect-target-return" type="number" min="1" max="200" step="0.5" value="12" required />
+            </label>
+            <label>
+              Risk per trade (%)
+              <input id="paper-connect-risk" type="number" min="0.2" max="25" step="0.1" value="1.5" required />
+            </label>
+          </div>
+          <button id="paper-connect-submit" type="submit">Connect AI to Paper Trading</button>
+          <button id="paper-connect-open-account" class="btn-secondary" type="button">Open AI Brokerage Account View</button>
+        </form>
+
+        <p id="paper-connect-status" class="small-note"></p>
+
+        <section class="ai-trade-consensus">
+          <h3>Current Paper Connection</h3>
+          <div id="paper-connect-summary"></div>
+        </section>
+      </article>
+    </main>
+    <script src="./ai-bot-paper-connect.js"></script>
+  </body>
+</html>

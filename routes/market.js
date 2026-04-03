@@ -22,7 +22,9 @@ const {
   configureAutoTrader,
   getAutoTraderStatus,
   getLiveFundingProfile,
+  getAutoTraderPaperTradingProfile,
   getAutoTraderAccountView,
+  saveAutoTraderPaperTradingProfile,
   saveAutoTraderLiveTradingProfile,
   runAutoTraderCycle,
   listAutoTraderSectors,
@@ -740,6 +742,61 @@ router.post('/auto-trader/fund', requireSignedIn, requireLiveFundingAccess, (req
 router.get('/auto-trader/funding-profile', requireSignedIn, (req, res) => {
   const payload = getLiveFundingProfile(req.user);
   return res.json(payload);
+});
+
+router.get('/auto-trader/paper-profile', requireSignedIn, (req, res) => {
+  try {
+    const payload = getAutoTraderPaperTradingProfile(req.user);
+    return res.json(payload);
+  } catch (error) {
+    if (String(error.message || '') === 'missing_user') {
+      return res.status(401).json({
+        error: 'unauthorized',
+        message: 'Login required.'
+      });
+    }
+    return res.status(400).json({
+      error: 'invalid_request',
+      message: 'Could not load paper-trading profile.'
+    });
+  }
+});
+
+router.post('/auto-trader/paper-profile', requireSignedIn, (req, res) => {
+  try {
+    const payload = saveAutoTraderPaperTradingProfile(req.user, req.body || {});
+    return res.json(payload);
+  } catch (error) {
+    const code = String(error.message || '');
+    if (code === 'invalid_paper_provider') {
+      return res.status(400).json({
+        error: 'invalid_paper_provider',
+        message: 'Paper-trading provider must be TradingView.'
+      });
+    }
+    if (code === 'invalid_paper_email') {
+      return res.status(400).json({
+        error: 'invalid_paper_email',
+        message: 'Enter a valid TradingView email.'
+      });
+    }
+    if (code === 'invalid_paper_capital') {
+      return res.status(400).json({
+        error: 'invalid_paper_capital',
+        message: 'Paper-trading amount must be between $100 and $10,000,000.'
+      });
+    }
+    if (code === 'invalid_paper_ai_access') {
+      return res.status(400).json({
+        error: 'invalid_paper_ai_access',
+        message: 'You must enable AI access for the connected paper-trading account.'
+      });
+    }
+    return res.status(400).json({
+      error: 'invalid_request',
+      message: 'Could not save paper-trading profile.'
+    });
+  }
 });
 
 router.get('/auto-trader/account-view', requireSignedIn, (req, res) => {
