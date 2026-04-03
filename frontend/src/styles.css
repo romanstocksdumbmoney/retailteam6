@@ -139,6 +139,24 @@ body {
   padding: 0.75rem;
 }
 
+.ai-steps-grid {
+  display: grid;
+  gap: 0.7rem;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+}
+
+.ai-step-card {
+  border: 1px solid rgba(250, 204, 21, 0.25);
+  border-radius: 10px;
+  padding: 0.7rem;
+  background: rgba(2, 6, 23, 0.55);
+}
+
+.ai-step-card h4 {
+  margin: 0 0 0.3rem;
+  color: #fde68a;
+}
+
 .ai-trade-consensus h3 {
   margin: 0 0 0.45rem;
   color: #fde68a;

@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>DumbDollars AI Implementation Steps</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body class="payment-page-body">
+    <main class="ai-trade-page-shell">
+      <article class="ai-trade-page-card card" role="main" aria-labelledby="ai-implementation-steps-title">
+        <a class="open-link" href="/">Back to dashboard</a>
+        <div class="pro-plan-logo-wrap" aria-hidden="true">
+          <img class="pro-plan-logo-image" src="./logo-mark.svg" alt="" />
+        </div>
+        <h1 id="ai-implementation-steps-title">Steps to Learn How to Implement AI</h1>
+        <p class="pro-plan-subtitle">A practical roadmap for turning an AI trading idea into a tested workflow.</p>
+
+        <section class="ai-trade-consensus">
+          <h3>Step 1: Define your AI use case</h3>
+          <ul class="detail-list">
+            <li>Pick one clear goal first (signal generation, setup scoring, risk sizing, or automation).</li>
+            <li>Write what “success” looks like in measurable terms.</li>
+            <li>Avoid trying to automate everything at once.</li>
+          </ul>
+        </section>
+
+        <section class="ai-trade-consensus">
+          <h3>Step 2: Collect and structure your data</h3>
+          <ul class="detail-list">
+            <li>Use consistent symbols, timestamps, and labels.</li>
+            <li>Separate data into train/test periods to reduce overfitting.</li>
+            <li>Track data source quality and refresh frequency.</li>
+          </ul>
+        </section>
+
+        <section class="ai-trade-consensus">
+          <h3>Step 3: Build a baseline model</h3>
+          <ul class="detail-list">
+            <li>Start with a simple baseline before complex model stacks.</li>
+            <li>Use explainable outputs (confidence, rationale, risk levels).</li>
+            <li>Version every prompt/model setting change.</li>
+          </ul>
+        </section>
+
+        <section class="ai-trade-consensus">
+          <h3>Step 4: Add risk controls first</h3>
+          <ul class="detail-list">
+            <li>Set max risk per trade and max sector exposure.</li>
+            <li>Enforce stop loss and take profit logic before execution.</li>
+            <li>Pause automation when market regime changes.</li>
+          </ul>
+        </section>
+
+        <section class="ai-trade-consensus">
+          <h3>Step 5: Test in paper mode</h3>
+          <ul class="detail-list">
+            <li>Run in Test Area with realistic slippage assumptions.</li>
+            <li>Review win rate, drawdown, and exposure concentration.</li>
+            <li>Only move forward when results are stable across different periods.</li>
+          </ul>
+        </section>
+
+        <section class="ai-trade-consensus">
+          <h3>Step 6: Go live gradually</h3>
+          <ul class="detail-list">
+            <li>Open a live brokerage account and start with small capital.</li>
+            <li>Use manual-confirm mode before enabling more automation.</li>
+            <li>Keep monitoring model drift and performance decay.</li>
+          </ul>
+        </section>
+
+        <section class="ai-trade-consensus">
+          <h3>Step 7: Keep improving</h3>
+          <ul class="detail-list">
+            <li>Log every cycle and review failures weekly.</li>
+            <li>Promote changes only after passing paper retests.</li>
+            <li>Maintain rollback settings so you can quickly return to a safe config.</li>
+          </ul>
+        </section>
+
+        <section class="ai-bot-actions">
+          <button id="open-ai-trade-from-steps" type="button">Open AI Trade</button>
+          <button id="open-ai-bot-from-steps" class="btn-secondary" type="button">Open AI Auto Trader</button>
+          <button id="open-brokerage-from-steps" class="btn-secondary" type="button">Open Live Brokerage Account</button>
+        </section>
+        <p class="small-note">Tip: Start in Test Area first, then move to live only after consistent risk-adjusted performance.</p>
+      </article>
+    </main>
+    <script src="./ai-implementation-steps.js"></script>
+  </body>
+</html>

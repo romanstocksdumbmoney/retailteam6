@@ -366,6 +366,10 @@ function openBrokerageOnboardingPage() {
   window.location.href = '/brokerage-onboarding.html';
 }
 
+function openAiImplementationGuidePage() {
+  window.location.href = '/ai-implementation-steps.html';
+}
+
 function openAiTradeEntryPage() {
   const hasStoredToken = Boolean(authToken || localStorage.getItem('dumbdollars_token'));
   if (currentUser || hasStoredToken) {
@@ -1573,6 +1577,7 @@ function setupAiSidebar() {
   const aiTradeButton = document.getElementById('open-ai-trade');
   const autoTraderButton = document.getElementById('open-ai-auto-trader');
   const liveBrokerageButton = document.getElementById('open-live-brokerage-account');
+  const aiImplementationStepsButton = document.getElementById('open-ai-implementation-steps');
   const aiAnalyzerButton = document.getElementById('open-ai-analyzer');
 
   // Bind module navigation/actions early so these links still work even if one sidebar filter control is absent.
@@ -1622,6 +1627,12 @@ function setupAiSidebar() {
   if (liveBrokerageButton) {
     liveBrokerageButton.addEventListener('click', () => {
       openBrokerageOnboardingPage();
+    });
+  }
+
+  if (aiImplementationStepsButton) {
+    aiImplementationStepsButton.addEventListener('click', () => {
+      openAiImplementationGuidePage();
     });
   }
 
