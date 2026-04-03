@@ -1418,16 +1418,25 @@ function parseForm4Transactions(xmlText) {
   const sections = text.match(/<nonDerivativeTransaction>[\s\S]*?<\/nonDerivativeTransaction>/gi) || [];
   const transactions = [];
   sections.forEach((section) => {
+    const transactionCode = (section.match(/<transactionCode>\s*<value>\s*([A-Z])\s*<\/value>\s*<\/transactionCode>/i)?.[1] || '').toUpperCase();
     const sideCode = (section.match(/<transactionAcquiredDisposedCode>\s*<value>\s*([A-Z])\s*<\/value>\s*<\/transactionAcquiredDisposedCode>/i)?.[1] || '').toUpperCase();
     const sharesValue = Number((section.match(/<transactionShares>\s*<value>\s*([0-9.,-]+)\s*<\/value>\s*<\/transactionShares>/i)?.[1] || '0').replace(/,/g, ''));
     const priceValue = Number((section.match(/<transactionPricePerShare>\s*<value>\s*([0-9.,-]+)\s*<\/value>\s*<\/transactionPricePerShare>/i)?.[1] || '0').replace(/,/g, ''));
+    const isOpenMarketCode = transactionCode === 'P' || transactionCode === 'S';
+    if (!isOpenMarketCode) {
+      return;
+    }
     if (!Number.isFinite(sharesValue) || sharesValue <= 0) {
+      return;
+    }
+    if (!Number.isFinite(priceValue) || priceValue <= 0) {
       return;
     }
     transactions.push({
       side: sideCode === 'A' ? 'buy' : sideCode === 'D' ? 'sell' : 'unknown',
       shares: Math.round(sharesValue),
-      priceUsd: Number.isFinite(priceValue) && priceValue > 0 ? Number(priceValue.toFixed(2)) : 0
+      priceUsd: Number(priceValue.toFixed(2)),
+      transactionCode
     });
   });
   return transactions;
@@ -1552,7 +1561,7 @@ async function fetchLiveInsiderTrades(limit = 30) {
         directionalBiasScore: directionalBias.score,
         directionalBiasReason: directionalBias.reason,
         unusualSignals: [
-          `Filed via SEC Form 4 (${form})`,
+          `Filed via SEC Form 4 (${form}, open market code P/S)`,
           `Trade size ${unusualVolumeMultiple.toFixed(2)}x baseline flow`
         ],
         signalSummary: unusualVolumeMultiple >= 2 ? 'Unusual insider flow detected' : 'Standard insider flow signal',
@@ -1573,9 +1582,11 @@ async function fetchLiveInsiderTrades(limit = 30) {
     // quote-derived fallback rows so the module stays usable.
     const fallbackRows = universe.map((symbol, idx) => {
       const quote = quoteSnapshots[symbol] || {};
-      const fallbackSeed = hashString(`insider-fallback:${symbol}:${daySeed()}`);
-      const syntheticPrice = 25 + (fallbackSeed % 360);
-      const price = Math.max(1, Number(quote.regularMarketPrice || syntheticPrice));
+      const livePrice = Number(quote.regularMarketPrice || 0);
+      const seededPrice = Number(EARNINGS_VOLUME_BASE[symbol] || 0) > 0
+        ? Number((Math.max(25, Math.min(900, Math.round((EARNINGS_VOLUME_BASE[symbol] / 300_000) * 100) / 100))).toFixed(2))
+        : Number((45 + ((idx * 37) % 220)).toFixed(2));
+      const price = Number.isFinite(livePrice) && livePrice > 0 ? livePrice : seededPrice;
       const absChangePct = Math.abs(Number(quote.regularMarketChangePercent || 0));
       const syntheticVolume = Math.max(1_000_000, Number(EARNINGS_VOLUME_BASE[symbol] || 8_000_000));
       const volume = Math.max(1, Math.round(Number(quote.regularMarketVolume || quote.averageDailyVolume10Day || syntheticVolume)));
@@ -1624,7 +1635,7 @@ async function fetchLiveInsiderTrades(limit = 30) {
         source: 'SEC Form 4 watchlist (fallback estimate)',
         details: 'Live SEC filing documents were unavailable at fetch time; this row is a temporary quote-based estimate.'
       };
-    });
+    }).filter(Boolean);
     rows.push(...fallbackRows);
   }
   rows.sort((a, b) => new Date(b.filedAt).getTime() - new Date(a.filedAt).getTime());
