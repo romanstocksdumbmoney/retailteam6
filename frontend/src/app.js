@@ -809,10 +809,14 @@ function renderPremiumSpikes(payload) {
     const reactionMove = Number(reaction.movePct || 0);
     const reactionSign = reactionMove > 0 ? '+' : '';
     const happenedAt = item.happenedAt || payload.generatedAt || 'N/A';
+    const happenedAtLabel = happenedAt && happenedAt !== 'N/A'
+      ? new Date(happenedAt).toLocaleString()
+      : 'N/A';
+    const baselineLabel = Number(item.previousDayPremiumUsd || item.baselinePremiumUsd || 0);
     card.innerHTML = `
       <h4>${item.symbol} • ${isCall ? 'CALL' : 'PUT'} spike</h4>
-      <p><strong>Spike:</strong> ${fmtUsd(item.spikeAmountUsd)} (${Number(item.spikeMultiple || 0).toFixed(2)}x baseline)</p>
-      <p><strong>When:</strong> ${happenedAt}</p>
+      <p><strong>Spike:</strong> ${fmtUsd(item.spikeAmountUsd)} (${Number(item.spikeMultiple || 0).toFixed(2)}x vs yesterday)</p>
+      <p><strong>Previous day:</strong> ${fmtUsd(baselineLabel)} • <strong>When:</strong> ${happenedAtLabel}</p>
       <p><strong>Expected:</strong> ${String(item.expectedDirection || '').toUpperCase()} • <strong>Reacted:</strong> ${reaction.label || 'N/A'}</p>
       <p><strong>Move after spike:</strong> ${reactionSign}${reactionMove.toFixed(2)}%</p>
       <p class="small-note">Call prem ${fmtUsd(item.callPremiumUsd)} • Put prem ${fmtUsd(item.putPremiumUsd)} • PCR ${Number(item.putCallRatio || 0).toFixed(2)}</p>

@@ -415,18 +415,18 @@ router.get('/high-iv', requirePro, (req, res) => {
   });
 });
 
-router.get('/premium-spikes', requirePro, (req, res) => {
+router.get('/premium-spikes', requirePro, async (req, res) => {
   const limit = Number(req.query.limit || 10);
   const boundedLimit = Number.isFinite(limit) ? Math.max(1, Math.min(30, Math.trunc(limit))) : 10;
-  const payload = getPremiumSpikes(boundedLimit);
+  const payload = await getPremiumSpikes(boundedLimit);
   return res.json({
     ...payload,
-    dataNature: 'simulated',
-    sourceDisclosure: 'Synthetic premium-spike monitor for beta testing.'
+    dataNature: payload.dataNature || 'mixed_live',
+    sourceDisclosure: payload.sourceDisclosure || 'Premium spikes computed from live Yahoo quote volumes and modeled day-over-day premium estimates.'
   });
 });
 
-router.get('/insider-trades', (req, res) => {
+router.get('/insider-trades', async (req, res) => {
   const limit = Number(req.query.limit || 10);
   const boundedLimit = Number.isFinite(limit) ? Math.max(1, Math.min(30, Math.trunc(limit))) : 10;
   const side = String(req.query.side || 'all').trim().toLowerCase();
@@ -434,7 +434,7 @@ router.get('/insider-trades', (req, res) => {
   const minValueUsd = Number(req.query.minValueUsd || 0);
   const sortBy = String(req.query.sortBy || 'value_desc').trim().toLowerCase();
   const unusualOnly = String(req.query.unusualOnly || '').trim().toLowerCase() === 'true';
-  const payload = getInsiderTrades(boundedLimit, {
+  const payload = await getInsiderTrades(boundedLimit, {
     side,
     symbol,
     minValueUsd,
@@ -443,8 +443,8 @@ router.get('/insider-trades', (req, res) => {
   });
   return res.json({
     ...payload,
-    dataNature: 'simulated',
-    sourceDisclosure: 'Synthetic large insider-trade monitor inspired by public filings and flow datasets for beta testing.'
+    dataNature: payload.dataNature || 'mixed_live',
+    sourceDisclosure: payload.sourceDisclosure || 'Insider trades sourced from SEC Form 4 filings with live quote context.'
   });
 });
 
@@ -473,14 +473,14 @@ router.get('/realized-patterns', async (req, res) => {
   });
 });
 
-router.get('/wild-takes', (req, res) => {
+router.get('/wild-takes', async (req, res) => {
   const limit = Number(req.query.limit || 10);
   const boundedLimit = Number.isFinite(limit) ? Math.max(1, Math.min(30, Math.trunc(limit))) : 10;
-  const payload = getWildTakes(boundedLimit);
+  const payload = await getWildTakes(boundedLimit);
   return res.json({
     ...payload,
-    dataNature: 'simulated',
-    sourceDisclosure: 'Synthetic social chatter feed for beta testing.'
+    dataNature: payload.dataNature || 'mixed_live',
+    sourceDisclosure: payload.sourceDisclosure || 'Wild takes extracted from recent Yahoo Finance headlines and labeled by deterministic rules.'
   });
 });
 

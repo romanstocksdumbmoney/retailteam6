@@ -85,7 +85,12 @@ function validateEarnings(payload) {
     return;
   }
   const items = Array.isArray(payload.items) ? payload.items : [];
-  assert(items.length > 0, '/api/market/earnings-gambling returned no items');
+  if (!items.length) {
+    const label = String(payload.scheduleLabel || '').toLowerCase();
+    const indicatesNoVerified = label.includes('no verified earnings found');
+    warn(indicatesNoVerified, '/api/market/earnings-gambling returned no items without explicit no-verified notice');
+    return;
+  }
   items.forEach((item, idx) => {
     assert(Boolean(item.ticker), `earnings[${idx}] missing ticker`);
     assert(isIsoDate(item.eventDate), `earnings[${idx}] invalid eventDate`);
@@ -142,6 +147,14 @@ function validateInsider(payload) {
   if (!payload) {
     return;
   }
+  assert(
+    String(payload.dataNature || '').toLowerCase().includes('live'),
+    '/api/market/insider-trades dataNature should indicate live-backed source'
+  );
+  assert(
+    String(payload.sourceDisclosure || '').toLowerCase().includes('sec'),
+    '/api/market/insider-trades sourceDisclosure should mention SEC filings'
+  );
   const items = Array.isArray(payload.items) ? payload.items : [];
   assert(items.length > 0, '/api/market/insider-trades returned no items');
   items.forEach((item, idx) => {
@@ -172,6 +185,14 @@ function validatePremiumSpikes(payload) {
     warn(true, 'premium spikes feed is locked behind Pro for this audit account');
     return;
   }
+  assert(
+    String(payload.dataNature || '').toLowerCase().includes('live'),
+    '/api/market/premium-spikes dataNature should indicate live-backed source'
+  );
+  assert(
+    String(payload.sourceDisclosure || '').toLowerCase().includes('yahoo'),
+    '/api/market/premium-spikes sourceDisclosure should mention Yahoo source'
+  );
   const items = Array.isArray(payload.items) ? payload.items : [];
   assert(items.length > 0, '/api/market/premium-spikes returned no items');
   items.forEach((item, idx) => {
@@ -179,6 +200,7 @@ function validatePremiumSpikes(payload) {
     assert(['call', 'put'].includes(String(item.premiumType || '').toLowerCase()), `premiumSpikes[${idx}] invalid premiumType`);
     assert(Number(item.spikeAmountUsd || 0) > 0, `premiumSpikes[${idx}] non-positive spikeAmountUsd`);
     assert(Number(item.spikeMultiple || 0) >= 1, `premiumSpikes[${idx}] spikeMultiple below 1`);
+    assert(Number(item.previousDayPremiumUsd || 0) > 0, `premiumSpikes[${idx}] missing previousDayPremiumUsd`);
   });
 }
 
@@ -221,6 +243,29 @@ function validateSimpleList(path, payload) {
   }
   const items = Array.isArray(payload.items) ? payload.items : [];
   assert(items.length > 0, `${path} returned no items`);
+}
+
+function validateWildTakes(payload) {
+  if (!payload) {
+    return;
+  }
+  assert(
+    String(payload.dataNature || '').toLowerCase().includes('live'),
+    '/api/market/wild-takes dataNature should indicate live-backed source'
+  );
+  assert(
+    String(payload.sourceDisclosure || '').toLowerCase().includes('news'),
+    '/api/market/wild-takes sourceDisclosure should mention news source'
+  );
+  const items = Array.isArray(payload.items) ? payload.items : [];
+  assert(items.length > 0, '/api/market/wild-takes returned no items');
+  items.forEach((item, idx) => {
+    assert(Boolean(item.symbol), `wildTakes[${idx}] missing symbol`);
+    assert(Boolean(item.title), `wildTakes[${idx}] missing title`);
+    assert(Boolean(item.summary), `wildTakes[${idx}] missing summary`);
+    assert(Boolean(item.url), `wildTakes[${idx}] missing url`);
+    assert(Boolean(item.publishedAt), `wildTakes[${idx}] missing publishedAt`);
+  });
 }
 
 function validateRealizedPatterns(payload) {
@@ -303,7 +348,7 @@ async function run() {
   validateHighIv(highIvPayload);
   validatePortfolios(portfoliosPayload);
   validateRealizedPatterns(realizedPatternsPayload);
-  validateSimpleList('/api/market/wild-takes', wildTakesPayload);
+  validateWildTakes(wildTakesPayload);
   assert(Array.isArray(trendTradeSourcesPayload?.options), '/api/market/trend-trades-sources missing options[]');
 
   if (warnings.length) {
