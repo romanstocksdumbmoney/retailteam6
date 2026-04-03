@@ -741,7 +741,8 @@ function renderOptionsLocked(message) {
 function renderUnusual(payload) {
   const target = document.getElementById('unusual-results');
   target.innerHTML = '';
-  payload.data.forEach((move) => {
+  const rows = Array.isArray(payload?.data) ? payload.data : [];
+  rows.forEach((move) => {
     const row = document.createElement('article');
     row.className = 'stack-item';
     row.innerHTML = `
@@ -751,6 +752,9 @@ function renderUnusual(payload) {
     `;
     target.appendChild(row);
   });
+  if (!rows.length) {
+    target.innerHTML = '<div class="pro-lock">No unusual moves are available right now.</div>';
+  }
 }
 
 function renderUnusualLocked(message) {
@@ -1074,6 +1078,9 @@ function renderTrendTrades(payload) {
     `;
     target.appendChild(card);
   });
+  if (!Array.isArray(payload?.items) || payload.items.length === 0) {
+    target.innerHTML = '<div class="pro-lock">No trend trades are available right now.</div>';
+  }
 }
 
 function renderTrendTradesLocked(message) {
@@ -1281,7 +1288,7 @@ async function loadTrendTrades() {
       openProPopup('Pro access needed for Trend Trades. Upgrade to see social trend trading signals.');
       return;
     }
-    throw error;
+    renderTrendTradesLocked('Trend Trades is temporarily unavailable. Please refresh in a moment.');
   }
 }
 
@@ -1325,7 +1332,7 @@ async function loadUnusualFeed() {
       openProPopup('Pro access needed for Unusual Moves Feed.');
       return;
     }
-    throw error;
+    renderUnusualLocked('Unusual Moves is temporarily unavailable. Please refresh shortly.');
   }
 }
 
@@ -1341,7 +1348,7 @@ async function loadHighIvTracker() {
       openProPopup('Pro access needed for High IV Tracker.');
       return;
     }
-    throw error;
+    renderHighIvLocked('High IV Tracker is temporarily unavailable. Please refresh shortly.');
   }
 }
 
@@ -1357,7 +1364,7 @@ async function loadPremiumSpikes() {
       openProPopup('Pro access needed for Call / Put Premium Spikes.');
       return;
     }
-    throw error;
+    renderPremiumSpikesLocked('Call / Put Premium Spikes is temporarily unavailable. Please refresh shortly.');
   }
 }
 
@@ -1391,13 +1398,16 @@ async function refreshBaseline() {
   await Promise.all([
     loadOutlook(activeTicker),
     loadEarningsBoard(),
-    loadAiSidebar(activeTicker),
+    loadAiSidebar(activeTicker)
+  ]);
+  await Promise.allSettled([
     loadTrendTrades(),
     loadRealizedPatterns(),
     loadWildTakes(),
     loadInsiderTrades(),
     loadHighIvTracker(),
-    loadPremiumSpikes()
+    loadPremiumSpikes(),
+    loadUnusualFeed()
   ]);
 }
 
@@ -2113,7 +2123,6 @@ async function init() {
   try {
     await fetchCurrentUser();
     await refreshBaseline();
-    await Promise.all([loadUnusualFeed(), loadHighIvTracker()]);
     await runScanner(activeTicker, 'llm-sentiment');
   } catch (error) {
     console.error(error);
