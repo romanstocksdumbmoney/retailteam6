@@ -9,6 +9,7 @@ async function fetchJson(url, options = {}) {
     }
     const error = new Error(body.message || `Request failed: ${response.status}`);
     error.status = response.status;
+    error.body = body;
     throw error;
   }
   return response.json();

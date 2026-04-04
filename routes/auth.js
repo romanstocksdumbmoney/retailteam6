@@ -40,6 +40,27 @@ const OAUTH_PROVIDER_LABELS = {
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/i;
 
+function candidatePasswords(rawPassword) {
+  const password = String(rawPassword || '');
+  const trimmed = password.trim();
+  if (trimmed && trimmed !== password) {
+    return [password, trimmed];
+  }
+  return [password];
+}
+
+async function matchesAnyPassword(passwordHash, rawPassword) {
+  const attempts = candidatePasswords(rawPassword);
+  for (const attempt of attempts) {
+    // eslint-disable-next-line no-await-in-loop
+    const ok = await verifyPassword(attempt, passwordHash);
+    if (ok) {
+      return true;
+    }
+  }
+  return false;
+}
+
 function authRequired(req, res, next) {
   const parsed = parseAuthToken(req.header('authorization'));
   if (!parsed.ok) {
@@ -116,7 +137,7 @@ router.get('/billing/checkout-preview', (_req, res) => {
   });
 });
 
-router.post('/signup', (req, res) => {
+router.post('/signup', async (req, res) => {
   try {
     const email = String(req.body?.email || '').trim().toLowerCase();
     const password = String(req.body?.password || '');
@@ -131,7 +152,31 @@ router.post('/signup', (req, res) => {
     return res.status(201).json({ token, user });
   } catch (error) {
     if (String(error.message) === 'email_exists') {
-      return res.status(409).json({ error: 'email_in_use', message: 'An account already exists for this email.' });
+      const existing = findUserByEmail(String(req.body?.email || '').trim().toLowerCase());
+      if (existing) {
+        const matches = await matchesAnyPassword(existing.passwordHash, req.body?.password);
+        if (matches) {
+          const user = sanitizeUser(existing);
+          const token = signAuthToken({ userId: user.id, email: user.email });
+          return res.status(200).json({
+            token,
+            user,
+            existingAccount: true,
+            message: 'Account already existed. Logged in successfully.'
+          });
+        }
+        const authProviders = Array.isArray(existing.authProviders) ? existing.authProviders : [];
+        if (!authProviders.includes('password')) {
+          return res.status(409).json({
+            error: 'email_in_use_social',
+            message: 'This email is already linked to social sign-in. Use Continue with Google/Apple/GitHub/Discord/X.'
+          });
+        }
+      }
+      return res.status(409).json({
+        error: 'email_in_use',
+        message: 'An account already exists for this email. Use the same email + password to log in.'
+      });
     }
     if (String(error.message).startsWith('weak_password')) {
       const key = String(error.message);
@@ -214,8 +259,15 @@ router.post('/login', async (req, res) => {
     return res.status(401).json({ error: 'invalid_credentials', message: 'Invalid email or password.' });
   }
 
-  const ok = await verifyPassword(password, user.passwordHash);
+  const ok = await matchesAnyPassword(user.passwordHash, password);
   if (!ok) {
+    const authProviders = Array.isArray(user.authProviders) ? user.authProviders : [];
+    if (!authProviders.includes('password')) {
+      return res.status(409).json({
+        error: 'social_signin_required',
+        message: 'This account uses social sign-in. Use Continue with Google/Apple/GitHub/Discord/X.'
+      });
+    }
     return res.status(401).json({ error: 'invalid_credentials', message: 'Invalid email or password.' });
   }
 

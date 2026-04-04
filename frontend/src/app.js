@@ -1629,6 +1629,18 @@ async function signup(email, password) {
   await fetchCurrentUser();
 }
 
+async function resolveExistingEmailConflict(email, password) {
+  try {
+    await login(email, password);
+    setAuthMessage('That email already had an account. Logged you in successfully.');
+    await Promise.all([refreshBaseline(), loadUnusualFeed(), loadTrendTrades()]);
+    return true;
+  } catch (_error) {
+    setAuthMessage('That email already has an account. Please use Log in with the same email/password.', true);
+    return false;
+  }
+}
+
 async function socialSignIn(provider, email) {
   const payload = await fetchJson('/api/auth/oauth/signin', {
     method: 'POST',
@@ -1728,6 +1740,10 @@ function setupAuthForms() {
       setAuthMessage('Account created and logged in.');
       await Promise.all([refreshBaseline(), loadUnusualFeed(), loadTrendTrades()]);
     } catch (error) {
+      if (error?.status === 409 || String(error?.body?.error || '').trim().toLowerCase() === 'email_in_use') {
+        await resolveExistingEmailConflict(email, password);
+        return;
+      }
       setAuthMessage(error.message || 'Signup failed.', true);
     } finally {
       setButtonBusy(submitButton, false, idleLabel, 'Creating...');
