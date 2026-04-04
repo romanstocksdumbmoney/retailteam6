@@ -267,6 +267,12 @@ router.post('/stripe/create-checkout-session', authRequired, async (req, res) =>
         message: 'Card payment method is unavailable for this Stripe account/currency/region configuration.'
       });
     }
+    if (code === 'stripe_customer_not_found') {
+      return res.status(502).json({
+        error: 'stripe_customer_not_found',
+        message: 'Stored Stripe customer was not found for this key mode. Retry checkout once to recreate customer mapping.'
+      });
+    }
     if (code === 'test_live_mode_mismatch') {
       return res.status(502).json({
         error: 'test_live_mode_mismatch',

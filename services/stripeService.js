@@ -69,7 +69,22 @@ async function ensureStripeCustomer(user) {
   }
 
   if (user.stripeCustomerId) {
-    return user.stripeCustomerId;
+    try {
+      const existing = await stripe.customers.retrieve(String(user.stripeCustomerId));
+      if (existing && !existing.deleted) {
+        return String(user.stripeCustomerId);
+      }
+    } catch (error) {
+      const code = String(error?.code || '').toLowerCase();
+      const message = String(error?.message || '').toLowerCase();
+      const missingCustomer = code === 'resource_missing'
+        || (message.includes('no such customer'))
+        || (message.includes('customer') && message.includes('not found'));
+      if (!missingCustomer) {
+        throw error;
+      }
+      // Fall through: recreate customer under the currently configured Stripe key.
+    }
   }
 
   const customer = await stripe.customers.create({
@@ -137,6 +152,43 @@ function makeStripeCheckoutFailure(error) {
   return wrapped;
 }
 
+function mapStripeCheckoutError(error) {
+  const providerCode = String(error?.code || '').trim().toLowerCase();
+  const providerMessage = String(error?.message || '').trim().toLowerCase();
+  if (providerCode === 'resource_missing' || providerMessage.includes('no such price')) {
+    return 'invalid_price_configuration';
+  }
+  if (providerCode === 'account_invalid' || providerMessage.includes('account is not active')) {
+    return 'stripe_account_inactive';
+  }
+  if (providerCode === 'payment_method_unactivated' || providerMessage.includes('payment method') && providerMessage.includes('not available')) {
+    return 'payment_method_not_available';
+  }
+  if (providerCode === 'parameter_invalid_integer' && providerMessage.includes('unit_amount')) {
+    return 'invalid_price_configuration';
+  }
+  if (
+    providerMessage.includes('same mode')
+    || (providerMessage.includes('test mode') && providerMessage.includes('live mode'))
+    || providerMessage.includes('livemode mismatch')
+  ) {
+    return 'test_live_mode_mismatch';
+  }
+  if (providerMessage.includes('amex') && providerMessage.includes('not')) {
+    return 'card_network_not_enabled';
+  }
+  return 'stripe_checkout_creation_failed';
+}
+
+function isMissingCustomerError(error) {
+  const code = String(error?.code || '').trim().toLowerCase();
+  const providerMessage = String(error?.message || '').trim().toLowerCase();
+  return (
+    code === 'resource_missing'
+    && (providerMessage.includes('no such customer') || providerMessage.includes('customer') && providerMessage.includes('not found'))
+  );
+}
+
 async function createCheckoutSession(user, options = {}) {
   const stripe = getStripe();
   const priceId = getProPriceId();
@@ -145,7 +197,7 @@ async function createCheckoutSession(user, options = {}) {
   }
 
   const checkoutUser = resolveCheckoutUser(user, options);
-  const customerId = await ensureStripeCustomer(checkoutUser);
+  let customerId = await ensureStripeCustomer(checkoutUser);
   const base = getAppBaseUrl();
   const inlineLineItems = [
     {
@@ -181,6 +233,23 @@ async function createCheckoutSession(user, options = {}) {
     const session = await stripe.checkout.sessions.create(buildCheckoutPayload(initialLineItems));
     return session;
   } catch (error) {
+    if (isMissingCustomerError(error)) {
+      if (checkoutUser.id && checkoutUser.id !== 'guest-checkout') {
+        updateUser(checkoutUser.id, { stripeCustomerId: null });
+      }
+      customerId = await ensureStripeCustomer({
+        ...checkoutUser,
+        stripeCustomerId: null
+      });
+      const retryPayload = buildCheckoutPayload(initialLineItems);
+      retryPayload.customer = customerId;
+      try {
+        const recoveredSession = await stripe.checkout.sessions.create(retryPayload);
+        return recoveredSession;
+      } catch (retryError) {
+        throw makeStripeCheckoutFailure(retryError);
+      }
+    }
     if (priceId && isRecoverablePriceIdError(error)) {
       try {
         const fallbackSession = await stripe.checkout.sessions.create(buildCheckoutPayload(inlineLineItems));
