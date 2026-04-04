@@ -118,17 +118,17 @@ const MODULE_NAV_TARGETS = Object.freeze([
   },
   {
     key: 'ai-trade',
-    label: 'AI Trade',
+    label: 'AI Trading',
     panel: 'sidebar',
     selector: '#ai-trade-section',
-    aliases: ['chart upload', 'ai trade']
+    aliases: ['chart upload', 'ai trade', 'ai trading', 'trading ai']
   },
   {
     key: 'ai-auto-trader',
-    label: 'AI Auto Trader',
+    label: 'AI Trading Bot (Auto Trader)',
     panel: 'sidebar',
     selector: '#ai-auto-trader-section',
-    aliases: ['auto trader', 'bot', 'ai bot']
+    aliases: ['auto trader', 'bot', 'ai bot', 'ai trading bot', 'ai trading']
   },
   {
     key: 'ai-analyzer',
