@@ -687,6 +687,24 @@ function setAuthMessage(text, isError = false) {
   node.className = isError ? 'small-note auth-error' : 'small-note';
 }
 
+function normalizeCheckoutErrorMessage(error) {
+  const rawMessage = String(error?.message || '').trim();
+  const rawErrorCode = String(error?.body?.error || '').trim().toLowerCase();
+  if (rawErrorCode === 'stripe_account_inactive') {
+    return 'Stripe account is not fully activated for live card processing yet. Complete activation in Stripe Dashboard, then retry.';
+  }
+  if (rawErrorCode === 'card_network_not_enabled') {
+    return 'This card network is not enabled in Stripe yet. Enable it in Stripe Dashboard > Payments > Payment methods, then retry.';
+  }
+  if (rawErrorCode === 'test_live_mode_mismatch') {
+    return 'Stripe mode mismatch detected. Use matching live keys + live price (or test keys + test price), then retry.';
+  }
+  if (rawErrorCode === 'stripe_customer_not_found') {
+    return 'Stripe customer mapping was stale and has been reset. Retry checkout once now.';
+  }
+  return rawMessage || 'Could not start checkout.';
+}
+
 function formatBillingAmount(info) {
   if (!info || !Number.isFinite(Number(info.amountMonthly))) {
     return '$15';
@@ -1768,7 +1786,7 @@ function setupAuthForms() {
         closeBillingCard();
         window.location.href = payload.url;
       } catch (error) {
-        setAuthMessage(error.message || 'Could not start checkout.', true);
+        setAuthMessage(normalizeCheckoutErrorMessage(error), true);
       }
     });
   }

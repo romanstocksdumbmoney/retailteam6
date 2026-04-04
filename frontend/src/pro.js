@@ -33,6 +33,24 @@ function setStatus(text, isError = false) {
   statusNode.className = isError ? 'small-note auth-error' : 'small-note';
 }
 
+function normalizeCheckoutErrorMessage(error) {
+  const rawMessage = String(error?.message || '').trim();
+  const rawErrorCode = String(error?.body?.error || '').trim().toLowerCase();
+  if (rawErrorCode === 'stripe_account_inactive') {
+    return 'Stripe account is not fully activated for live card processing yet. Complete activation in Stripe Dashboard, then retry.';
+  }
+  if (rawErrorCode === 'card_network_not_enabled') {
+    return 'This card network is not enabled in Stripe yet. Enable it in Stripe Dashboard > Payments > Payment methods, then retry.';
+  }
+  if (rawErrorCode === 'test_live_mode_mismatch') {
+    return 'Stripe mode mismatch detected. Use matching live keys + live price (or test keys + test price), then retry.';
+  }
+  if (rawErrorCode === 'stripe_customer_not_found') {
+    return 'Stripe customer mapping was stale and has been reset. Retry checkout once now.';
+  }
+  return rawMessage || 'Could not start secure checkout.';
+}
+
 function isSecureHostedCheckoutUrl(url) {
   if (typeof url !== 'string') {
     return false;
@@ -157,7 +175,7 @@ async function startSecureCheckout() {
     }
     window.location.href = session.url;
   } catch (error) {
-    setStatus(error.message || 'Could not start secure checkout.', true);
+    setStatus(normalizeCheckoutErrorMessage(error), true);
     if (startButton) {
       startButton.disabled = false;
     }

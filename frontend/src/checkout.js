@@ -67,6 +67,33 @@ function setStatus(text, isError = false) {
   statusNode.className = isError ? 'small-note auth-error' : 'small-note';
 }
 
+function normalizeCheckoutErrorMessage(error) {
+  const rawMessage = String(error?.message || '').trim();
+  const rawErrorCode = String(error?.body?.error || '').trim().toLowerCase();
+  if (rawErrorCode === 'stripe_account_inactive') {
+    return 'Stripe account is not fully activated for live card processing yet. Complete activation in Stripe Dashboard, then retry.';
+  }
+  if (rawErrorCode === 'card_network_not_enabled') {
+    return 'This card network is not enabled in Stripe yet. Enable it in Stripe Dashboard > Payments > Payment methods, then retry.';
+  }
+  if (rawErrorCode === 'test_live_mode_mismatch') {
+    return 'Stripe mode mismatch detected. Use matching live keys + live price (or test keys + test price), then retry.';
+  }
+  if (rawErrorCode === 'stripe_customer_not_found') {
+    return 'Stripe customer mapping was stale and has been reset. Retry checkout once now.';
+  }
+  const normalized = rawMessage.toLowerCase();
+  const processingLike = normalized.includes('processing')
+    || normalized.includes('authentication')
+    || normalized.includes('3d secure')
+    || normalized.includes('card was declined')
+    || normalized.includes('payment_intent');
+  if (processingLike) {
+    return `${rawMessage || 'Checkout failed.'} If this was specifically an Amex card, verify Amex is enabled in Stripe Dashboard > Payments > Payment methods.`;
+  }
+  return rawMessage || 'Could not start Stripe checkout.';
+}
+
 async function startSecureCheckout() {
   const startButton = document.getElementById('checkout-open-stripe');
   try {
@@ -90,18 +117,7 @@ async function startSecureCheckout() {
     }
     window.location.href = session.url;
   } catch (error) {
-    const rawMessage = String(error.message || '');
-    const normalized = rawMessage.toLowerCase();
-    const networkHints = normalized.includes('processing')
-      || normalized.includes('authentication')
-      || normalized.includes('3d secure')
-      || normalized.includes('card was declined')
-      || normalized.includes('payment_intent')
-      || normalized.includes('amex');
-    const message = networkHints
-      ? `${rawMessage || 'Checkout failed.'} If this was an Amex card, verify Amex is enabled in Stripe Dashboard > Payments > Payment methods.`
-      : (rawMessage || 'Could not start Stripe checkout.');
-    setStatus(message, true);
+    setStatus(normalizeCheckoutErrorMessage(error), true);
     if (startButton) {
       startButton.disabled = false;
     }
