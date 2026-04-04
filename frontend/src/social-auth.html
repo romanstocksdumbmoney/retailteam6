@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>DumbDollars Social Sign In</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body class="payment-page-body">
+    <main class="ai-trade-page-shell">
+      <article class="ai-trade-page-card card" role="main" aria-labelledby="social-auth-title">
+        <a class="open-link" href="/">Back to dashboard</a>
+        <div class="pro-plan-logo-wrap" aria-hidden="true">
+          <img class="pro-plan-logo-image" src="./logo-mark.svg" alt="" />
+        </div>
+        <h1 id="social-auth-title">Continue with Social Sign In</h1>
+        <p class="pro-plan-subtitle">Choose your provider and confirm your email to continue the sign-in flow.</p>
+
+        <section class="auth-bar">
+          <form id="social-auth-form" class="auth-form">
+            <label>
+              Email
+              <input id="social-auth-email" type="email" placeholder="email@domain.com" required />
+            </label>
+          </form>
+          <div class="social-auth-row">
+            <p class="small-note">Choose provider:</p>
+            <div class="social-auth-buttons">
+              <button class="btn-secondary oauth-btn social-auth-provider-btn" data-provider="google" type="button">Continue with Google</button>
+              <button class="btn-secondary oauth-btn social-auth-provider-btn" data-provider="apple" type="button">Continue with Apple</button>
+              <button class="btn-secondary oauth-btn social-auth-provider-btn" data-provider="github" type="button">Continue with GitHub</button>
+              <button class="btn-secondary oauth-btn social-auth-provider-btn" data-provider="discord" type="button">Continue with Discord</button>
+              <button class="btn-secondary oauth-btn social-auth-provider-btn" data-provider="x" type="button">Continue with X</button>
+            </div>
+          </div>
+        </section>
+
+        <p id="social-auth-status" class="small-note"></p>
+      </article>
+    </main>
+    <script src="./social-auth.js"></script>
+  </body>
+</html>

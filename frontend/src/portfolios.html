@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>DumbDollars View Portfolios</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body class="payment-page-body">
+    <main class="ai-trade-page-shell">
+      <article class="ai-trade-page-card card" role="main" aria-labelledby="portfolios-page-title">
+        <a class="open-link" href="/">Back to dashboard</a>
+        <div class="pro-plan-logo-wrap" aria-hidden="true">
+          <img class="pro-plan-logo-image" src="./logo-mark.svg" alt="" />
+        </div>
+        <h1 id="portfolios-page-title">View Portfolios</h1>
+        <p class="pro-plan-subtitle">Track top-performing portfolio styles and watch recent trade activity from high-signal market operators.</p>
+
+        <form id="portfolios-page-form" class="pro-plan-box row-form portfolios-page-controls" novalidate>
+          <label>
+            Min Performance (%)
+            <input id="portfolios-min-performance-input" type="number" min="0" max="200" step="1" value="15" />
+          </label>
+          <label>
+            Min Assets ($B)
+            <input id="portfolios-min-aum-input" type="number" min="0" max="5000" step="1" value="10" />
+          </label>
+          <label>
+            Sort
+            <select id="portfolios-sort-select">
+              <option value="score_desc">Best overall score</option>
+              <option value="ytd_desc">Top performance (YTD)</option>
+              <option value="aum_desc">Largest assets</option>
+              <option value="activity_desc">Most active</option>
+            </select>
+          </label>
+          <button id="portfolios-apply" type="submit">Apply</button>
+        </form>
+
+        <p id="portfolios-page-status" class="small-note"></p>
+        <div id="portfolios-page-summary" class="stack"></div>
+        <div id="portfolios-page-results" class="stack"></div>
+      </article>
+    </main>
+    <script src="./portfolios.js"></script>
+  </body>
+</html>

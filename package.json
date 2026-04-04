@@ -1,0 +1,25 @@
+{
+  "name": "dumbdollars",
+  "version": "1.0.0",
+  "private": true,
+  "description": "DumbDollars is a market intelligence dashboard for stock outlook probabilities, scanner signals, options analytics, and earnings momentum.",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js",
+    "audit:data": "node scripts/data-integrity-audit.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "bcryptjs": "^3.0.3",
+    "cors": "^2.8.5",
+    "dotenv": "^17.3.1",
+    "express": "^4.21.2",
+    "express-rate-limit": "^8.3.1",
+    "helmet": "^8.1.0",
+    "jsonwebtoken": "^9.0.3",
+    "stripe": "^20.4.1"
+  }
+}

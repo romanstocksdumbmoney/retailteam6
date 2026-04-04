@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>DumbDollars Checkout</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body class="payment-page-body">
+    <main class="payment-page-shell">
+      <article class="payment-page-card card" role="main" aria-labelledby="checkout-page-title">
+        <a class="open-link" href="/payment.html">Back to Payment</a>
+        <div class="pro-plan-logo-wrap" aria-hidden="true">
+          <img class="pro-plan-logo-image" src="./logo-mark.svg" alt="" />
+        </div>
+        <h1 id="checkout-page-title">Checkout Ready</h1>
+        <p class="pro-plan-subtitle">Final step: continue to Stripe's secure hosted checkout to complete your payment.</p>
+        <div class="pro-plan-box">
+          <h2>Before you continue</h2>
+          <p class="small-note">
+            Your Pro plan unlocks the advanced workflow: Trend Trades, full scanner methods,
+            High IV Tracker, premium spikes, options + gamma tools, and faster access to new modules.
+          </p>
+          <ul class="detail-list">
+            <li>Your card details are entered only on Stripe checkout.</li>
+            <li>Supported methods can include Visa, Mastercard, Amex, Discover, Apple Pay/Apple Cash, Link, and PayPal (depends on your Stripe account settings and region).</li>
+            <li>DumbDollars does not store raw card numbers or CVV data.</li>
+            <li>You can cancel anytime from Manage Billing.</li>
+          </ul>
+          <button id="checkout-open-stripe" type="button">Open Secure Stripe Checkout</button>
+          <p id="checkout-status" class="small-note"></p>
+        </div>
+      </article>
+    </main>
+    <script src="./checkout.js"></script>
+  </body>
+</html>

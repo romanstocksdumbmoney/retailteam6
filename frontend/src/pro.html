@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>DumbDollars Pro Plan</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body class="pro-page-body">
+    <main class="pro-page-shell">
+      <article class="pro-page-card card" role="main" aria-labelledby="pro-page-title">
+        <a class="open-link" href="/">Back to dashboard</a>
+        <div class="pro-plan-logo-wrap" aria-hidden="true">
+          <img class="pro-plan-logo-image" src="./logo-mark.svg" alt="" />
+        </div>
+        <h1 id="pro-page-title">Pro Plan</h1>
+        <p class="pro-plan-subtitle">Unlock the full DumbDollars toolkit built to help retail traders spot risk, avoid bad positioning, and trade with higher-quality context.</p>
+        <div class="pro-plan-box">
+          <p class="pro-plan-price">$15/month</p>
+          <h2>Everything you get with Pro</h2>
+          <ul class="detail-list">
+            <li><strong>Trend Trades:</strong> ranked social momentum setups with source-level context across X, TikTok, YouTube, Reels, and more.</li>
+            <li><strong>High IV Tracker:</strong> monitor elevated implied volatility names with IV rank, percentile, catalysts, and expected move ranges.</li>
+            <li><strong>Options + Gamma Suite:</strong> estimate contract pricing, premium pressure, and gamma exposure to better frame risk.</li>
+            <li><strong>Premium Spikes + Unusual Flow:</strong> track large call/put premium spikes and unusual options flow before broad retail reaction.</li>
+            <li><strong>Advanced Scanner Methods:</strong> deeper market-flow scanner views and pro signal layers for faster decision support.</li>
+            <li><strong>Priority Pro Modules:</strong> immediate access to new Pro intelligence modules as they are released.</li>
+          </ul>
+          <p class="small-note">No card details are stored by DumbDollars. Checkout is hosted on Stripe (cards, Apple Pay/Apple Cash, Link, and PayPal can appear when enabled in your Stripe account).</p>
+          <button id="pro-page-start" type="button">Continue to payment page</button>
+        </div>
+        <p id="pro-page-status" class="small-note"></p>
+      </article>
+    </main>
+    <script src="./pro.js"></script>
+  </body>
+</html>

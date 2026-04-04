@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>DumbDollars Insider Trades</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body class="payment-page-body">
+    <main class="ai-trade-page-shell">
+      <article class="ai-trade-page-card card" role="main" aria-labelledby="insider-trades-page-title">
+        <a class="open-link" href="/">Back to dashboard</a>
+        <div class="pro-plan-logo-wrap" aria-hidden="true">
+          <img class="pro-plan-logo-image" src="./logo-mark.svg" alt="" />
+        </div>
+        <h1 id="insider-trades-page-title">Insider Trades</h1>
+        <p class="pro-plan-subtitle">Auto-loaded list of insider trades with bullish/bearish/neutral bias, trade size, and filing-volume signals.</p>
+
+        <section class="pro-plan-box insider-page-toolbar">
+          <p class="small-note">No typing needed. This list refreshes automatically.</p>
+          <button id="insider-page-refresh" type="button">Refresh List</button>
+        </section>
+
+        <p id="insider-page-status" class="small-note"></p>
+        <div id="insider-page-summary" class="stack"></div>
+        <div id="insider-page-leaderboard" class="stack"></div>
+        <div id="insider-page-results" class="stack insider-bar-list"></div>
+      </article>
+    </main>
+    <script src="./insider-trades.js"></script>
+  </body>
+</html>

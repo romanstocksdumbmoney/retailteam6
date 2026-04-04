@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>DumbDollars AI Analyzer</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body class="payment-page-body">
+    <main class="ai-trade-page-shell">
+      <article class="ai-trade-page-card card" role="main" aria-labelledby="ai-analyzer-title">
+        <a class="open-link" href="/">Back to dashboard</a>
+        <div class="pro-plan-logo-wrap" aria-hidden="true">
+          <img class="pro-plan-logo-image" src="./logo-mark.svg" alt="" />
+        </div>
+        <h1 id="ai-analyzer-title">AI Analyzer</h1>
+        <p class="pro-plan-subtitle">Upload trade screenshots and AI will score whether it looked like a good trade setup or not.</p>
+
+        <form id="ai-analyzer-form" class="pro-plan-box ai-trade-form" novalidate>
+          <div class="ai-trade-form-grid">
+            <label>
+              Ticker
+              <input id="ai-analyzer-symbol" type="text" maxlength="10" placeholder="AAPL" required />
+            </label>
+            <label>
+              Timeframe
+              <select id="ai-analyzer-timeframe">
+                <option value="scalp">Scalp</option>
+                <option value="intraday" selected>Intraday</option>
+                <option value="swing">Swing</option>
+                <option value="position">Position</option>
+              </select>
+            </label>
+            <label>
+              Direction
+              <select id="ai-analyzer-direction">
+                <option value="long" selected>Long</option>
+                <option value="short">Short</option>
+              </select>
+            </label>
+            <label>
+              Entry Price (optional)
+              <input id="ai-analyzer-entry" type="number" min="0" step="0.01" placeholder="0.00" />
+            </label>
+            <label>
+              Exit Price (optional)
+              <input id="ai-analyzer-exit" type="number" min="0" step="0.01" placeholder="0.00" />
+            </label>
+            <label class="field-full ai-trade-upload">
+              Screenshot Upload
+              <input id="ai-analyzer-image" type="file" accept="image/*" required />
+            </label>
+          </div>
+          <p class="small-note">Supports PNG/JPG/WEBP/GIF/BMP screenshots. Login required.</p>
+          <button id="ai-analyzer-submit" type="submit">Analyze Trade Screenshot</button>
+        </form>
+
+        <p id="ai-analyzer-status" class="small-note"></p>
+        <div id="ai-analyzer-preview-wrap" class="ai-trade-preview-wrap hidden">
+          <img id="ai-analyzer-preview" class="ai-trade-preview" alt="Uploaded trade screenshot preview" />
+        </div>
+
+        <section id="ai-analyzer-results" class="ai-trade-results hidden">
+          <div id="ai-analyzer-summary"></div>
+
+          <article class="ai-trade-consensus">
+            <h3>Possible Patterns Right Now</h3>
+            <div id="ai-analyzer-patterns" class="ai-trade-votes-grid"></div>
+          </article>
+
+          <article class="ai-trade-consensus">
+            <h3>Score Breakdown</h3>
+            <ul id="ai-analyzer-score-breakdown" class="detail-list"></ul>
+          </article>
+
+          <article class="ai-trade-consensus">
+            <h3>Model Reviews</h3>
+            <div id="ai-analyzer-model-reviews" class="ai-trade-votes-grid"></div>
+          </article>
+
+          <article class="ai-trade-consensus">
+            <h3>Strengths</h3>
+            <ul id="ai-analyzer-strengths" class="detail-list"></ul>
+          </article>
+
+          <article class="ai-trade-consensus">
+            <h3>Risks</h3>
+            <ul id="ai-analyzer-risks" class="detail-list"></ul>
+          </article>
+
+          <article class="ai-trade-consensus">
+            <h3>Improvements</h3>
+            <ul id="ai-analyzer-improvements" class="detail-list"></ul>
+          </article>
+        </section>
+      </article>
+    </main>
+    <script src="./ai-analyzer.js"></script>
+  </body>
+</html>
