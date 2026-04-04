@@ -74,12 +74,15 @@ function renderBotSummary(payload) {
     target.innerHTML = '<div class="pro-lock">No bot configured yet.</div>';
     return;
   }
+  const brokerConnection = payload.execution?.brokerConnection || {};
+  const brokerStatus = brokerConnection.isConnected ? 'CONNECTED' : 'NOT CONNECTED';
   target.innerHTML = `
     <article class="bot-position-card">
       <h4>Status: ${(payload.status || 'paused').toUpperCase()}</h4>
       <p><strong>Mode:</strong> ${String(payload.tradingMode || 'paper').toUpperCase()}</p>
       <p><strong>Cash:</strong> ${fmtUsd(payload.cashUsd)}</p>
       <p><strong>Total Deposited:</strong> ${fmtUsd(payload.totalDepositedUsd)}</p>
+      <p><strong>Broker Connection:</strong> ${brokerStatus} (${String(brokerConnection.broker || 'manual').toUpperCase()})</p>
       <p><strong>Updated:</strong> ${payload.updatedAt || 'N/A'}</p>
     </article>
   `;
@@ -134,6 +137,8 @@ function renderOrders(cycle) {
       <p><strong>Entry:</strong> ${fmtUsd(trade.entry)} • <strong>Chase:</strong> ${fmtUsd(trade.chasePrice)}</p>
       <p><strong>Stop:</strong> ${fmtUsd(trade.stopLoss)} • <strong>Take:</strong> ${fmtUsd(trade.takeProfit)}</p>
       <p><strong>Risk:</strong> ${fmtUsd(trade.riskUsd)} • <strong>Reward:</strong> ${fmtUsd(trade.potentialRewardUsd)}</p>
+      <p><strong>Website Signal Score:</strong> ${Number(trade.websiteSignalScore || 0)} • <strong>Sources:</strong> ${(trade.signalSources || []).join(', ') || 'N/A'}</p>
+      <p><strong>Execution Ticket:</strong> ${trade.executionTicket?.ticketId || 'N/A'} • ${trade.executionTicket?.readyForBrokerApi ? 'Broker API Ready' : 'Manual Confirm Required'}</p>
       <p class="small-note">${links}</p>
     `;
     target.appendChild(card);
@@ -158,6 +163,8 @@ function renderLogs(cycle) {
       <p><strong>Starting Cash:</strong> ${fmtUsd(cycle.startedCashUsd)}</p>
       <p><strong>Ending Cash:</strong> ${fmtUsd(cycle.endingCashUsd)}</p>
       <p><strong>Note:</strong> ${cycle.note || 'N/A'}</p>
+      <p><strong>Signal Inputs:</strong> AI queue ${Number(cycle.websiteSignals?.sourceCounts?.aiTradeQueue || 0)} • Trend ${Number(cycle.websiteSignals?.sourceCounts?.trendTrades || 0)} • High IV ${Number(cycle.websiteSignals?.sourceCounts?.highIvTracker || 0)}</p>
+      <p class="small-note">Top ranked symbols: ${(cycle.websiteSignals?.rankedSymbols || []).slice(0, 6).join(', ') || 'N/A'}</p>
       <ul class="detail-list">${closedRows || '<li>No positions closed in this cycle.</li>'}</ul>
     </article>
   `;

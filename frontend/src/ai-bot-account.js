@@ -179,12 +179,53 @@ function renderCycleActivity(rows) {
   });
 }
 
+function renderExecutionCenter(execution) {
+  const summaryTarget = document.getElementById('ai-account-execution-summary');
+  const queueTarget = document.getElementById('ai-account-queued-ai-trades');
+  if (!summaryTarget || !queueTarget) {
+    return;
+  }
+  const brokerConnection = execution?.brokerConnection || {};
+  const lastPlan = execution?.lastPlan || null;
+  const snapshot = execution?.lastWebsiteSignalSnapshot || null;
+  summaryTarget.innerHTML = `
+    <article class="bot-position-card">
+      <p><strong>Broker Bridge:</strong> ${brokerConnection.isConnected ? 'CONNECTED' : 'MANUAL / NOT CONNECTED'}</p>
+      <p><strong>Broker:</strong> ${String(brokerConnection.broker || 'manual').toUpperCase()} • <strong>Mode:</strong> ${String(brokerConnection.bridgeMode || 'manual_confirmed').replace(/_/g, ' ')}</p>
+      <p><strong>Last Plan:</strong> ${lastPlan?.generatedAt || 'N/A'}</p>
+      <p><strong>Plan Tickets:</strong> ${Number(lastPlan?.orderTickets?.length || 0)} • <strong>Manual Action:</strong> ${lastPlan?.manualActionRequired ? 'Yes' : 'No'}</p>
+      <p><strong>Website Inputs:</strong> AI queue ${Number(snapshot?.sources?.aiTradeQueue || 0)} • Trend ${Number(snapshot?.sources?.trendTrades || 0)} • High IV ${Number(snapshot?.sources?.highIvTracker || 0)}</p>
+      <p class="small-note">Ranked symbols: ${(snapshot?.rankedSymbols || []).slice(0, 6).join(', ') || 'N/A'}</p>
+    </article>
+  `;
+
+  const queued = Array.isArray(execution?.queuedAiTrades) ? execution.queuedAiTrades : [];
+  queueTarget.innerHTML = '';
+  if (!queued.length) {
+    queueTarget.innerHTML = '<div class="pro-lock">No queued AI trade setups yet. Queue from AI Trade page.</div>';
+    return;
+  }
+  queued.forEach((item) => {
+    const card = document.createElement('article');
+    card.className = 'bot-position-card';
+    card.innerHTML = `
+      <h4>${item.symbol} • ${String(item.trend || 'bullish').toUpperCase()}</h4>
+      <p><strong>Status:</strong> ${String(item.status || 'pending').toUpperCase()}</p>
+      <p><strong>Confidence:</strong> ${Number(item.confidencePct || 0)}% • <strong>Timeframe:</strong> ${item.timeframe || 'intraday'}</p>
+      <p><strong>Entry / Stop / Take:</strong> ${fmtUsd(item.entryPrice)} / ${fmtUsd(item.stopLoss)} / ${fmtUsd(item.takeProfit)}</p>
+      <p class="small-note">Queued: ${item.queuedAt || 'N/A'}</p>
+    `;
+    queueTarget.appendChild(card);
+  });
+}
+
 async function loadAccountView() {
   const payload = await fetchJson('/api/market/auto-trader/account-view', {
     headers: getAuthHeaders()
   });
   renderAccountSnapshot(payload);
   renderOpenPositions(payload.openPositions || []);
+  renderExecutionCenter(payload.execution || null);
   renderFundingActivity(payload.activity?.recentFunding || []);
   renderCycleActivity(payload.activity?.recentCycles || []);
   return payload;

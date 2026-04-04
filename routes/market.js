@@ -26,6 +26,7 @@ const {
   getAutoTraderAccountView,
   saveAutoTraderPaperTradingProfile,
   saveAutoTraderLiveTradingProfile,
+  queueAiTradeForExecution,
   runAutoTraderCycle,
   listAutoTraderSectors,
   setBotActive,
@@ -885,6 +886,25 @@ router.post('/auto-trader/live-profile', requireSignedIn, requireLiveFundingAcce
     return res.status(400).json({
       error: 'invalid_request',
       message: 'Could not save live trading profile.'
+    });
+  }
+});
+
+router.post('/auto-trader/queue-ai-trade', requireSignedIn, (req, res) => {
+  try {
+    const payload = queueAiTradeForExecution(req.user, req.body || {});
+    return res.status(201).json(payload);
+  } catch (error) {
+    const code = String(error.message || '');
+    if (code === 'invalid_symbol') {
+      return res.status(400).json({
+        error: 'invalid_symbol',
+        message: 'Provide a valid ticker symbol to queue this AI trade.'
+      });
+    }
+    return res.status(400).json({
+      error: 'invalid_request',
+      message: 'Could not queue AI trade for execution.'
     });
   }
 });

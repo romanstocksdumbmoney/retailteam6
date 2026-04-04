@@ -1,4 +1,9 @@
-const { normalizeSymbol } = require('./marketEngine');
+const {
+  normalizeSymbol,
+  buildStockOutlook,
+  getTrendTrades,
+  getHighIvTracker
+} = require('./marketEngine');
 
 const SECTOR_UNIVERSE = {
   Technology: ['AAPL', 'MSFT', 'ORCL', 'CRM', 'ADBE', 'NOW'],
@@ -101,6 +106,19 @@ function defaultState() {
       connectedAt: null,
       status: 'not_connected'
     },
+    liveExecution: {
+      brokerConnection: {
+        isConnected: false,
+        broker: 'manual',
+        accountId: '',
+        connectionStatus: 'not_connected',
+        bridgeMode: 'manual_confirmed',
+        connectedAt: null
+      },
+      queuedAiTrades: [],
+      lastWebsiteSignalSnapshot: null,
+      lastPlan: null
+    },
     config: defaultConfig(),
     openPositions: [],
     fundingTransactions: [],
@@ -108,6 +126,19 @@ function defaultState() {
     lastCycle: null,
     updatedAt: nowIso()
   };
+}
+
+function ensureLiveExecutionState(state) {
+  if (!state.liveExecution || typeof state.liveExecution !== 'object') {
+    state.liveExecution = defaultState().liveExecution;
+  }
+  if (!state.liveExecution.brokerConnection || typeof state.liveExecution.brokerConnection !== 'object') {
+    state.liveExecution.brokerConnection = defaultState().liveExecution.brokerConnection;
+  }
+  if (!Array.isArray(state.liveExecution.queuedAiTrades)) {
+    state.liveExecution.queuedAiTrades = [];
+  }
+  return state.liveExecution;
 }
 
 function isValidEmail(email) {
@@ -302,6 +333,91 @@ function buildSyntheticAccountReference(userId, broker, accountHolder) {
   return `AI-${base || '00000000'}`;
 }
 
+function buildWebsiteSignalSnapshot(state, userId) {
+  const liveExecution = ensureLiveExecutionState(state);
+  const trendPayload = getTrendTrades(12, 'all');
+  const highIvPayload = getHighIvTracker(12);
+  const trendItems = Array.isArray(trendPayload?.items) ? trendPayload.items : [];
+  const highIvItems = Array.isArray(highIvPayload?.items) ? highIvPayload.items : [];
+  const queuedAiTrades = (liveExecution.queuedAiTrades || [])
+    .filter((row) => row.status === 'pending')
+    .slice(0, 20);
+
+  const trendSymbols = trendItems.map((row) => normalizeSymbol(row.symbol)).filter(Boolean);
+  const highIvSymbols = highIvItems.map((row) => normalizeSymbol(row.symbol)).filter(Boolean);
+  const aiQueueSymbols = queuedAiTrades.map((row) => normalizeSymbol(row.symbol)).filter(Boolean);
+  const rankedSymbols = [...new Set([...aiQueueSymbols, ...trendSymbols, ...highIvSymbols])].slice(0, 25);
+
+  const trendBySymbol = {};
+  trendItems.forEach((row) => {
+    const symbol = normalizeSymbol(row.symbol);
+    if (!symbol) {
+      return;
+    }
+    trendBySymbol[symbol] = {
+      momentum: row.momentum,
+      trendScore: Number(row.trendScore || 0),
+      source: row.source || 'social'
+    };
+  });
+  const aiQueueBySymbol = {};
+  queuedAiTrades.forEach((row) => {
+    const symbol = normalizeSymbol(row.symbol);
+    if (!symbol) {
+      return;
+    }
+    aiQueueBySymbol[symbol] = row;
+  });
+
+  const snapshot = {
+    generatedAt: nowIso(),
+    userRef: `usr-${hashString(String(userId || 'u'))}`,
+    sources: {
+      aiTradeQueue: queuedAiTrades.length,
+      trendTrades: trendItems.length,
+      highIvTracker: highIvItems.length
+    },
+    rankedSymbols,
+    trendBySymbol,
+    aiQueueBySymbol,
+    notes: [
+      'Symbols are ranked from AI Trade queue + Trend Trades + High IV Tracker.',
+      'AI queue signals are prioritized when available.',
+      'Direction is refined with stock outlook probabilities and trend momentum.'
+    ]
+  };
+  liveExecution.lastWebsiteSignalSnapshot = snapshot;
+  return snapshot;
+}
+
+function buildExecutionTicket(state, trade) {
+  const liveFunding = state.liveFunding || defaultState().liveFunding;
+  const broker = String(liveFunding.broker || 'manual').trim().toLowerCase();
+  const executionMode = String(liveFunding.executionMode || 'manual_confirmed').trim().toLowerCase();
+  const liveExecution = ensureLiveExecutionState(state);
+  const brokerLinked = executionMode === 'broker_linked'
+    && broker !== 'manual'
+    && Boolean(liveExecution.brokerConnection?.isConnected);
+  const side = String(trade.direction || 'long').toLowerCase() === 'short' ? 'SELL_SHORT' : 'BUY';
+  return {
+    ticketId: `x-${hashString(`${trade.id}:${trade.ticker}:${trade.createdAt}`)}`,
+    broker,
+    executionMode,
+    readyForBrokerApi: brokerLinked,
+    reasonNotReady: brokerLinked ? null : 'Broker API bridge is not connected yet; manual confirmation required.',
+    orderPayload: {
+      symbol: trade.ticker,
+      side,
+      quantity: trade.shares,
+      orderType: 'limit',
+      limitPrice: trade.chasePrice,
+      stopLossPrice: trade.stopLoss,
+      takeProfitPrice: trade.takeProfit,
+      tif: 'day'
+    }
+  };
+}
+
 function runAutoTraderCycle(user) {
   const userId = user?.id;
   if (!userId) {
@@ -322,6 +438,10 @@ function runAutoTraderCycle(user) {
   }
 
   const seed = hashString(`${userId}:${minuteSeed()}:${state.config.prompt}`);
+  const websiteSignals = buildWebsiteSignalSnapshot(state, userId);
+  const pendingQueue = (ensureLiveExecutionState(state).queuedAiTrades || [])
+    .filter((row) => row.status === 'pending')
+    .slice(0, 30);
   const closedPositions = closeRandomPositions(state, seed);
   const maxNewTrades = Math.max(1, Math.min(4, state.config.maxPositions - state.openPositions.length));
   const candidateTrades = [];
@@ -338,9 +458,26 @@ function runAutoTraderCycle(user) {
     const sectorNames = Object.keys(SECTOR_UNIVERSE);
     const pickedSector = sector || sectorNames[Math.floor(pseudoRandom(seed + i * 3) * sectorNames.length)];
     const sectorTickers = SECTOR_UNIVERSE[pickedSector] || SECTOR_UNIVERSE.Technology;
-    const ticker = sectorTickers[Math.floor(pseudoRandom(seed + i * 5 + 1) * sectorTickers.length)];
-    const direction = getDirectionFromPrompt(state.config.prompt, seed + i * 13);
-    const entry = estimateEntryPrice(ticker, seed + i * 29);
+    const preferredBySector = websiteSignals.rankedSymbols.filter((symbol) => sectorTickers.includes(symbol));
+    const fallbackPreferred = websiteSignals.rankedSymbols.filter((symbol) => !candidateTrades.some((trade) => trade.ticker === symbol));
+    const pickedPreferred = preferredBySector[0] || fallbackPreferred[0];
+    const ticker = normalizeSymbol(pickedPreferred || sectorTickers[Math.floor(pseudoRandom(seed + i * 5 + 1) * sectorTickers.length)]);
+    const queuedSignal = pendingQueue.find((signal) => normalizeSymbol(signal.symbol) === ticker);
+    const trendSignal = websiteSignals.trendBySymbol?.[ticker];
+    const outlook = buildStockOutlook(ticker);
+    const outlookUp = Number(outlook?.probabilities?.day?.up || 0);
+    const outlookDown = Number(outlook?.probabilities?.day?.down || 0);
+    const outlookDirection = outlookUp >= outlookDown ? 'long' : 'short';
+    const queueDirection = queuedSignal
+      ? (String(queuedSignal.trend || '').toLowerCase() === 'bearish' ? 'short' : 'long')
+      : null;
+    const trendDirection = trendSignal
+      ? (String(trendSignal.momentum || '').toLowerCase() === 'down' ? 'short' : 'long')
+      : null;
+    const direction = queueDirection || trendDirection || outlookDirection || getDirectionFromPrompt(state.config.prompt, seed + i * 13);
+    const entry = Number.isFinite(Number(queuedSignal?.entryPrice))
+      ? roundUsd(Number(queuedSignal.entryPrice))
+      : estimateEntryPrice(ticker, seed + i * 29);
     const chasePrice = direction === 'long'
       ? roundUsd(entry * (1 + state.config.chasePct / 100))
       : roundUsd(entry * (1 - state.config.chasePct / 100));
@@ -404,11 +541,27 @@ function runAutoTraderCycle(user) {
       notionalUsd,
       riskUsd,
       potentialRewardUsd,
+      signalSources: [
+        queueDirection ? 'ai_trade_queue' : null,
+        trendDirection ? 'trend_trades' : null,
+        'stock_outlook'
+      ].filter(Boolean),
+      websiteSignalScore: Math.round(
+        (queueDirection ? 45 : 0)
+        + (trendSignal ? Math.max(10, Math.min(30, Number(trendSignal.trendScore || 0) / 3)) : 0)
+        + Math.max(10, Math.min(25, Math.abs(outlookUp - outlookDown)))
+      ),
       links: buildExecutionLinks(ticker),
       createdAt: nowIso()
     };
+    trade.executionTicket = buildExecutionTicket(state, trade);
     candidateTrades.push(trade);
     state.cashUsd = roundUsd(state.cashUsd - notionalUsd);
+    if (queuedSignal) {
+      queuedSignal.status = 'consumed';
+      queuedSignal.consumedAt = trade.createdAt;
+      queuedSignal.consumedByOrderId = trade.id;
+    }
   }
 
   const placedPositions = candidateTrades.map((trade) => ({
@@ -433,9 +586,15 @@ function runAutoTraderCycle(user) {
     endingCashUsd: state.cashUsd,
     closedPositions,
     plannedTrades: candidateTrades,
+    websiteSignals: {
+      generatedAt: websiteSignals.generatedAt,
+      sourceCounts: websiteSignals.sources,
+      rankedSymbols: websiteSignals.rankedSymbols.slice(0, 12),
+      notes: websiteSignals.notes
+    },
     note: state.tradingMode === 'live'
-      ? 'Live mode uses funded capital sizing, but broker execution still requires an explicit connected broker API.'
-      : 'Paper-trading simulation only. Connect a real broker API before enabling live execution.'
+      ? 'Live mode uses funded capital sizing and website signal routing. Broker-linked tickets are execution-ready only when API bridge is connected.'
+      : 'Paper-trading simulation uses website signals; no real brokerage orders are sent.'
   };
   const cycleSummary = {
     cycleId: `cyc-${hashString(`${userId}:${cycle.executedAt}`)}`,
@@ -450,6 +609,14 @@ function runAutoTraderCycle(user) {
   };
   state.cycleHistory = [cycleSummary, ...(state.cycleHistory || [])].slice(0, 60);
   state.lastCycle = cycle;
+  ensureLiveExecutionState(state).lastPlan = {
+    generatedAt: cycle.executedAt,
+    tradingMode: state.tradingMode,
+    executionMode: state.liveFunding?.executionMode || 'manual_confirmed',
+    broker: state.liveFunding?.broker || 'manual',
+    orderTickets: candidateTrades.map((trade) => trade.executionTicket),
+    manualActionRequired: candidateTrades.some((trade) => !Boolean(trade.executionTicket?.readyForBrokerApi))
+  };
   state.updatedAt = nowIso();
   return cycle;
 }
@@ -619,8 +786,60 @@ function saveAutoTraderLiveTradingProfile(user, details = {}) {
     riskPerTradePct,
     status: state.liveFunding?.isFunded ? 'funded' : 'profile_saved'
   };
+  const liveExecution = ensureLiveExecutionState(state);
+  const brokerConnected = executionMode === 'broker_linked' && broker !== 'manual';
+  liveExecution.brokerConnection = {
+    isConnected: brokerConnected,
+    broker,
+    accountId: accountLabel,
+    connectionStatus: brokerConnected ? 'connected' : 'manual_confirm_required',
+    bridgeMode: executionMode,
+    connectedAt: brokerConnected ? nowIso() : liveExecution.brokerConnection?.connectedAt || null
+  };
   state.updatedAt = nowIso();
   return state;
+}
+
+function queueAiTradeForExecution(user, input = {}) {
+  const userId = user?.id;
+  if (!userId) {
+    throw new Error('missing_user');
+  }
+  const state = getState(userId);
+  const symbol = normalizeSymbol(input.symbol || input.ticker || '');
+  if (!symbol) {
+    throw new Error('invalid_symbol');
+  }
+  const trendRaw = String(input.trend || input.direction || '').trim().toLowerCase();
+  const trend = trendRaw === 'bearish' || trendRaw === 'short' ? 'bearish' : 'bullish';
+  const confidencePct = roundUsd(clamp(Number(input.confidencePct || input.confidence || 0), 1, 100));
+  const entryPrice = roundUsd(clamp(Number(input.entryPrice || input.entry || 0), 0.01, 1_000_000));
+  const stopLoss = roundUsd(clamp(Number(input.stopLoss || 0), 0.01, 1_000_000));
+  const takeProfit = roundUsd(clamp(Number(input.takeProfit || 0), 0.01, 1_000_000));
+  const timeframe = String(input.timeframe || 'intraday').trim().toLowerCase().slice(0, 24) || 'intraday';
+  const rationale = Array.isArray(input.rationale) ? input.rationale.slice(0, 5).map((line) => String(line).slice(0, 180)) : [];
+
+  const queueItem = {
+    queueId: `q-${hashString(`${userId}:${symbol}:${Date.now()}`)}`,
+    symbol,
+    trend,
+    confidencePct,
+    entryPrice,
+    stopLoss,
+    takeProfit,
+    timeframe,
+    rationale,
+    source: 'ai_trade_module',
+    status: 'pending',
+    queuedAt: nowIso()
+  };
+  const liveExecution = ensureLiveExecutionState(state);
+  liveExecution.queuedAiTrades = [queueItem, ...liveExecution.queuedAiTrades].slice(0, 60);
+  state.updatedAt = nowIso();
+  return {
+    queued: queueItem,
+    queueDepth: liveExecution.queuedAiTrades.filter((row) => row.status === 'pending').length
+  };
 }
 
 function saveAutoTraderPaperTradingProfile(user, details = {}) {
@@ -720,6 +939,7 @@ function getAutoTraderAccountView(user) {
   const realizedPnlUsd = roundUsd((state.cycleHistory || []).reduce((sum, row) => sum + Number(row.closedPnlUsd || 0), 0));
   const equityUsd = roundUsd(Number(state.cashUsd || 0) + openExposureUsd);
   const liveFunding = state.liveFunding || defaultState().liveFunding;
+  const liveExecution = ensureLiveExecutionState(state);
   const broker = liveFunding.broker || 'manual';
   const accountHolder = liveFunding.accountHolder || 'live-account';
 
@@ -754,6 +974,12 @@ function getAutoTraderAccountView(user) {
       recentFunding: (state.fundingTransactions || []).slice(0, 20),
       recentCycles: (state.cycleHistory || []).slice(0, 20)
     },
+    execution: {
+      brokerConnection: liveExecution.brokerConnection,
+      queuedAiTrades: (liveExecution.queuedAiTrades || []).slice(0, 20),
+      lastPlan: liveExecution.lastPlan || null,
+      lastWebsiteSignalSnapshot: liveExecution.lastWebsiteSignalSnapshot || null
+    },
     config: state.config,
     paperTrading: state.paperTrading || defaultState().paperTrading,
     safety: {
@@ -772,6 +998,7 @@ function getAutoTraderStatus(user) {
     throw new Error('missing_user');
   }
   const state = getState(userId);
+  const liveExecution = ensureLiveExecutionState(state);
   return {
     configured: state.configured,
     isActive: state.isActive,
@@ -785,6 +1012,12 @@ function getAutoTraderStatus(user) {
     fundingTransactions: (state.fundingTransactions || []).slice(0, 10),
     cycleHistory: (state.cycleHistory || []).slice(0, 10),
     lastCycle: state.lastCycle,
+    execution: {
+      brokerConnection: liveExecution.brokerConnection,
+      queuedAiTrades: (liveExecution.queuedAiTrades || []).slice(0, 20),
+      lastPlan: liveExecution.lastPlan || null,
+      lastWebsiteSignalSnapshot: liveExecution.lastWebsiteSignalSnapshot || null
+    },
     updatedAt: state.updatedAt,
     sectorUniverse: Object.keys(SECTOR_UNIVERSE).map((sector) => ({
       sector,
@@ -814,6 +1047,7 @@ module.exports = {
   getAutoTraderPaperTradingProfile,
   saveAutoTraderPaperTradingProfile,
   saveAutoTraderLiveTradingProfile,
+  queueAiTradeForExecution,
   getAutoTraderAccountView,
   runAutoTraderCycle,
   getAutoTraderStatus,

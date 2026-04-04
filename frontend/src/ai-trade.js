@@ -33,6 +33,15 @@ function setStatus(text, isError = false) {
   node.className = isError ? 'small-note auth-error' : 'small-note';
 }
 
+function setQueueStatus(text, isError = false) {
+  const node = document.getElementById('ai-trade-queue-status');
+  if (!node) {
+    return;
+  }
+  node.textContent = text;
+  node.className = isError ? 'small-note auth-error' : 'small-note';
+}
+
 function getImageMimeType(file) {
   const type = String(file?.type || '').toLowerCase();
   if (type.startsWith('image/')) {
@@ -63,6 +72,8 @@ function renderPreview(file) {
 function fmtUsd(value) {
   return `$${Number(value || 0).toFixed(2)}`;
 }
+
+let latestAnalysis = null;
 
 function renderVotes(votes) {
   const target = document.getElementById('ai-trade-votes');
@@ -122,6 +133,33 @@ function renderResult(payload) {
 
   renderVotes(payload.modelVotes || []);
   resultsSection.classList.remove('hidden');
+  latestAnalysis = payload;
+  setQueueStatus('AI setup ready. Send this setup to the live queue if you want the bot to use it.');
+}
+
+async function queueLatestAnalysisForLiveExecution() {
+  if (!latestAnalysis) {
+    throw new Error('Run an AI Trade analysis first.');
+  }
+  const consensus = latestAnalysis.consensus || {};
+  const queued = await fetchJson('/api/market/auto-trader/queue-ai-trade', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      ...getAuthHeaders()
+    },
+    body: JSON.stringify({
+      symbol: latestAnalysis.ticker,
+      timeframe: latestAnalysis.timeframe,
+      trend: consensus.trend,
+      confidencePct: Number(consensus.confidencePct || 0),
+      entryPrice: Number(consensus.entryPrice || 0),
+      stopLoss: Number(consensus.stopLoss || 0),
+      takeProfit: Number(consensus.takeProfit || 0),
+      rationale: Array.isArray(consensus.rationale) ? consensus.rationale : []
+    })
+  });
+  return queued;
 }
 
 function setupAiTradeForm() {
@@ -129,6 +167,36 @@ function setupAiTradeForm() {
   const imageInput = document.getElementById('ai-trade-image');
   if (!form || !imageInput) {
     return;
+  }
+  const queueButton = document.getElementById('ai-trade-queue-live');
+  const openFundingButton = document.getElementById('ai-trade-open-funding');
+  const openAccountButton = document.getElementById('ai-trade-open-account');
+
+  if (queueButton) {
+    queueButton.addEventListener('click', async () => {
+      try {
+        queueButton.disabled = true;
+        setQueueStatus('Queueing AI setup for live execution...');
+        const payload = await queueLatestAnalysisForLiveExecution();
+        setQueueStatus(`Queued for live execution. Pending queue depth: ${Number(payload.queueDepth || 0)}.`);
+      } catch (error) {
+        setQueueStatus(error.message || 'Could not queue AI setup for live execution.', true);
+      } finally {
+        queueButton.disabled = false;
+      }
+    });
+  }
+
+  if (openFundingButton) {
+    openFundingButton.addEventListener('click', () => {
+      window.location.href = '/ai-bot-funding.html';
+    });
+  }
+
+  if (openAccountButton) {
+    openAccountButton.addEventListener('click', () => {
+      window.location.href = '/ai-bot-account.html';
+    });
   }
 
   imageInput.addEventListener('change', () => {
