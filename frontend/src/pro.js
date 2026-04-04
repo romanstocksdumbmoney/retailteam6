@@ -152,35 +152,14 @@ async function handleCheckoutReturn() {
   }
 }
 
-async function startSecureCheckout() {
-  const startButton = document.getElementById('pro-page-start');
-  try {
-    if (startButton) {
-      startButton.disabled = true;
-    }
-    setStatus('Opening secure card checkout...');
-    const token = localStorage.getItem('dumbdollars_token') || '';
-    if (!token) {
-      throw new Error('Login required before secure checkout.');
-    }
-    const session = await fetchJson('/api/auth/stripe/create-checkout-session', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        ...getAuthHeaders()
-      },
-      body: JSON.stringify({})
-    });
-    if (!session || !isSecureHostedCheckoutUrl(session.url)) {
-      throw new Error('Could not verify secure Stripe checkout URL.');
-    }
-    window.location.href = session.url;
-  } catch (error) {
-    setStatus(normalizeCheckoutErrorMessage(error), true);
-    if (startButton) {
-      startButton.disabled = false;
-    }
+function openPaymentPage() {
+  const token = localStorage.getItem('dumbdollars_token') || '';
+  if (!token) {
+    setStatus('Login required before secure checkout.', true);
+    return;
   }
+  setStatus('Opening payment page...');
+  window.location.href = '/payment.html';
 }
 
 function initProPage() {
@@ -189,7 +168,7 @@ function initProPage() {
     return;
   }
   startButton.addEventListener('click', async () => {
-    await startSecureCheckout();
+    openPaymentPage();
   });
 }
 handleCheckoutReturn()

@@ -192,7 +192,10 @@ async function buyLiveFundingAccess() {
     headers: {
       'Content-Type': 'application/json',
       ...getAuthHeaders()
-    }
+    },
+    body: JSON.stringify({
+      paymentMethodTypes: ['card', 'link', 'paypal']
+    })
   });
   if (!session?.url) {
     throw new Error('Could not create checkout session.');

@@ -290,7 +290,10 @@ router.get('/dev/pro-link', (_req, res) => {
 router.post('/stripe/create-checkout-session', authRequired, async (req, res) => {
   try {
     const customerEmail = String(req.body?.email || '').trim().toLowerCase() || undefined;
-    const session = await createCheckoutSession(req.user, { customerEmail });
+    const paymentMethodTypes = Array.isArray(req.body?.paymentMethodTypes)
+      ? req.body.paymentMethodTypes
+      : req.body?.paymentMethodTypes;
+    const session = await createCheckoutSession(req.user, { customerEmail, paymentMethodTypes });
     return res.json({ url: session.url });
   } catch (error) {
     const code = String(error.message || '');

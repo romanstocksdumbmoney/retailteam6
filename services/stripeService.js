@@ -156,6 +156,23 @@ function appendPathQuery(pathValue, params = {}) {
   return next ? `${pathname}?${next}` : pathname;
 }
 
+const ALLOWED_CHECKOUT_PAYMENT_METHOD_TYPES = new Set(['card', 'link', 'paypal']);
+
+function normalizeCheckoutPaymentMethodTypes(rawMethods) {
+  const fromArray = Array.isArray(rawMethods) ? rawMethods : null;
+  const fromString = typeof rawMethods === 'string' ? rawMethods.split(',') : null;
+  const envRaw = String(process.env.STRIPE_CHECKOUT_PAYMENT_METHOD_TYPES || '').trim();
+  const fromEnv = envRaw ? envRaw.split(',') : null;
+  const source = fromArray || fromString || fromEnv || ['card'];
+  const normalized = source
+    .map((entry) => String(entry || '').trim().toLowerCase())
+    .filter((entry) => ALLOWED_CHECKOUT_PAYMENT_METHOD_TYPES.has(entry));
+  if (!normalized.includes('card')) {
+    normalized.unshift('card');
+  }
+  return [...new Set(normalized)];
+}
+
 function isRecoverablePriceIdError(error) {
   const code = String(error?.code || '').trim().toLowerCase();
   const message = String(error?.message || '').trim().toLowerCase();
@@ -166,6 +183,20 @@ function isRecoverablePriceIdError(error) {
     message.includes('no such price')
     || message.includes('price') && message.includes('not found')
     || message.includes('price') && message.includes('inactive')
+  );
+}
+
+function isRecoverablePaymentMethodSetupError(error) {
+  const code = String(error?.code || '').trim().toLowerCase();
+  const providerMessage = String(error?.message || '').trim().toLowerCase();
+  if (code === 'payment_method_unactivated' || code === 'parameter_invalid_enum') {
+    return true;
+  }
+  return (
+    providerMessage.includes('payment method type')
+    || providerMessage.includes('payment_method_types')
+    || providerMessage.includes('is not available')
+    || providerMessage.includes('not enabled')
   );
 }
 
@@ -225,6 +256,7 @@ async function createCheckoutSession(user, options = {}) {
 
   const checkoutUser = resolveCheckoutUser(user, options);
   let customerId = await ensureStripeCustomer(checkoutUser);
+  const requestedPaymentMethodTypes = normalizeCheckoutPaymentMethodTypes(options.paymentMethodTypes);
   const base = getAppBaseUrl();
   const inlineLineItems = [
     {
@@ -240,10 +272,10 @@ async function createCheckoutSession(user, options = {}) {
       quantity: 1
     }
   ];
-  const buildCheckoutPayload = (lineItems) => ({
+  const buildCheckoutPayload = (lineItems, paymentMethodTypes = requestedPaymentMethodTypes) => ({
     mode: 'subscription',
     customer: customerId,
-    payment_method_types: ['card'],
+    payment_method_types: paymentMethodTypes,
     payment_method_collection: 'always',
     payment_method_options: {
       card: {
@@ -275,6 +307,17 @@ async function createCheckoutSession(user, options = {}) {
         return recoveredSession;
       } catch (retryError) {
         throw makeStripeCheckoutFailure(retryError);
+      }
+    }
+    if (
+      requestedPaymentMethodTypes.length > 1
+      && isRecoverablePaymentMethodSetupError(error)
+    ) {
+      try {
+        const fallbackCardOnlySession = await stripe.checkout.sessions.create(buildCheckoutPayload(initialLineItems, ['card']));
+        return fallbackCardOnlySession;
+      } catch (fallbackMethodsError) {
+        throw makeStripeCheckoutFailure(fallbackMethodsError);
       }
     }
     if (priceId && isRecoverablePriceIdError(error)) {

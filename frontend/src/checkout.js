@@ -111,7 +111,10 @@ async function startSecureCheckout() {
       headers: {
         'Content-Type': 'application/json',
         ...getAuthHeaders()
-      }
+      },
+      body: JSON.stringify({
+        paymentMethodTypes: ['card', 'link', 'paypal']
+      })
     });
     if (!session || !session.url || !isSecureCheckoutUrl(session.url)) {
       throw new Error('Could not verify secure Stripe checkout URL.');

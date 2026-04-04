@@ -179,7 +179,7 @@ function renderTrustPoints(preview, billingInfo) {
   const providerName = displayCheckoutProviderName(billingInfo);
   const rows = [
     `${providerName} hosts checkout so card data is not entered on DumbDollars.`,
-    'Accepted card networks through Stripe typically include Visa, Mastercard, Amex, and Discover (depends on Stripe account settings).',
+    'Supported methods through Stripe can include cards (Visa/Mastercard/Amex/Discover), Apple Pay/Apple Cash, Link, and PayPal when enabled in your Stripe account + region.',
     preview.cancellationPolicy || billingInfo.cancellationPolicy || 'Cancel anytime from Manage Billing.',
     preview.renewalPolicy || 'Recurring monthly subscription until canceled.'
   ];
@@ -246,36 +246,14 @@ async function loadPaymentSummary() {
   }
 }
 
-async function beginCheckout() {
-  const startButton = document.getElementById(CHECKOUT_BUTTON_ID);
-  try {
-    if (startButton) {
-      startButton.disabled = true;
-    }
-    setStatus('Opening secure checkout...');
-    const token = localStorage.getItem('dumbdollars_token') || '';
-    if (!token) {
-      throw new Error('Login required before secure checkout.');
-    }
-    const session = await fetchJson('/api/auth/stripe/create-checkout-session', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        ...getAuthHeaders()
-      },
-      body: JSON.stringify({})
-    });
-
-    if (!session || !isSecureHostedCheckoutUrl(session.url)) {
-      throw new Error('Could not verify secure Stripe checkout URL.');
-    }
-    window.location.href = session.url;
-  } catch (error) {
-    if (startButton) {
-      startButton.disabled = false;
-    }
-    setStatus(normalizeCheckoutErrorMessage(error), true);
+function openFinalCheckoutStep() {
+  const token = localStorage.getItem('dumbdollars_token') || '';
+  if (!token) {
+    setStatus('Login required before secure checkout.', true);
+    return;
   }
+  setStatus('Opening final checkout step...');
+  window.location.href = '/checkout.html';
 }
 
 function initPaymentPage() {
@@ -284,7 +262,7 @@ function initPaymentPage() {
     return;
   }
   startButton.addEventListener('click', async () => {
-    await beginCheckout();
+    openFinalCheckoutStep();
   });
   loadPaymentSummary().catch(() => {
     setStatus('Could not initialize payment page.', true);

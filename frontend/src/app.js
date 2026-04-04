@@ -1789,18 +1789,8 @@ function setupAuthForms() {
       }
 
       try {
-        const payload = await fetchJson('/api/auth/stripe/create-checkout-session', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            ...headersWithPlan()
-          }
-        });
-        if (!payload || !isSecureCheckoutUrl(payload.url)) {
-          throw new Error('Could not verify secure Stripe checkout URL.');
-        }
         closeBillingCard();
-        window.location.href = payload.url;
+        window.location.href = '/payment.html';
       } catch (error) {
         setAuthMessage(normalizeCheckoutErrorMessage(error), true);
       }
