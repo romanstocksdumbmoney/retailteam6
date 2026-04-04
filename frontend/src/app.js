@@ -24,7 +24,127 @@ const AUTH_EMAIL_STORAGE_KEY = 'dumbdollars_saved_email';
 const SAVED_EMAIL_KEY = 'dumbdollars_saved_email';
 const PREMIUM_SPIKE_PROOF_STORAGE_KEY = 'dumbdollars_premium_spike_proofs_v1';
 const FALLBACK_AI_DISCOVERY_LINK = 'https://x.com';
-
+const MODULE_NAV_TARGETS = Object.freeze([
+  {
+    key: 'stock-outlook',
+    label: 'Stock Outlook Search',
+    panel: 'main',
+    selector: '#stock-outlook-module',
+    aliases: ['stock', 'outlook', 'ticker', 'stock outlook']
+  },
+  {
+    key: 'earnings-gambling',
+    label: 'Earnings Gambling',
+    panel: 'main',
+    selector: '#earnings-module',
+    aliases: ['earnings', 'earnings board', 'earnings calendar', 'gambling']
+  },
+  {
+    key: 'x-scanner',
+    label: 'x.com Scanner + Market Flow',
+    panel: 'main',
+    selector: '#scanner-module',
+    aliases: ['scanner', 'market flow', 'x scanner', 'scan']
+  },
+  {
+    key: 'options-calculator',
+    label: 'Options Calculator + Gamma Exposure',
+    panel: 'main',
+    selector: '#options-module',
+    aliases: ['options', 'gamma', 'options calculator']
+  },
+  {
+    key: 'unusual-moves',
+    label: 'Unusual Moves Feed',
+    panel: 'main',
+    selector: '#unusual-moves-module',
+    aliases: ['unusual', 'moves', 'flow feed']
+  },
+  {
+    key: 'ai-discovery',
+    label: 'AI Discovery',
+    panel: 'sidebar',
+    selector: '#ai-discovery-section',
+    aliases: ['ai search', 'discovery', 'platform search']
+  },
+  {
+    key: 'realized-patterns',
+    label: 'Realized Patterns',
+    panel: 'sidebar',
+    selector: '#realized-patterns-section',
+    aliases: ['patterns', 'candlestick', 'volume down']
+  },
+  {
+    key: 'wild-takes',
+    label: 'Wild Takes',
+    panel: 'sidebar',
+    selector: '#wild-takes-section',
+    aliases: ['wild', 'takes', 'market takes']
+  },
+  {
+    key: 'insider-trades',
+    label: 'Insider Trades',
+    panel: 'sidebar',
+    selector: '#insider-trades-section',
+    aliases: ['insider', 'sec filings', 'insiders']
+  },
+  {
+    key: 'view-portfolios',
+    label: 'View Portfolios',
+    panel: 'sidebar',
+    selector: '#portfolios-section',
+    aliases: ['portfolio', 'portfolios', 'tracker']
+  },
+  {
+    key: 'trend-trades',
+    label: 'Trend Trades',
+    panel: 'sidebar',
+    selector: '#trend-trades-section',
+    aliases: ['trend', 'social trades', 'social trend']
+  },
+  {
+    key: 'high-iv-tracker',
+    label: 'High IV Tracker',
+    panel: 'sidebar',
+    selector: '#high-iv-section',
+    aliases: ['high iv', 'iv', 'implied volatility']
+  },
+  {
+    key: 'premium-spikes',
+    label: 'Call / Put Premium Spikes',
+    panel: 'sidebar',
+    selector: '#premium-spikes-section',
+    aliases: ['premium spikes', 'call put', 'spikes', 'options spikes']
+  },
+  {
+    key: 'ai-trade',
+    label: 'AI Trade',
+    panel: 'sidebar',
+    selector: '#ai-trade-section',
+    aliases: ['chart upload', 'ai trade']
+  },
+  {
+    key: 'ai-auto-trader',
+    label: 'AI Auto Trader',
+    panel: 'sidebar',
+    selector: '#ai-auto-trader-section',
+    aliases: ['auto trader', 'bot', 'ai bot']
+  },
+  {
+    key: 'ai-analyzer',
+    label: 'AI Analyzer',
+    panel: 'sidebar',
+    selector: '#ai-analyzer-section',
+    aliases: ['analyzer', 'screenshot analyzer']
+  },
+  {
+    key: 'ai-implementation',
+    label: 'Learn AI Implementation',
+    panel: 'sidebar',
+    selector: '#ai-implementation-section',
+    aliases: ['learn ai', 'implementation', 'ai steps']
+  }
+]);
 function isSecureCheckoutUrl(url) {
   if (typeof url !== 'string' || !url) {
     return false;
@@ -306,6 +426,175 @@ function fmtPct(value) {
 
 function fmtUsd(value) {
   return `$${Number(value || 0).toLocaleString()}`;
+}
+
+function setModuleSearchStatus(text, isError = false) {
+  const node = document.getElementById('module-search-status');
+  if (!node) {
+    return;
+  }
+  node.textContent = text;
+  node.className = isError ? 'small-note auth-error' : 'small-note';
+}
+
+function normalizeModuleSearchTerm(value) {
+  return String(value || '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim();
+}
+
+function scoreModuleMatch(term, target) {
+  const normalizedTerm = normalizeModuleSearchTerm(term);
+  if (!normalizedTerm) {
+    return -1;
+  }
+  const values = [
+    target.key,
+    target.label,
+    ...(Array.isArray(target.aliases) ? target.aliases : [])
+  ].map((item) => normalizeModuleSearchTerm(item));
+
+  if (values.includes(normalizedTerm)) {
+    return 100;
+  }
+  if (values.some((value) => value.startsWith(normalizedTerm))) {
+    return 85;
+  }
+  if (values.some((value) => value.includes(normalizedTerm))) {
+    return 75;
+  }
+
+  const tokens = normalizedTerm.split(' ').filter(Boolean);
+  if (tokens.length && values.some((value) => tokens.every((token) => value.includes(token)))) {
+    return 65;
+  }
+  return -1;
+}
+
+function getModuleTargetByKey(key) {
+  const normalized = normalizeModuleSearchTerm(key);
+  return MODULE_NAV_TARGETS.find((target) => normalizeModuleSearchTerm(target.key) === normalized) || null;
+}
+
+function findBestModuleTarget(query) {
+  const normalized = normalizeModuleSearchTerm(query);
+  if (!normalized) {
+    return null;
+  }
+  let bestTarget = null;
+  let bestScore = -1;
+  MODULE_NAV_TARGETS.forEach((target) => {
+    const score = scoreModuleMatch(normalized, target);
+    if (score > bestScore) {
+      bestTarget = target;
+      bestScore = score;
+    }
+  });
+  return bestScore >= 0 ? bestTarget : null;
+}
+
+function highlightModuleElement(element) {
+  if (!(element instanceof HTMLElement)) {
+    return;
+  }
+  element.classList.remove('module-highlight');
+  // Restart animation so repeated jumps are still visible.
+  void element.offsetWidth;
+  element.classList.add('module-highlight');
+  window.setTimeout(() => {
+    element.classList.remove('module-highlight');
+  }, 1500);
+}
+
+function jumpToModule(target) {
+  if (!target || !target.selector) {
+    return false;
+  }
+  const element = document.querySelector(target.selector);
+  if (!(element instanceof HTMLElement)) {
+    return false;
+  }
+  if (target.panel === 'sidebar') {
+    openSidebarMenu();
+    window.setTimeout(() => {
+      element.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      highlightModuleElement(element);
+    }, 90);
+  } else {
+    closeSidebarMenu();
+    element.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    highlightModuleElement(element);
+  }
+  return true;
+}
+
+function setupModuleNavigation() {
+  const form = document.getElementById('module-search-form');
+  const input = document.getElementById('module-search-input');
+  const datalist = document.getElementById('module-search-options');
+  const quickLinks = document.getElementById('quick-module-links');
+  if (!(form instanceof HTMLFormElement) || !(input instanceof HTMLInputElement)) {
+    return;
+  }
+
+  if (datalist instanceof HTMLDataListElement) {
+    datalist.innerHTML = MODULE_NAV_TARGETS
+      .map((target) => `<option value="${target.label}"></option>`)
+      .join('');
+  }
+
+  if (quickLinks) {
+    const quickKeys = ['stock-outlook', 'earnings-gambling', 'trend-trades', 'premium-spikes', 'ai-trade', 'ai-auto-trader'];
+    quickLinks.innerHTML = quickKeys
+      .map((key) => {
+        const target = getModuleTargetByKey(key);
+        if (!target) {
+          return '';
+        }
+        return `<button type="button" class="btn-secondary module-link-btn" data-module-key="${target.key}">${target.label}</button>`;
+      })
+      .join('');
+    quickLinks.addEventListener('click', (event) => {
+      const clicked = event.target;
+      if (!(clicked instanceof HTMLElement)) {
+        return;
+      }
+      const button = clicked.closest('[data-module-key]');
+      if (!(button instanceof HTMLElement)) {
+        return;
+      }
+      const key = String(button.getAttribute('data-module-key') || '').trim();
+      const target = getModuleTargetByKey(key);
+      if (!target) {
+        return;
+      }
+      const jumped = jumpToModule(target);
+      if (jumped) {
+        setModuleSearchStatus(`Jumped to ${target.label}.`);
+      }
+    });
+  }
+
+  form.addEventListener('submit', (event) => {
+    event.preventDefault();
+    const query = String(input.value || '').trim();
+    if (!query) {
+      setModuleSearchStatus('Type a module name to navigate quickly.', true);
+      return;
+    }
+    const target = findBestModuleTarget(query);
+    if (!target) {
+      setModuleSearchStatus(`No module found for "${query}". Try "earnings", "AI trade", or "premium spikes".`, true);
+      return;
+    }
+    const jumped = jumpToModule(target);
+    if (!jumped) {
+      setModuleSearchStatus(`Could not open ${target.label} right now.`, true);
+      return;
+    }
+    setModuleSearchStatus(`Jumped to ${target.label}.`);
+  });
 }
 
 function getPremiumSpikeProofMap() {
@@ -2282,6 +2571,7 @@ async function init() {
   setupAuthForms();
   setupProPopup();
   setupSidebarMenu();
+  setupModuleNavigation();
   setupAiSidebar();
   setupModuleDeepLinks();
   setupStockForm();

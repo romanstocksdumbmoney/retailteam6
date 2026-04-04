@@ -690,11 +690,56 @@ h1 {
   color: #fef9c3;
 }
 
+.mission-card {
+  margin-top: 0.8rem;
+  border: 1px solid rgba(250, 204, 21, 0.3);
+  border-radius: 12px;
+  background: rgba(2, 6, 23, 0.7);
+  padding: 0.85rem;
+}
+
+.mission-card h2 {
+  margin: 0 0 0.45rem;
+  color: #fde68a;
+  font-size: 1rem;
+}
+
+.mission-card p {
+  margin: 0 0 0.5rem;
+  color: #e5e7eb;
+}
+
+.module-command-card {
+  margin-top: 0.8rem;
+  border: 1px solid rgba(250, 204, 21, 0.32);
+  border-radius: 12px;
+  background: rgba(2, 6, 23, 0.78);
+  padding: 0.85rem;
+}
+
+.module-search-form {
+  margin-bottom: 0.5rem;
+}
+
+.module-search-label {
+  min-width: min(440px, 100%);
+  flex: 1 1 320px;
+}
+
+.module-search-label input {
+  width: 100%;
+}
+
 .quick-module-links {
   display: flex;
   flex-wrap: wrap;
   gap: 0.55rem;
   margin-top: 0.55rem;
+}
+
+.module-link-btn {
+  padding: 0.4rem 0.62rem;
+  font-size: 0.83rem;
 }
 
 .plan-badge {
@@ -987,6 +1032,22 @@ label {
   gap: 1rem;
 }
 
+.module-group-label {
+  margin: 0;
+  font-size: 0.76rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  font-weight: 800;
+  color: #fcd34d;
+  border-top: 1px solid rgba(148, 163, 184, 0.26);
+  padding-top: 0.7rem;
+}
+
+.sidebar .module-group-label:first-child {
+  border-top: none;
+  padding-top: 0;
+}
+
 .sidebar.sidebar-open {
   transform: translate(-50%, 0);
   opacity: 1;
@@ -996,6 +1057,15 @@ label {
 .main-panels {
   display: grid;
   gap: 1rem;
+  grid-template-columns: repeat(12, minmax(0, 1fr));
+}
+
+.module-card {
+  grid-column: span 6;
+}
+
+.module-wide {
+  grid-column: span 12;
 }
 
 .card {
@@ -1004,6 +1074,25 @@ label {
   border-radius: 13px;
   padding: 1rem;
   box-shadow: 0 16px 28px rgba(0, 0, 0, 0.35);
+}
+
+.module-highlight {
+  box-shadow:
+    0 0 0 2px rgba(250, 204, 21, 0.75),
+    0 16px 30px rgba(0, 0, 0, 0.38);
+  animation: module-pulse 1.2s ease;
+}
+
+@keyframes module-pulse {
+  0% {
+    transform: translateY(0);
+  }
+  35% {
+    transform: translateY(-2px);
+  }
+  100% {
+    transform: translateY(0);
+  }
 }
 
 .section-header {
@@ -1770,6 +1859,17 @@ label {
   padding: 0.6rem;
   color: #fef08a;
   font-size: 0.9rem;
+}
+
+@media (max-width: 1080px) {
+  .main-panels {
+    grid-template-columns: repeat(1, minmax(0, 1fr));
+  }
+
+  .module-card,
+  .module-wide {
+    grid-column: auto;
+  }
 }
 
 @media (max-width: 960px) {

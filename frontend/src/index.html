@@ -50,6 +50,28 @@
           </ul>
         </section>
         <p id="status" class="status">Checking API status...</p>
+        <section class="module-command-card" aria-labelledby="module-command-title">
+          <div class="section-header">
+            <h2 id="module-command-title">Find a module fast</h2>
+            <span class="chip">Quick Nav</span>
+          </div>
+          <form id="module-search-form" class="row-form module-search-form">
+            <label class="module-search-label">
+              Search tools
+              <input
+                id="module-search-input"
+                type="search"
+                placeholder="Search: earnings, premium spikes, AI analyzer..."
+                list="module-search-options"
+                autocomplete="off"
+              />
+              <datalist id="module-search-options"></datalist>
+            </label>
+            <button type="submit">Go to module</button>
+          </form>
+          <p id="module-search-status" class="small-note">Use quick links or search by feature name.</p>
+          <div id="quick-module-links" class="quick-module-links"></div>
+        </section>
         <section class="auth-bar">
           <div class="auth-grid">
             <form id="signup-form" class="auth-form">
@@ -113,7 +135,8 @@
 
       <div class="app-layout">
         <aside id="sidebar-panel" class="sidebar card">
-          <div class="section-header">
+          <p class="module-group-label">Free + Core modules</p>
+          <div id="ai-discovery-section" class="section-header">
             <h2>AI Discovery</h2>
             <span class="chip">Free</span>
           </div>
@@ -132,7 +155,7 @@
           <a id="ai-open-link" class="open-link" href="#" target="_blank" rel="noopener noreferrer">Open selected platform</a>
           <div id="ai-platform-details" class="stack"></div>
 
-          <div class="section-header">
+          <div id="realized-patterns-section" class="section-header">
             <h2>Realized Patterns</h2>
             <span class="chip">Free</span>
           </div>
@@ -150,7 +173,7 @@
           </form>
           <div id="patterns-results" class="stack"></div>
 
-          <div class="section-header">
+          <div id="wild-takes-section" class="section-header">
             <h2>Wild Takes</h2>
             <span class="chip">Core</span>
           </div>
@@ -158,7 +181,7 @@
           <button id="wild-takes-refresh" type="button">Refresh Wild Takes</button>
           <div id="wild-takes-results" class="stack"></div>
 
-          <div class="section-header">
+          <div id="insider-trades-section" class="section-header">
             <h2>Insider Trades</h2>
             <span class="chip">Free</span>
           </div>
@@ -197,14 +220,15 @@
           </form>
           <div id="insider-trades-results" class="stack"></div>
 
-          <div class="section-header">
+          <div id="portfolios-section" class="section-header">
             <h2>View Portfolios</h2>
             <span class="chip">Free</span>
           </div>
           <p class="small-note">Track top-performing portfolio styles from high-profile market participants and see fresh trade changes.</p>
           <a id="open-portfolios-page" class="open-link" href="/portfolios.html">Open Portfolio Tracker page</a>
 
-          <div class="section-header trend-header">
+          <p class="module-group-label">Pro modules</p>
+          <div id="trend-trades-section" class="section-header trend-header">
             <h2>Trend Trades</h2>
             <span class="chip pro">Pro</span>
           </div>
@@ -227,7 +251,7 @@
           </form>
           <div id="trend-trades-results" class="stack"></div>
 
-          <div class="section-header">
+          <div id="high-iv-section" class="section-header">
             <h2>High IV Tracker</h2>
             <span class="chip pro">Pro</span>
           </div>
@@ -243,14 +267,15 @@
           <button id="premium-spikes-refresh" type="button">Refresh Premium Spikes</button>
           <div id="premium-spikes-results" class="stack"></div>
 
-          <div class="section-header">
+          <p class="module-group-label">Account tools</p>
+          <div id="ai-trade-section" class="section-header">
             <h2>AI Trade</h2>
             <span class="chip">Account</span>
           </div>
           <p class="small-note">Upload chart patterns and get bullish/bearish consensus plus stop-loss and take-profit levels.</p>
           <button id="open-ai-trade" type="button">Open AI Trade</button>
 
-          <div class="section-header">
+          <div id="ai-auto-trader-section" class="section-header">
             <h2>AI Auto Trader</h2>
             <span class="chip">Account</span>
           </div>
@@ -258,14 +283,14 @@
           <button id="open-ai-auto-trader" type="button">Open AI Auto Trader</button>
           <button id="open-live-brokerage-account" class="btn-secondary" type="button">Open Live Brokerage Account</button>
 
-          <div class="section-header">
+          <div id="ai-analyzer-section" class="section-header">
             <h2>AI Analyzer</h2>
             <span class="chip">Account</span>
           </div>
           <p class="small-note">Upload screenshots and review if the setup was a good trade with AI scoring.</p>
           <button id="open-ai-analyzer" type="button">Open AI Analyzer</button>
 
-          <div class="section-header">
+          <div id="ai-implementation-section" class="section-header">
             <h2>Learn AI Implementation</h2>
             <span class="chip">Free</span>
           </div>
@@ -275,7 +300,7 @@
         <div id="sidebar-backdrop" class="sidebar-backdrop hidden" aria-hidden="true"></div>
 
         <div class="main-panels">
-          <section class="card">
+          <section id="stock-outlook-module" class="card module-card module-wide">
             <div class="section-header">
               <h2>Stock Outlook Search</h2>
               <span class="chip">Core</span>
@@ -293,7 +318,7 @@
             <div id="stock-results" class="prob-grid"></div>
           </section>
 
-          <section class="card">
+          <section id="scanner-module" class="card module-card">
             <div class="section-header">
               <h2>x.com Scanner + Market Flow</h2>
               <span class="chip pro">Pro</span>
@@ -317,7 +342,7 @@
             <div id="scan-results" class="stack"></div>
           </section>
 
-          <section class="card">
+          <section id="options-module" class="card module-card">
             <div class="section-header">
               <h2>Options Calculator + Gamma Exposure</h2>
               <span class="chip pro">Pro</span>
@@ -355,7 +380,7 @@
             <div id="options-results" class="stack"></div>
           </section>
 
-          <section class="card">
+          <section id="unusual-moves-module" class="card module-card">
             <div class="section-header">
               <h2>Unusual Moves Feed</h2>
               <span class="chip pro">Pro</span>
@@ -365,7 +390,7 @@
             <div id="unusual-results" class="stack"></div>
           </section>
 
-          <section class="card">
+          <section id="earnings-module" class="card module-card module-wide">
             <div class="section-header">
               <h2>Earnings Gambling</h2>
               <span class="chip">Core</span>
