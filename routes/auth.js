@@ -63,11 +63,16 @@ router.get('/billing/readiness', async (_req, res) => {
   try {
     const snapshot = await getBillingReadinessSnapshot();
     const checks = snapshot.checks || {};
+    const stripeAccount = snapshot.stripeAccount || {};
+    const cardPaymentsCapability = String(stripeAccount.cardPaymentsCapability || '').toLowerCase();
+    const cardPaymentsReady = !cardPaymentsCapability || cardPaymentsCapability === 'active';
     const isReady = Boolean(
       snapshot.configured
       && checks.secretKeyFormatValid
       && checks.webhookSecretPresent
       && snapshot.stripeAccount?.reachable
+      && stripeAccount.chargesEnabled
+      && cardPaymentsReady
       && snapshot.price?.valid
     );
     const report = {

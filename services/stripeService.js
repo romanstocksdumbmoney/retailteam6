@@ -62,6 +62,32 @@ function getProMonthlyAmountUsd() {
   return Number((getProMonthlyAmountCents() / 100).toFixed(2));
 }
 
+function isCardPaymentsCapabilityActive(account) {
+  const capability = String(account?.capabilities?.card_payments || '').trim().toLowerCase();
+  if (!capability) {
+    // Some account types may not expose this capability field consistently.
+    return true;
+  }
+  return capability === 'active';
+}
+
+async function assertStripeAccountReadyForCharges(stripe) {
+  try {
+    const account = await stripe.accounts.retrieve();
+    const chargesEnabled = Boolean(account?.charges_enabled);
+    const cardPaymentsActive = isCardPaymentsCapabilityActive(account);
+    if (!chargesEnabled || !cardPaymentsActive) {
+      throw new Error('stripe_account_inactive');
+    }
+  } catch (error) {
+    if (String(error?.message || '') === 'stripe_account_inactive') {
+      throw error;
+    }
+    // Do not hard-fail checkout preflight on account introspection errors.
+    // Checkout session creation below is still the source of truth.
+  }
+}
+
 async function ensureStripeCustomer(user) {
   const stripe = getStripe();
   if (!stripe) {
@@ -195,6 +221,7 @@ async function createCheckoutSession(user, options = {}) {
   if (!stripe) {
     throw new Error('billing_not_configured');
   }
+  await assertStripeAccountReadyForCharges(stripe);
 
   const checkoutUser = resolveCheckoutUser(user, options);
   let customerId = await ensureStripeCustomer(checkoutUser);
@@ -290,6 +317,7 @@ async function createFundingCheckoutSession(user, options = {}) {
   if (!stripe) {
     throw new Error('billing_not_configured');
   }
+  await assertStripeAccountReadyForCharges(stripe);
 
   const checkoutUser = resolveCheckoutUser(user, options);
   const customerId = await ensureStripeCustomer(checkoutUser);
@@ -484,7 +512,10 @@ async function getBillingReadinessSnapshot() {
     stripeAccount: {
       reachable: false,
       id: '',
-      displayName: ''
+      displayName: '',
+      chargesEnabled: false,
+      detailsSubmitted: false,
+      cardPaymentsCapability: ''
     },
     price: {
       configuredId: priceId || '',
@@ -508,7 +539,10 @@ async function getBillingReadinessSnapshot() {
     snapshot.stripeAccount = {
       reachable: true,
       id: String(account?.id || ''),
-      displayName: String(account?.business_profile?.name || account?.settings?.dashboard?.display_name || '')
+      displayName: String(account?.business_profile?.name || account?.settings?.dashboard?.display_name || ''),
+      chargesEnabled: Boolean(account?.charges_enabled),
+      detailsSubmitted: Boolean(account?.details_submitted),
+      cardPaymentsCapability: String(account?.capabilities?.card_payments || '')
     };
   } catch (_error) {
     snapshot.stripeAccount.reachable = false;
@@ -544,6 +578,16 @@ async function getStripeReadinessReport() {
   }
   if (!snapshot.stripeAccount.reachable) {
     blockers.push('Could not reach Stripe account with current secret key.');
+  }
+  if (snapshot.stripeAccount.reachable && !snapshot.stripeAccount.chargesEnabled) {
+    blockers.push('Stripe account charges are not enabled yet.');
+  }
+  if (
+    snapshot.stripeAccount.reachable
+    && snapshot.stripeAccount.cardPaymentsCapability
+    && snapshot.stripeAccount.cardPaymentsCapability !== 'active'
+  ) {
+    blockers.push(`Stripe card payments capability is "${snapshot.stripeAccount.cardPaymentsCapability}" (needs "active").`);
   }
   if (!snapshot.checks.webhookSecretPresent) {
     blockers.push('STRIPE_WEBHOOK_SECRET is missing.');
