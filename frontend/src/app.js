@@ -22,6 +22,7 @@ let earningsDayRolloverIntervalId = null;
 let earningsLastEtDateKey = '';
 const AUTH_EMAIL_STORAGE_KEY = 'dumbdollars_saved_email';
 const SAVED_EMAIL_KEY = 'dumbdollars_saved_email';
+const PREMIUM_SPIKE_PROOF_STORAGE_KEY = 'dumbdollars_premium_spike_proofs_v1';
 const FALLBACK_AI_DISCOVERY_LINK = 'https://x.com';
 
 function isSecureCheckoutUrl(url) {
@@ -311,6 +312,139 @@ function fmtPct(value) {
 
 function fmtUsd(value) {
   return `$${Number(value || 0).toLocaleString()}`;
+}
+
+function getPremiumSpikeProofMap() {
+  try {
+    const raw = localStorage.getItem(PREMIUM_SPIKE_PROOF_STORAGE_KEY);
+    if (!raw) {
+      return {};
+    }
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+      return {};
+    }
+    return parsed;
+  } catch (_error) {
+    return {};
+  }
+}
+
+function savePremiumSpikeProofMap(map) {
+  localStorage.setItem(PREMIUM_SPIKE_PROOF_STORAGE_KEY, JSON.stringify(map || {}));
+}
+
+function buildPremiumSpikeProofKey(item) {
+  const symbol = String(item?.symbol || 'UNKNOWN').trim().toUpperCase();
+  const premiumType = String(item?.premiumType || 'unknown').trim().toLowerCase();
+  const happenedAt = String(item?.happenedAt || '').trim();
+  const datePart = happenedAt ? happenedAt.slice(0, 10) : 'unknown-date';
+  return `${symbol}:${premiumType}:${datePart}`;
+}
+
+function readImageAsDataUrl(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result || ''));
+    reader.onerror = () => reject(new Error('Could not read image file.'));
+    reader.readAsDataURL(file);
+  });
+}
+
+function removePremiumSpikeProofByKey(proofKey) {
+  const map = getPremiumSpikeProofMap();
+  delete map[proofKey];
+  savePremiumSpikeProofMap(map);
+}
+
+function setPremiumSpikeProofByKey(proofKey, proof) {
+  const map = getPremiumSpikeProofMap();
+  map[proofKey] = proof;
+  const entries = Object.entries(map)
+    .sort((a, b) => Number(b[1]?.savedAt || 0) - Number(a[1]?.savedAt || 0));
+  const capped = Object.fromEntries(entries.slice(0, 20));
+  savePremiumSpikeProofMap(capped);
+}
+
+function renderPremiumSpikeProofPreview(container, proofKey) {
+  if (!container) {
+    return;
+  }
+  container.innerHTML = '';
+  const map = getPremiumSpikeProofMap();
+  const proof = map[proofKey];
+  if (!proof?.dataUrl) {
+    const empty = document.createElement('p');
+    empty.className = 'small-note';
+    empty.textContent = 'No Unusual Whales screenshot proof attached yet.';
+    container.appendChild(empty);
+    return;
+  }
+  const image = document.createElement('img');
+  image.className = 'premium-proof-image';
+  image.alt = 'Uploaded Unusual Whales screenshot proof';
+  image.loading = 'lazy';
+  image.src = proof.dataUrl;
+
+  const meta = document.createElement('p');
+  meta.className = 'small-note';
+  const savedAt = Number(proof.savedAt || 0);
+  meta.textContent = savedAt
+    ? `UW proof saved ${new Date(savedAt).toLocaleString()}`
+    : 'UW proof attached.';
+
+  const removeButton = document.createElement('button');
+  removeButton.type = 'button';
+  removeButton.className = 'btn-secondary premium-proof-clear';
+  removeButton.textContent = 'Remove proof screenshot';
+  removeButton.addEventListener('click', () => {
+    removePremiumSpikeProofByKey(proofKey);
+    renderPremiumSpikeProofPreview(container, proofKey);
+  });
+
+  container.appendChild(image);
+  container.appendChild(meta);
+  container.appendChild(removeButton);
+}
+
+function bindPremiumSpikeProofControls(card, item) {
+  const proofKey = buildPremiumSpikeProofKey(item);
+  const uploadButton = card.querySelector('.premium-proof-upload');
+  const fileInput = card.querySelector('.premium-proof-file-input');
+  const preview = card.querySelector('.premium-proof-preview');
+  if (!(uploadButton instanceof HTMLButtonElement) || !(fileInput instanceof HTMLInputElement) || !(preview instanceof HTMLElement)) {
+    return;
+  }
+
+  renderPremiumSpikeProofPreview(preview, proofKey);
+  uploadButton.addEventListener('click', () => {
+    fileInput.click();
+  });
+  fileInput.addEventListener('change', async () => {
+    const file = fileInput.files?.[0];
+    fileInput.value = '';
+    if (!file) {
+      return;
+    }
+    if (!String(file.type || '').startsWith('image/')) {
+      preview.innerHTML = '<p class="small-note auth-error">Please select an image file.</p>';
+      return;
+    }
+    if (file.size > 2_500_000) {
+      preview.innerHTML = '<p class="small-note auth-error">Image is too large. Keep screenshot under 2.5MB.</p>';
+      return;
+    }
+    try {
+      const dataUrl = await readImageAsDataUrl(file);
+      setPremiumSpikeProofByKey(proofKey, {
+        dataUrl,
+        savedAt: Date.now()
+      });
+      renderPremiumSpikeProofPreview(preview, proofKey);
+    } catch (error) {
+      preview.innerHTML = `<p class="small-note auth-error">${error.message || 'Could not attach screenshot proof.'}</p>`;
+    }
+  });
 }
 
 function clampPercent(value) {
@@ -807,6 +941,11 @@ function renderPremiumSpikes(payload) {
   const rows = Array.isArray(payload?.items) ? payload.items : [];
   rows.forEach((item) => {
     const isCall = String(item.premiumType || '').toLowerCase() === 'call';
+    const symbol = String(item.symbol || '').trim().toUpperCase();
+    const encodedSymbol = encodeURIComponent(symbol);
+    const yahooQuoteUrl = `https://finance.yahoo.com/quote/${encodedSymbol}`;
+    const yahooChartUrl = `https://finance.yahoo.com/quote/${encodedSymbol}/chart?p=${encodedSymbol}`;
+    const unusualWhalesUrl = `https://unusualwhales.com/stock/${encodedSymbol}/overview`;
     const card = document.createElement('article');
     card.className = `premium-spike-card premium-spike-card--${isCall ? 'call' : 'put'}`;
     const reaction = item.reaction || {};
@@ -818,14 +957,26 @@ function renderPremiumSpikes(payload) {
       : 'N/A';
     const baselineLabel = Number(item.previousDayPremiumUsd || item.baselinePremiumUsd || 0);
     card.innerHTML = `
-      <h4>${item.symbol} • ${isCall ? 'CALL' : 'PUT'} spike</h4>
+      <h4>${symbol} • ${isCall ? 'CALL' : 'PUT'} spike</h4>
       <p><strong>Spike:</strong> ${fmtUsd(item.spikeAmountUsd)} (${Number(item.spikeMultiple || 0).toFixed(2)}x vs yesterday)</p>
       <p><strong>Previous day:</strong> ${fmtUsd(baselineLabel)} • <strong>When:</strong> ${happenedAtLabel}</p>
       <p><strong>Expected:</strong> ${String(item.expectedDirection || '').toUpperCase()} • <strong>Reacted:</strong> ${reaction.label || 'N/A'}</p>
       <p><strong>Move after spike:</strong> ${reactionSign}${reactionMove.toFixed(2)}%</p>
       <p class="small-note">Call prem ${fmtUsd(item.callPremiumUsd)} • Put prem ${fmtUsd(item.putPremiumUsd)} • PCR ${Number(item.putCallRatio || 0).toFixed(2)}</p>
+      <p class="small-note">Proof links:
+        <a class="open-link" href="${yahooQuoteUrl}" target="_blank" rel="noopener noreferrer">Yahoo quote</a>
+        • <a class="open-link" href="${yahooChartUrl}" target="_blank" rel="noopener noreferrer">Yahoo chart</a>
+        • <a class="open-link" href="${unusualWhalesUrl}" target="_blank" rel="noopener noreferrer">Unusual Whales</a>
+      </p>
+      <p class="small-note">Attach your Unusual Whales screenshot for audit proof on this spike:</p>
+      <div class="premium-proof-controls">
+        <button type="button" class="btn-secondary premium-proof-upload">Attach UW screenshot proof</button>
+        <input class="premium-proof-file-input hidden" type="file" accept="image/*" />
+      </div>
+      <div class="premium-proof-preview"></div>
     `;
     target.appendChild(card);
+    bindPremiumSpikeProofControls(card, item);
   });
 
   if (!rows.length) {
