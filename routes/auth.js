@@ -243,6 +243,36 @@ router.post('/stripe/create-checkout-session', authRequired, async (req, res) =>
         message: 'Stripe is not configured. Set STRIPE_SECRET_KEY.'
       });
     }
+    if (code === 'invalid_price_configuration') {
+      return res.status(502).json({
+        error: 'invalid_price_configuration',
+        message: 'Stripe price configuration is invalid or inactive. Re-check STRIPE_PRICE_ID or use inline price fallback.'
+      });
+    }
+    if (code === 'stripe_account_inactive') {
+      return res.status(502).json({
+        error: 'stripe_account_inactive',
+        message: 'Stripe account is not fully activated for live card processing yet.'
+      });
+    }
+    if (code === 'card_network_not_enabled') {
+      return res.status(502).json({
+        error: 'card_network_not_enabled',
+        message: 'Your Stripe account is not configured for this card network yet (for example Amex). Enable it in Stripe Dashboard > Payments > Payment methods.'
+      });
+    }
+    if (code === 'payment_method_not_available') {
+      return res.status(502).json({
+        error: 'payment_method_not_available',
+        message: 'Card payment method is unavailable for this Stripe account/currency/region configuration.'
+      });
+    }
+    if (code === 'test_live_mode_mismatch') {
+      return res.status(502).json({
+        error: 'test_live_mode_mismatch',
+        message: 'Environment mismatch: using live mode with test data (or vice versa). Make sure Stripe key mode and price mode match.'
+      });
+    }
     if (code === 'stripe_checkout_creation_failed') {
       return res.status(502).json({
         error: 'checkout_provider_error',

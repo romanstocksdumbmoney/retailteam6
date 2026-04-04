@@ -115,6 +115,28 @@ function appendPathQuery(pathValue, params = {}) {
   return next ? `${pathname}?${next}` : pathname;
 }
 
+function isRecoverablePriceIdError(error) {
+  const code = String(error?.code || '').trim().toLowerCase();
+  const message = String(error?.message || '').trim().toLowerCase();
+  if (code === 'resource_missing') {
+    return true;
+  }
+  return (
+    message.includes('no such price')
+    || message.includes('price') && message.includes('not found')
+    || message.includes('price') && message.includes('inactive')
+  );
+}
+
+function makeStripeCheckoutFailure(error) {
+  const wrapped = new Error('stripe_checkout_creation_failed');
+  wrapped.providerCode = String(error?.code || '').trim();
+  wrapped.providerType = String(error?.type || '').trim();
+  wrapped.providerDeclineCode = String(error?.decline_code || '').trim();
+  wrapped.providerMessage = String(error?.message || '').trim();
+  return wrapped;
+}
+
 async function createCheckoutSession(user, options = {}) {
   const stripe = getStripe();
   const priceId = getProPriceId();
@@ -125,23 +147,21 @@ async function createCheckoutSession(user, options = {}) {
   const checkoutUser = resolveCheckoutUser(user, options);
   const customerId = await ensureStripeCustomer(checkoutUser);
   const base = getAppBaseUrl();
-  const lineItems = priceId
-    ? [{ price: priceId, quantity: 1 }]
-    : [
-      {
-        price_data: {
-          currency: 'usd',
-          recurring: { interval: 'month' },
-          unit_amount: getProMonthlyAmountCents(),
-          product_data: {
-            name: 'DumbDollars Pro',
-            description: 'Monthly Pro access subscription'
-          }
-        },
-        quantity: 1
-      }
-    ];
-  const session = await stripe.checkout.sessions.create({
+  const inlineLineItems = [
+    {
+      price_data: {
+        currency: 'usd',
+        recurring: { interval: 'month' },
+        unit_amount: getProMonthlyAmountCents(),
+        product_data: {
+          name: 'DumbDollars Pro',
+          description: 'Monthly Pro access subscription'
+        }
+      },
+      quantity: 1
+    }
+  ];
+  const buildCheckoutPayload = (lineItems) => ({
     mode: 'subscription',
     customer: customerId,
     payment_method_types: ['card'],
@@ -156,8 +176,21 @@ async function createCheckoutSession(user, options = {}) {
     cancel_url: `${base}/?checkout=cancelled`,
     metadata: { userId: checkoutUser.id }
   });
-
-  return session;
+  const initialLineItems = priceId ? [{ price: priceId, quantity: 1 }] : inlineLineItems;
+  try {
+    const session = await stripe.checkout.sessions.create(buildCheckoutPayload(initialLineItems));
+    return session;
+  } catch (error) {
+    if (priceId && isRecoverablePriceIdError(error)) {
+      try {
+        const fallbackSession = await stripe.checkout.sessions.create(buildCheckoutPayload(inlineLineItems));
+        return fallbackSession;
+      } catch (fallbackError) {
+        throw makeStripeCheckoutFailure(fallbackError);
+      }
+    }
+    throw makeStripeCheckoutFailure(error);
+  }
 }
 
 async function createFundingCheckoutSession(user, options = {}) {

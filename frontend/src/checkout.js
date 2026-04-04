@@ -90,7 +90,18 @@ async function startSecureCheckout() {
     }
     window.location.href = session.url;
   } catch (error) {
-    setStatus(error.message || 'Could not start Stripe checkout.', true);
+    const rawMessage = String(error.message || '');
+    const normalized = rawMessage.toLowerCase();
+    const networkHints = normalized.includes('processing')
+      || normalized.includes('authentication')
+      || normalized.includes('3d secure')
+      || normalized.includes('card was declined')
+      || normalized.includes('payment_intent')
+      || normalized.includes('amex');
+    const message = networkHints
+      ? `${rawMessage || 'Checkout failed.'} If this was an Amex card, verify Amex is enabled in Stripe Dashboard > Payments > Payment methods.`
+      : (rawMessage || 'Could not start Stripe checkout.');
+    setStatus(message, true);
     if (startButton) {
       startButton.disabled = false;
     }

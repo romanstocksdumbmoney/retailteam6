@@ -150,7 +150,7 @@ async function startSecureCheckout() {
         'Content-Type': 'application/json',
         ...getAuthHeaders()
       },
-      body: JSON.stringify({ preferredCardNetwork: 'amex' })
+      body: JSON.stringify({})
     });
     if (!session || !isSecureHostedCheckoutUrl(session.url)) {
       throw new Error('Could not verify secure Stripe checkout URL.');
