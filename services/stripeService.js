@@ -145,6 +145,12 @@ async function createCheckoutSession(user, options = {}) {
     mode: 'subscription',
     customer: customerId,
     payment_method_types: ['card'],
+    payment_method_collection: 'always',
+    payment_method_options: {
+      card: {
+        request_three_d_secure: 'automatic'
+      }
+    },
     line_items: lineItems,
     success_url: `${base}/?checkout=success&session_id={CHECKOUT_SESSION_ID}`,
     cancel_url: `${base}/?checkout=cancelled`,
@@ -198,6 +204,12 @@ async function createFundingCheckoutSession(user, options = {}) {
     mode: 'payment',
     customer: customerId,
     payment_method_types: ['card'],
+    payment_method_collection: 'always',
+    payment_method_options: {
+      card: {
+        request_three_d_secure: 'automatic'
+      }
+    },
     line_items: [
       {
         price_data: {

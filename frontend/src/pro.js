@@ -60,6 +60,8 @@ function isSecureHostedCheckoutUrl(url) {
       || host.endsWith('.stripe.com')
       || host === 'localhost'
       || host === '127.0.0.1'
+      // Stripe custom checkout domains can use /c/pay/* path.
+      || (parsed.protocol === 'https:' && /^\/(?:c\/)?pay\//.test(parsed.pathname))
     );
   } catch (_error) {
     return false;

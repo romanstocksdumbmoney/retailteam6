@@ -124,7 +124,8 @@ function isSecureHostedCheckoutUrl(url) {
     }
     const isTrustedProvider = host === 'checkout.stripe.com' || host.endsWith('.stripe.com');
     const isLocalHosted = ['localhost', '127.0.0.1'].includes(host);
-    return isTrustedProvider || isLocalHosted;
+    const isStripeCustomCheckoutPath = parsed.protocol === 'https:' && /^\/(?:c\/)?pay\//.test(parsed.pathname);
+    return isTrustedProvider || isLocalHosted || isStripeCustomCheckoutPath;
   } catch (_error) {
     return false;
   }
@@ -150,6 +151,7 @@ function renderTrustPoints(preview, billingInfo) {
   const providerName = displayCheckoutProviderName(billingInfo);
   const rows = [
     `${providerName} hosts checkout so card data is not entered on DumbDollars.`,
+    'Accepted card networks through Stripe typically include Visa, Mastercard, Amex, and Discover (depends on Stripe account settings).',
     preview.cancellationPolicy || billingInfo.cancellationPolicy || 'Cancel anytime from Manage Billing.',
     preview.renewalPolicy || 'Recurring monthly subscription until canceled.'
   ];
