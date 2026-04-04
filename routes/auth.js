@@ -236,10 +236,17 @@ router.post('/stripe/create-checkout-session', authRequired, async (req, res) =>
     const session = await createCheckoutSession(req.user, { customerEmail });
     return res.json({ url: session.url });
   } catch (error) {
+    const code = String(error.message || '');
     if (String(error.message) === 'billing_not_configured' || String(error.message) === 'stripe_not_configured') {
       return res.status(503).json({
         error: 'billing_not_configured',
         message: 'Stripe is not configured. Set STRIPE_SECRET_KEY.'
+      });
+    }
+    if (code === 'stripe_checkout_creation_failed') {
+      return res.status(502).json({
+        error: 'checkout_provider_error',
+        message: 'Stripe checkout could not start. Confirm card networks (including Amex), account activation, and currency settings in Stripe Dashboard.'
       });
     }
     return res.status(500).json({ error: 'checkout_failed', message: 'Could not create Stripe checkout session.' });

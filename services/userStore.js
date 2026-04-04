@@ -1,9 +1,12 @@
 const crypto = require('crypto');
 const bcrypt = require('bcryptjs');
+const fs = require('fs');
+const path = require('path');
 
 const usersById = new Map();
 const usersByEmail = new Map();
 const usersByStripeCustomerId = new Map();
+const USER_STORE_FILE = String(process.env.USER_STORE_FILE || path.join(process.cwd(), 'data', 'users.json')).trim();
 const SUPPORTED_AUTH_PROVIDERS = new Set(['password', 'google', 'apple', 'github', 'discord', 'x']);
 const DISPOSABLE_EMAIL_DOMAINS = new Set([
   'mailinator.com',
@@ -18,6 +21,78 @@ function normalizeEmail(email) {
   return String(email || '')
     .trim()
     .toLowerCase();
+}
+
+function ensureStoreDirExists() {
+  const dir = path.dirname(USER_STORE_FILE);
+  fs.mkdirSync(dir, { recursive: true });
+}
+
+function persistUsersToDisk() {
+  try {
+    ensureStoreDirExists();
+    const records = [...usersById.values()].map((user) => ({
+      id: user.id,
+      email: user.email,
+      passwordHash: user.passwordHash,
+      authProviders: Array.isArray(user.authProviders) ? [...new Set(user.authProviders.map((entry) => normalizeAuthProvider(entry)))] : ['password'],
+      lastAuthProvider: normalizeAuthProvider(user.lastAuthProvider || 'password'),
+      plan: user.plan === 'pro' ? 'pro' : 'free',
+      stripeCustomerId: user.stripeCustomerId || null,
+      stripeSubscriptionId: user.stripeSubscriptionId || null,
+      subscriptionStatus: user.subscriptionStatus || (user.plan === 'pro' ? 'active' : 'inactive'),
+      createdAt: user.createdAt || new Date().toISOString(),
+      updatedAt: user.updatedAt || new Date().toISOString()
+    }));
+    const payload = JSON.stringify({ users: records }, null, 2);
+    const tmpPath = `${USER_STORE_FILE}.tmp`;
+    fs.writeFileSync(tmpPath, payload, 'utf8');
+    fs.renameSync(tmpPath, USER_STORE_FILE);
+  } catch (_error) {
+    // Intentionally non-fatal in runtime; in-memory store still operates.
+  }
+}
+
+function loadUsersFromDisk() {
+  try {
+    if (!fs.existsSync(USER_STORE_FILE)) {
+      return;
+    }
+    const raw = fs.readFileSync(USER_STORE_FILE, 'utf8');
+    const parsed = JSON.parse(raw);
+    const records = Array.isArray(parsed?.users) ? parsed.users : [];
+    records.forEach((record) => {
+      const email = normalizeEmail(record?.email);
+      const id = String(record?.id || '').trim();
+      const passwordHash = String(record?.passwordHash || '').trim();
+      if (!id || !email || !passwordHash || usersById.has(id) || usersByEmail.has(email)) {
+        return;
+      }
+      const authProviders = Array.isArray(record?.authProviders)
+        ? [...new Set(record.authProviders.map((entry) => normalizeAuthProvider(entry)))]
+        : [normalizeAuthProvider(record?.lastAuthProvider || 'password')];
+      const user = {
+        id,
+        email,
+        passwordHash,
+        authProviders: authProviders.length ? authProviders : ['password'],
+        lastAuthProvider: normalizeAuthProvider(record?.lastAuthProvider || authProviders[0] || 'password'),
+        plan: record?.plan === 'pro' ? 'pro' : 'free',
+        stripeCustomerId: record?.stripeCustomerId ? String(record.stripeCustomerId).trim() : null,
+        stripeSubscriptionId: record?.stripeSubscriptionId ? String(record.stripeSubscriptionId).trim() : null,
+        subscriptionStatus: String(record?.subscriptionStatus || (record?.plan === 'pro' ? 'active' : 'inactive')),
+        createdAt: String(record?.createdAt || new Date().toISOString()),
+        updatedAt: String(record?.updatedAt || new Date().toISOString())
+      };
+      usersById.set(user.id, user);
+      usersByEmail.set(user.email, user.id);
+      if (user.stripeCustomerId) {
+        usersByStripeCustomerId.set(user.stripeCustomerId, user.id);
+      }
+    });
+  } catch (_error) {
+    // If persistence file is malformed/unavailable, start with empty in-memory store.
+  }
 }
 
 function isValidEmailFormat(email) {
@@ -160,6 +235,7 @@ function createUser({ email, password, passwordHash, authProvider = 'password' }
 
   usersById.set(user.id, user);
   usersByEmail.set(user.email, user.id);
+  persistUsersToDisk();
   return sanitizeUser(user);
 }
 
@@ -257,6 +333,7 @@ function updateUser(userId, patch) {
   }
 
   user.updatedAt = new Date().toISOString();
+  persistUsersToDisk();
   return user;
 }
 
@@ -329,6 +406,8 @@ function setSubscriptionStatus(userId, status) {
   const updated = updateUser(userId, { subscriptionStatus: normalized });
   return updated ? sanitizeUser(updated) : null;
 }
+
+loadUsersFromDisk();
 
 module.exports = {
   createUser,

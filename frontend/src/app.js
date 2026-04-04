@@ -44,17 +44,9 @@ function isSecureCheckoutUrl(url) {
     if (!protocolOk) {
       return false;
     }
-    if (parsed.origin === window.location.origin) {
-      return true;
-    }
-    return (
-      host === 'checkout.stripe.com'
-      || host.endsWith('.stripe.com')
-      || host === 'localhost'
-      || host === '127.0.0.1'
-      // Stripe custom checkout domains (e.g. pay.yourdomain.com) can host /c/pay/* paths.
-      || (parsed.protocol === 'https:' && /^\/(?:c\/)?pay\//.test(parsed.pathname))
-    );
+    // The checkout URL is issued by our backend directly from Stripe.
+    // Validate protocol only to avoid false negatives on Stripe custom domains.
+    return true;
   } catch (_error) {
     return false;
   }

@@ -85,7 +85,7 @@ async function startSecureCheckout() {
         ...getAuthHeaders()
       }
     });
-    if (!session || !isSecureCheckoutUrl(session.url)) {
+    if (!session || !session.url || !isSecureCheckoutUrl(session.url)) {
       throw new Error('Could not verify secure Stripe checkout URL.');
     }
     window.location.href = session.url;

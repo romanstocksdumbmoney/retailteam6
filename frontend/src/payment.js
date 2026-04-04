@@ -246,7 +246,17 @@ async function beginCheckout() {
     if (startButton) {
       startButton.disabled = false;
     }
-    setStatus(error.message || 'Could not start secure checkout.', true);
+    const rawMessage = String(error.message || '');
+    const normalized = rawMessage.toLowerCase();
+    const networkHints = normalized.includes('processing')
+      || normalized.includes('authentication')
+      || normalized.includes('3d secure')
+      || normalized.includes('card was declined')
+      || normalized.includes('payment_intent');
+    const withHint = networkHints
+      ? `${rawMessage || 'Checkout failed.'} If this was an Amex card, confirm Amex is enabled in Stripe dashboard > Payments > Payment methods, then retry.`
+      : (rawMessage || 'Could not start secure checkout.');
+    setStatus(withHint, true);
   }
 }
 
