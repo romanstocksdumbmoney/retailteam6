@@ -135,12 +135,17 @@
 
       <div class="app-layout">
         <aside id="sidebar-panel" class="sidebar card">
-          <p class="module-group-label">Free + Core modules</p>
-          <div id="ai-discovery-section" class="section-header">
+          <details class="module-dropdown" open>
+            <summary class="module-dropdown-summary">
+              <span>Free + Core modules</span>
+              <span class="chip">Core</span>
+            </summary>
+            <div class="module-dropdown-body">
+              <div id="ai-discovery-section" class="section-header">
             <h2>AI Discovery</h2>
             <span class="chip">Free</span>
-          </div>
-          <form id="ai-search-form" class="row-form">
+              </div>
+              <form id="ai-search-form" class="row-form">
             <label>
               Search topic
               <input id="ai-search-query" type="text" placeholder="NVDA earnings, Fed rates, AI chips" />
@@ -151,16 +156,16 @@
             </label>
             <button type="submit">Search AI</button>
             <button id="ai-search-all" class="btn-secondary" type="button">Search All AI Sources</button>
-          </form>
-          <a id="ai-open-link" class="open-link" href="#" target="_blank" rel="noopener noreferrer">Open selected platform</a>
-          <div id="ai-platform-details" class="stack"></div>
+              </form>
+              <a id="ai-open-link" class="open-link" href="#" target="_blank" rel="noopener noreferrer">Open selected platform</a>
+              <div id="ai-platform-details" class="stack"></div>
 
-          <div id="realized-patterns-section" class="section-header">
+              <div id="realized-patterns-section" class="section-header">
             <h2>Realized Patterns</h2>
             <span class="chip">Free</span>
-          </div>
-          <p class="small-note">Track live volume-down and candlestick setups. Filled patterns auto-drop off the board.</p>
-          <form id="patterns-form" class="row-form">
+              </div>
+              <p class="small-note">Track live volume-down and candlestick setups. Filled patterns auto-drop off the board.</p>
+              <form id="patterns-form" class="row-form">
             <label>
               Pattern type
               <select id="pattern-type-select">
@@ -169,25 +174,25 @@
                 <option value="candlestick">Candlestick</option>
               </select>
             </label>
-            <button id="patterns-refresh" type="submit">Refresh</button>
-          </form>
-          <div id="patterns-results" class="stack"></div>
+                <button id="patterns-refresh" type="submit">Refresh</button>
+              </form>
+              <div id="patterns-results" class="stack"></div>
 
-          <div id="wild-takes-section" class="section-header">
+              <div id="wild-takes-section" class="section-header">
             <h2>Wild Takes</h2>
             <span class="chip">Core</span>
-          </div>
-          <p class="small-note">Notification-style oddball market takes and aggressive positioning chatter.</p>
-          <button id="wild-takes-refresh" type="button">Refresh Wild Takes</button>
-          <div id="wild-takes-results" class="stack"></div>
+              </div>
+              <p class="small-note">Notification-style oddball market takes and aggressive positioning chatter.</p>
+              <button id="wild-takes-refresh" type="button">Refresh Wild Takes</button>
+              <div id="wild-takes-results" class="stack"></div>
 
-          <div id="insider-trades-section" class="section-header">
+              <div id="insider-trades-section" class="section-header">
             <h2>Insider Trades</h2>
             <span class="chip">Free</span>
-          </div>
-          <p class="small-note">Track larger insider buy/sell filings and see whether price followed through.</p>
-          <a id="open-insider-trades-page" class="open-link" href="/insider-trades.html">Open full Insider Trades page</a>
-          <form id="insider-trades-form" class="row-form">
+              </div>
+              <p class="small-note">Track larger insider buy/sell filings and see whether price followed through.</p>
+              <a id="open-insider-trades-page" class="open-link" href="/insider-trades.html">Open full Insider Trades page</a>
+              <form id="insider-trades-form" class="row-form">
             <label>
               Side
               <select id="insider-side-select">
@@ -216,24 +221,31 @@
                 <option value="reaction_asc">Smallest reaction</option>
               </select>
             </label>
-            <button id="insider-trades-refresh" type="submit">Apply</button>
-          </form>
-          <div id="insider-trades-results" class="stack"></div>
+                <button id="insider-trades-refresh" type="submit">Apply</button>
+              </form>
+              <div id="insider-trades-results" class="stack"></div>
 
-          <div id="portfolios-section" class="section-header">
+              <div id="portfolios-section" class="section-header">
             <h2>View Portfolios</h2>
             <span class="chip">Free</span>
-          </div>
-          <p class="small-note">Track top-performing portfolio styles from high-profile market participants and see fresh trade changes.</p>
-          <a id="open-portfolios-page" class="open-link" href="/portfolios.html">Open Portfolio Tracker page</a>
+              </div>
+              <p class="small-note">Track top-performing portfolio styles from high-profile market participants and see fresh trade changes.</p>
+              <a id="open-portfolios-page" class="open-link" href="/portfolios.html">Open Portfolio Tracker page</a>
+            </div>
+          </details>
 
-          <p class="module-group-label">Pro modules</p>
-          <div id="trend-trades-section" class="section-header trend-header">
+          <details class="module-dropdown">
+            <summary class="module-dropdown-summary">
+              <span>Pro modules</span>
+              <span class="chip pro">Pro</span>
+            </summary>
+            <div class="module-dropdown-body">
+              <div id="trend-trades-section" class="section-header trend-header">
             <h2>Trend Trades</h2>
             <span class="chip pro">Pro</span>
-          </div>
-          <p class="small-note">Top social-media trend trades across TikTok, YouTube, Reels, Spotlight, X.com, and more.</p>
-          <form id="trend-trades-form" class="row-form">
+              </div>
+              <p class="small-note">Top social-media trend trades across TikTok, YouTube, Reels, Spotlight, X.com, and more.</p>
+              <form id="trend-trades-form" class="row-form">
             <label>
               Trend source
               <select id="trend-source-select">
@@ -247,55 +259,64 @@
                 <option value="X.com">X.com</option>
               </select>
             </label>
-            <button id="trend-trades-refresh" type="submit">Apply</button>
-          </form>
-          <div id="trend-trades-results" class="stack"></div>
+                <button id="trend-trades-refresh" type="submit">Apply</button>
+              </form>
+              <div id="trend-trades-results" class="stack"></div>
 
-          <div id="high-iv-section" class="section-header">
+              <div id="high-iv-section" class="section-header">
             <h2>High IV Tracker</h2>
             <span class="chip pro">Pro</span>
-          </div>
-          <p class="small-note">Tracks names with elevated implied volatility, IV rank, and expected move.</p>
-          <button id="high-iv-refresh" type="button">Refresh High IV</button>
-          <div id="high-iv-results" class="stack"></div>
+              </div>
+              <p class="small-note">Tracks names with elevated implied volatility, IV rank, and expected move.</p>
+              <button id="high-iv-refresh" type="button">Refresh High IV</button>
+              <div id="high-iv-results" class="stack"></div>
 
-          <div id="premium-spikes-section" class="section-header">
+              <div id="premium-spikes-section" class="section-header">
             <h2>Call / Put Premium Spikes</h2>
             <span class="chip pro">Pro</span>
-          </div>
-          <p class="small-note">Tracks high-volume large-cap options premium spikes, when they happened, and whether price reacted.</p>
-          <button id="premium-spikes-refresh" type="button">Refresh Premium Spikes</button>
-          <div id="premium-spikes-results" class="stack"></div>
+              </div>
+              <p class="small-note">Tracks high-volume large-cap options premium spikes, when they happened, and whether price reacted.</p>
+              <button id="premium-spikes-refresh" type="button">Refresh Premium Spikes</button>
+              <div id="premium-spikes-results" class="stack"></div>
+            </div>
+          </details>
 
-          <p class="module-group-label">Account tools</p>
-          <div id="ai-trade-section" class="section-header">
+          <details class="module-dropdown">
+            <summary class="module-dropdown-summary">
+              <span>Account tools</span>
+              <span class="chip">Account</span>
+            </summary>
+            <div class="module-dropdown-body">
+              <div id="ai-trade-section" class="section-header">
             <h2>AI Trade</h2>
             <span class="chip">Account</span>
-          </div>
-          <p class="small-note">Upload chart patterns and get bullish/bearish consensus plus stop-loss and take-profit levels.</p>
-          <button id="open-ai-trade" type="button">Open AI Trade</button>
+              </div>
+              <p class="small-note">Upload chart patterns and get bullish/bearish consensus plus stop-loss and take-profit levels.</p>
+              <button id="open-ai-trade" type="button">Open AI Trade</button>
 
-          <div id="ai-auto-trader-section" class="section-header">
+              <div id="ai-auto-trader-section" class="section-header">
             <h2>AI Auto Trader</h2>
             <span class="chip">Account</span>
-          </div>
-          <p class="small-note">Set prompt, capital, risk limits, and sector targets for automated AI trade planning.</p>
-          <button id="open-ai-auto-trader" type="button">Open AI Auto Trader</button>
-          <button id="open-live-brokerage-account" class="btn-secondary" type="button">Open Live Brokerage Account</button>
+              </div>
+              <p class="small-note">Set prompt, capital, risk limits, and sector targets for automated AI trade planning.</p>
+              <button id="open-ai-auto-trader" type="button">Open AI Auto Trader</button>
+              <button id="open-live-brokerage-account" class="btn-secondary" type="button">Open Live Brokerage Account</button>
 
-          <div id="ai-analyzer-section" class="section-header">
+              <div id="ai-analyzer-section" class="section-header">
             <h2>AI Analyzer</h2>
             <span class="chip">Account</span>
-          </div>
-          <p class="small-note">Upload screenshots and review if the setup was a good trade with AI scoring.</p>
-          <button id="open-ai-analyzer" type="button">Open AI Analyzer</button>
+              </div>
+              <p class="small-note">Upload screenshots and review if the setup was a good trade with AI scoring.</p>
+              <button id="open-ai-analyzer" type="button">Open AI Analyzer</button>
 
-          <div id="ai-implementation-section" class="section-header">
+              <div id="ai-implementation-section" class="section-header">
             <h2>Learn AI Implementation</h2>
             <span class="chip">Free</span>
-          </div>
-          <p class="small-note">Step-by-step guide to implement AI workflows from setup to safe rollout.</p>
-          <button id="open-ai-implementation-steps" class="btn-secondary" type="button">Open AI Implementation Steps</button>
+              </div>
+              <p class="small-note">Step-by-step guide to implement AI workflows from setup to safe rollout.</p>
+              <button id="open-ai-implementation-steps" class="btn-secondary" type="button">Open AI Implementation Steps</button>
+            </div>
+          </details>
         </aside>
         <div id="sidebar-backdrop" class="sidebar-backdrop hidden" aria-hidden="true"></div>
 
