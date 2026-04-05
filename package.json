@@ -1,0 +1,31 @@
+{
+  "name": "workspace",
+  "version": "1.0.0",
+  "description": "Expense reporting app with receipt OCR and monthly reporting",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "test": "node --test"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/romanstocksdumbmoney/retailteam6.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/romanstocksdumbmoney/retailteam6/issues"
+  },
+  "homepage": "https://github.com/romanstocksdumbmoney/retailteam6#readme",
+  "dependencies": {
+    "cors": "^2.8.6",
+    "exceljs": "^4.4.0",
+    "express": "^5.2.1",
+    "localtunnel": "^2.0.2",
+    "multer": "^2.1.1",
+    "stripe": "^22.0.0",
+    "tesseract.js": "^7.0.0",
+    "uuid": "^13.0.0"
+  }
+}
