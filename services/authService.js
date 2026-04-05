@@ -2,7 +2,7 @@ const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
 
 const AUTH_SECRET = process.env.JWT_SECRET || process.env.AUTH_SECRET || 'local-dev-secret-change-me';
-const AUTH_EXPIRATION = process.env.JWT_EXPIRES_IN || process.env.AUTH_TOKEN_EXPIRATION || '7d';
+const AUTH_EXPIRATION = process.env.JWT_EXPIRES_IN || process.env.AUTH_TOKEN_EXPIRATION || '30d';
 
 const isProduction = String(process.env.NODE_ENV || '').toLowerCase() === 'production';
 

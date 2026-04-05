@@ -22,8 +22,10 @@ let earningsDayRolloverIntervalId = null;
 let earningsLastEtDateKey = '';
 const AUTH_EMAIL_STORAGE_KEY = 'dumbdollars_saved_email';
 const SAVED_EMAIL_KEY = 'dumbdollars_saved_email';
+const REMEMBER_TOKEN_STORAGE_KEY = 'dumbdollars_remember_token';
 const PREMIUM_SPIKE_PROOF_STORAGE_KEY = 'dumbdollars_premium_spike_proofs_v1';
 const FALLBACK_AI_DISCOVERY_LINK = 'https://x.com';
+let restoreSessionInFlight = false;
 const MODULE_NAV_TARGETS = Object.freeze([
   {
     key: 'stock-outlook',
@@ -221,9 +223,12 @@ async function handleCheckoutReturn() {
     return;
   }
   if (!authToken) {
-    setAuthMessage('Please sign in again to finish activating Pro after checkout.', true);
-    clearCheckoutQueryParams();
-    return;
+    const restored = await restoreAuthSessionFromRememberToken();
+    if (!restored || !authToken) {
+      setAuthMessage('Please sign in again to finish activating Pro after checkout.', true);
+      clearCheckoutQueryParams();
+      return;
+    }
   }
 
   try {
@@ -319,6 +324,65 @@ function savePreferredEmail(email) {
 
 function loadPreferredEmail() {
   return String(localStorage.getItem(SAVED_EMAIL_KEY) || '').trim().toLowerCase();
+}
+
+function getRememberToken() {
+  return String(localStorage.getItem(REMEMBER_TOKEN_STORAGE_KEY) || '').trim();
+}
+
+function saveRememberToken(token) {
+  const value = String(token || '').trim();
+  if (!value) {
+    localStorage.removeItem(REMEMBER_TOKEN_STORAGE_KEY);
+    return;
+  }
+  localStorage.setItem(REMEMBER_TOKEN_STORAGE_KEY, value);
+}
+
+function clearRememberToken() {
+  localStorage.removeItem(REMEMBER_TOKEN_STORAGE_KEY);
+}
+
+function applyAuthPayload(payload, fallbackEmail = '') {
+  const token = String(payload?.token || '').trim();
+  if (token) {
+    authToken = token;
+    localStorage.setItem('dumbdollars_token', token);
+  }
+  if (payload?.user) {
+    currentUser = payload.user;
+  }
+  const rememberToken = String(payload?.rememberToken || '').trim();
+  if (rememberToken) {
+    saveRememberToken(rememberToken);
+  }
+  const email = String(payload?.user?.email || fallbackEmail || '').trim().toLowerCase();
+  if (email) {
+    saveAuthEmail(email);
+    savePreferredEmail(email);
+  }
+}
+
+async function restoreAuthSessionFromRememberToken() {
+  const rememberToken = getRememberToken();
+  if (!rememberToken || restoreSessionInFlight) {
+    return false;
+  }
+  restoreSessionInFlight = true;
+  try {
+    const payload = await fetchJson('/api/auth/session/restore', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ rememberToken })
+    });
+    applyAuthPayload(payload, payload?.user?.email || '');
+    return true;
+  } catch (_error) {
+    clearRememberToken();
+    return false;
+  } finally {
+    restoreSessionInFlight = false;
+  }
 }
 
 function isLikelyRealEmail(email) {
@@ -1878,9 +1942,12 @@ async function fetchBillingInfo() {
 
 async function fetchCurrentUser() {
   if (!authToken) {
-    currentUser = null;
-    renderAuthState();
-    return;
+    const restored = await restoreAuthSessionFromRememberToken();
+    if (!restored) {
+      currentUser = null;
+      renderAuthState();
+      return;
+    }
   }
 
   try {
@@ -1889,36 +1956,50 @@ async function fetchCurrentUser() {
   } catch (_error) {
     authToken = '';
     localStorage.removeItem('dumbdollars_token');
-    currentUser = null;
-    setAuthMessage('Session expired. Please sign in again.', true);
+    const restored = await restoreAuthSessionFromRememberToken();
+    if (restored) {
+      try {
+        const retryPayload = await fetchJson('/api/auth/me', { headers: headersWithPlan() });
+        currentUser = retryPayload.user;
+      } catch (_retryError) {
+        currentUser = null;
+        clearRememberToken();
+        setAuthMessage('Session expired. Please sign in again.', true);
+      }
+    } else {
+      currentUser = null;
+      setAuthMessage('Session expired. Please sign in again.', true);
+    }
   }
 
   renderAuthState();
 }
 
-async function login(email, password) {
+async function login(email, password, options = {}) {
   const payload = await fetchJson('/api/auth/login', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ email, password })
+    body: JSON.stringify({
+      email,
+      password,
+      remember: options.remember !== false
+    })
   });
-
-  authToken = payload.token;
-  localStorage.setItem('dumbdollars_token', authToken);
-  saveAuthEmail(email);
+  applyAuthPayload(payload, email);
   await fetchCurrentUser();
 }
 
-async function signup(email, password) {
+async function signup(email, password, options = {}) {
   const payload = await fetchJson('/api/auth/signup', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ email, password })
+    body: JSON.stringify({
+      email,
+      password,
+      remember: options.remember !== false
+    })
   });
-
-  authToken = payload.token;
-  localStorage.setItem('dumbdollars_token', authToken);
-  saveAuthEmail(email);
+  applyAuthPayload(payload, email);
   await fetchCurrentUser();
 }
 
@@ -1934,20 +2015,22 @@ async function resolveExistingEmailConflict(email, password) {
   }
 }
 
-async function socialSignIn(provider, email) {
+async function socialSignIn(provider, email, options = {}) {
   const payload = await fetchJson('/api/auth/oauth/signin', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ provider, email })
+    body: JSON.stringify({
+      provider,
+      email,
+      remember: options.remember !== false
+    })
   });
-  authToken = payload.token;
-  localStorage.setItem('dumbdollars_token', authToken);
-  saveAuthEmail(email);
+  applyAuthPayload(payload, email);
   await fetchCurrentUser();
   return payload;
 }
 
-function openSocialAuthPage(provider, email, redirectPath) {
+function openSocialAuthPage(provider, email, redirectPath, remember = true) {
   const normalizedProvider = String(provider || '').trim().toLowerCase();
   const params = new URLSearchParams();
   if (normalizedProvider) {
@@ -1960,6 +2043,7 @@ function openSocialAuthPage(provider, email, redirectPath) {
   if (redirectPath && String(redirectPath).startsWith('/')) {
     params.set('next', String(redirectPath));
   }
+  params.set('remember', remember ? '1' : '0');
   const query = params.toString();
   window.location.href = `/social-auth.html${query ? `?${query}` : ''}`;
 }
@@ -1967,6 +2051,8 @@ function openSocialAuthPage(provider, email, redirectPath) {
 function setupAuthForms() {
   const loginForm = document.getElementById('login-form');
   const signupForm = document.getElementById('signup-form');
+  const loginRememberInput = document.getElementById('login-remember');
+  const signupRememberInput = document.getElementById('signup-remember');
   const socialButtons = Array.from(document.querySelectorAll('.oauth-btn'));
   const logoutButton = document.getElementById('logout-btn');
   const checkoutButton = document.getElementById('upgrade-pro-btn');
@@ -1991,7 +2077,7 @@ function setupAuthForms() {
   }
 
   applySavedEmailToForms();
-  updatePasswordHint('signup-password', 'signup-password-hint');
+  updatePasswordHint('signup-password', 'signup-password-strength');
 
   loginForm.addEventListener('submit', async (event) => {
     event.preventDefault();
@@ -2001,7 +2087,8 @@ function setupAuthForms() {
     const idleLabel = submitButton?.textContent || 'Log in';
     try {
       setButtonBusy(submitButton, true, idleLabel, 'Signing in...');
-      await login(email, password);
+      const remember = !(loginRememberInput instanceof HTMLInputElement) || loginRememberInput.checked;
+      await login(email, password, { remember });
       savePreferredEmail(email);
       setAuthMessage('Logged in successfully.');
       await Promise.all([refreshBaseline(), loadUnusualFeed(), loadTrendTrades()]);
@@ -2028,7 +2115,8 @@ function setupAuthForms() {
     }
     try {
       setButtonBusy(submitButton, true, idleLabel, 'Creating...');
-      await signup(email, password);
+      const remember = !(signupRememberInput instanceof HTMLInputElement) || signupRememberInput.checked;
+      await signup(email, password, { remember });
       savePreferredEmail(email);
       setAuthMessage('Account created and logged in.');
       await Promise.all([refreshBaseline(), loadUnusualFeed(), loadTrendTrades()]);
@@ -2050,15 +2138,31 @@ function setupAuthForms() {
       const signupInput = document.getElementById('signup-email');
       const fallbackEmail = loadPreferredEmail() || getSavedAuthEmail();
       const preferred = String(loginInput?.value || signupInput?.value || fallbackEmail || '').trim().toLowerCase();
+      const remember = (loginRememberInput instanceof HTMLInputElement && loginRememberInput.checked)
+        || (signupRememberInput instanceof HTMLInputElement && signupRememberInput.checked)
+        || (!(loginRememberInput instanceof HTMLInputElement) && !(signupRememberInput instanceof HTMLInputElement));
       button.disabled = true;
-      openSocialAuthPage(provider, preferred, window.location.pathname || '/');
+      openSocialAuthPage(provider, preferred, window.location.pathname || '/', remember);
     });
   });
 
   logoutButton.addEventListener('click', async () => {
+    const rememberToken = getRememberToken();
+    if (rememberToken) {
+      try {
+        await fetchJson('/api/auth/session/revoke', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ rememberToken })
+        });
+      } catch (_error) {
+        // Best-effort revoke only.
+      }
+    }
     authToken = '';
     currentUser = null;
     localStorage.removeItem('dumbdollars_token');
+    clearRememberToken();
     closeBillingCard();
     renderAuthState();
     setAuthMessage('Logged out.');

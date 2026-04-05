@@ -14,6 +14,8 @@ async function fetchJson(url, options = {}) {
   return response.json();
 }
 
+const REMEMBER_TOKEN_STORAGE_KEY = 'dumbdollars_remember_token';
+
 function setStatus(text, isError = false) {
   const node = document.getElementById('social-auth-status');
   if (!node) {
@@ -51,6 +53,14 @@ function getQueryParam(name) {
   return String(new URLSearchParams(window.location.search).get(name) || '').trim();
 }
 
+function wantsRememberSessionFromQuery() {
+  const value = String(getQueryParam('remember') || '').trim().toLowerCase();
+  if (!value) {
+    return true;
+  }
+  return !(value === '0' || value === 'false' || value === 'no');
+}
+
 function getSafeNextPath() {
   const next = getQueryParam('next');
   if (!next) {
@@ -70,11 +80,20 @@ function saveAuthSession(token, email) {
   }
 }
 
-async function doSocialSignIn(provider, email) {
+function saveRememberToken(token) {
+  const value = String(token || '').trim();
+  if (!value) {
+    localStorage.removeItem(REMEMBER_TOKEN_STORAGE_KEY);
+    return;
+  }
+  localStorage.setItem(REMEMBER_TOKEN_STORAGE_KEY, value);
+}
+
+async function doSocialSignIn(provider, email, remember = true) {
   return fetchJson('/api/auth/oauth/signin', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ provider, email })
+    body: JSON.stringify({ provider, email, remember })
   });
 }
 
@@ -112,8 +131,9 @@ function setupButtons() {
         button.disabled = true;
         button.textContent = 'Connecting...';
         setStatus(`Connecting ${providerLabel(provider)} sign in...`);
-        const payload = await doSocialSignIn(provider, email);
+        const payload = await doSocialSignIn(provider, email, wantsRememberSessionFromQuery());
         saveAuthSession(payload.token, payload?.user?.email || email);
+        saveRememberToken(payload?.rememberToken || '');
         const next = getSafeNextPath();
         setStatus('Sign in complete. Redirecting...');
         window.location.href = next;

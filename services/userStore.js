@@ -8,6 +8,8 @@ const usersByEmail = new Map();
 const usersByStripeCustomerId = new Map();
 const USER_STORE_FILE = String(process.env.USER_STORE_FILE || path.join(process.cwd(), 'data', 'users.json')).trim();
 const SUPPORTED_AUTH_PROVIDERS = new Set(['password', 'google', 'apple', 'github', 'discord', 'x']);
+const REMEMBER_SESSION_TTL_DAYS = Math.max(7, Math.min(365, Number(process.env.REMEMBER_SESSION_TTL_DAYS || 120)));
+const MAX_REMEMBER_SESSIONS_PER_USER = 8;
 const DISPOSABLE_EMAIL_DOMAINS = new Set([
   'mailinator.com',
   'guerrillamail.com',
@@ -28,6 +30,43 @@ function ensureStoreDirExists() {
   fs.mkdirSync(dir, { recursive: true });
 }
 
+function nowIso() {
+  return new Date().toISOString();
+}
+
+function hashRememberToken(token) {
+  return crypto.createHash('sha256').update(String(token || ''), 'utf8').digest('hex');
+}
+
+function isIsoDateInFuture(isoDate) {
+  const timestamp = Date.parse(String(isoDate || ''));
+  return Number.isFinite(timestamp) && timestamp > Date.now();
+}
+
+function normalizeRememberSessions(sessions) {
+  const raw = Array.isArray(sessions) ? sessions : [];
+  return raw
+    .map((entry) => ({
+      id: String(entry?.id || '').trim(),
+      tokenHash: String(entry?.tokenHash || '').trim(),
+      createdAt: String(entry?.createdAt || ''),
+      expiresAt: String(entry?.expiresAt || ''),
+      lastUsedAt: String(entry?.lastUsedAt || ''),
+      userAgent: String(entry?.userAgent || '').trim().slice(0, 220)
+    }))
+    .filter((entry) => entry.id && entry.tokenHash && isIsoDateInFuture(entry.expiresAt))
+    .slice(0, MAX_REMEMBER_SESSIONS_PER_USER);
+}
+
+function pruneExpiredRememberSessions(user) {
+  const normalized = normalizeRememberSessions(user?.rememberSessions);
+  const changed = normalized.length !== (Array.isArray(user?.rememberSessions) ? user.rememberSessions.length : 0);
+  if (user) {
+    user.rememberSessions = normalized;
+  }
+  return changed;
+}
+
 function persistUsersToDisk() {
   try {
     ensureStoreDirExists();
@@ -41,8 +80,9 @@ function persistUsersToDisk() {
       stripeCustomerId: user.stripeCustomerId || null,
       stripeSubscriptionId: user.stripeSubscriptionId || null,
       subscriptionStatus: user.subscriptionStatus || (user.plan === 'pro' ? 'active' : 'inactive'),
-      createdAt: user.createdAt || new Date().toISOString(),
-      updatedAt: user.updatedAt || new Date().toISOString()
+      rememberSessions: normalizeRememberSessions(user.rememberSessions),
+      createdAt: user.createdAt || nowIso(),
+      updatedAt: user.updatedAt || nowIso()
     }));
     const payload = JSON.stringify({ users: records }, null, 2);
     const tmpPath = `${USER_STORE_FILE}.tmp`;
@@ -81,8 +121,9 @@ function loadUsersFromDisk() {
         stripeCustomerId: record?.stripeCustomerId ? String(record.stripeCustomerId).trim() : null,
         stripeSubscriptionId: record?.stripeSubscriptionId ? String(record.stripeSubscriptionId).trim() : null,
         subscriptionStatus: String(record?.subscriptionStatus || (record?.plan === 'pro' ? 'active' : 'inactive')),
-        createdAt: String(record?.createdAt || new Date().toISOString()),
-        updatedAt: String(record?.updatedAt || new Date().toISOString())
+        rememberSessions: normalizeRememberSessions(record?.rememberSessions),
+        createdAt: String(record?.createdAt || nowIso()),
+        updatedAt: String(record?.updatedAt || nowIso())
       };
       usersById.set(user.id, user);
       usersByEmail.set(user.email, user.id);
@@ -229,8 +270,9 @@ function createUser({ email, password, passwordHash, authProvider = 'password' }
     stripeCustomerId: null,
     stripeSubscriptionId: null,
     subscriptionStatus: 'inactive',
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString()
+    rememberSessions: [],
+    createdAt: nowIso(),
+    updatedAt: nowIso()
   };
 
   usersById.set(user.id, user);
@@ -332,9 +374,103 @@ function updateUser(userId, patch) {
     }
   }
 
-  user.updatedAt = new Date().toISOString();
+  user.updatedAt = nowIso();
   persistUsersToDisk();
   return user;
+}
+
+function createRememberSessionForUser(userId, metadata = {}) {
+  const user = findUserById(userId);
+  if (!user) {
+    return null;
+  }
+  pruneExpiredRememberSessions(user);
+  const ttlDaysRaw = Number(metadata?.ttlDays);
+  const ttlDays = Number.isFinite(ttlDaysRaw)
+    ? Math.max(7, Math.min(365, Math.trunc(ttlDaysRaw)))
+    : REMEMBER_SESSION_TTL_DAYS;
+  const createdAt = nowIso();
+  const expiresAt = new Date(Date.now() + ttlDays * 24 * 60 * 60 * 1000).toISOString();
+  const rawToken = crypto.randomBytes(32).toString('hex');
+  const rememberSession = {
+    id: crypto.randomUUID(),
+    tokenHash: hashRememberToken(rawToken),
+    createdAt,
+    expiresAt,
+    lastUsedAt: createdAt,
+    userAgent: String(metadata?.userAgent || '').trim().slice(0, 220)
+  };
+  const existing = normalizeRememberSessions(user.rememberSessions);
+  user.rememberSessions = [rememberSession, ...existing].slice(0, MAX_REMEMBER_SESSIONS_PER_USER);
+  user.updatedAt = nowIso();
+  persistUsersToDisk();
+  return {
+    rememberToken: rawToken,
+    expiresAt
+  };
+}
+
+function restoreRememberSession(rawRememberToken, metadata = {}) {
+  const tokenHash = hashRememberToken(rawRememberToken);
+  if (!tokenHash) {
+    return null;
+  }
+  for (const user of usersById.values()) {
+    pruneExpiredRememberSessions(user);
+    const sessions = normalizeRememberSessions(user.rememberSessions);
+    const index = sessions.findIndex((entry) => entry.tokenHash === tokenHash);
+    if (index < 0) {
+      continue;
+    }
+    const oldSession = sessions[index];
+    if (!isIsoDateInFuture(oldSession.expiresAt)) {
+      user.rememberSessions = sessions.filter((entry) => entry.tokenHash !== tokenHash);
+      user.updatedAt = nowIso();
+      persistUsersToDisk();
+      return null;
+    }
+    const ttlDaysRaw = Number(metadata?.ttlDays);
+    const ttlDays = Number.isFinite(ttlDaysRaw)
+      ? Math.max(7, Math.min(365, Math.trunc(ttlDaysRaw)))
+      : REMEMBER_SESSION_TTL_DAYS;
+    const refreshedToken = crypto.randomBytes(32).toString('hex');
+    const refreshedExpiresAt = new Date(Date.now() + ttlDays * 24 * 60 * 60 * 1000).toISOString();
+    const refreshedSession = {
+      ...oldSession,
+      tokenHash: hashRememberToken(refreshedToken),
+      expiresAt: refreshedExpiresAt,
+      lastUsedAt: nowIso(),
+      userAgent: String(metadata?.userAgent || oldSession.userAgent || '').trim().slice(0, 220)
+    };
+    sessions[index] = refreshedSession;
+    user.rememberSessions = sessions.slice(0, MAX_REMEMBER_SESSIONS_PER_USER);
+    user.updatedAt = nowIso();
+    persistUsersToDisk();
+    return {
+      user: sanitizeUser(user),
+      rememberToken: refreshedToken,
+      expiresAt: refreshedExpiresAt
+    };
+  }
+  return null;
+}
+
+function revokeRememberSession(rawRememberToken) {
+  const tokenHash = hashRememberToken(rawRememberToken);
+  if (!tokenHash) {
+    return false;
+  }
+  for (const user of usersById.values()) {
+    const before = normalizeRememberSessions(user.rememberSessions);
+    const next = before.filter((entry) => entry.tokenHash !== tokenHash);
+    if (next.length !== before.length) {
+      user.rememberSessions = next;
+      user.updatedAt = nowIso();
+      persistUsersToDisk();
+      return true;
+    }
+  }
+  return false;
 }
 
 function findOrCreateUserByAuthProvider({ email, authProvider }) {
@@ -428,6 +564,9 @@ module.exports = {
   setUserPlanById,
   setUserPlanByCustomerId,
   setSubscriptionStatus,
+  createRememberSessionForUser,
+  restoreRememberSession,
+  revokeRememberSession,
   isValidEmailFormat,
   evaluatePasswordStrength
 };

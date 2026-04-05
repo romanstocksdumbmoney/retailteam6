@@ -785,6 +785,21 @@ h1 {
   gap: 0.5rem;
 }
 
+.auth-remember {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  font-size: 0.82rem;
+  color: #e5e7eb;
+  width: 100%;
+}
+
+.auth-remember input[type='checkbox'] {
+  width: 16px;
+  height: 16px;
+  margin: 0;
+}
+
 .auth-actions {
   display: flex;
   flex-wrap: wrap;

@@ -14,6 +14,8 @@ async function fetchJson(url, options = {}) {
   return response.json();
 }
 
+const REMEMBER_TOKEN_STORAGE_KEY = 'dumbdollars_remember_token';
+
 function setStatus(text, isError = false) {
   const node = document.getElementById('ai-trade-access-status');
   if (!node) {
@@ -27,12 +29,38 @@ function saveAuthToken(token) {
   localStorage.setItem('dumbdollars_token', String(token || ''));
 }
 
+function getRememberToken() {
+  return String(localStorage.getItem(REMEMBER_TOKEN_STORAGE_KEY) || '').trim();
+}
+
+function saveRememberToken(token) {
+  const value = String(token || '').trim();
+  if (!value) {
+    localStorage.removeItem(REMEMBER_TOKEN_STORAGE_KEY);
+    return;
+  }
+  localStorage.setItem(REMEMBER_TOKEN_STORAGE_KEY, value);
+}
+
+function clearRememberToken() {
+  localStorage.removeItem(REMEMBER_TOKEN_STORAGE_KEY);
+}
+
 function saveEmail(email) {
   const normalized = String(email || '').trim().toLowerCase();
   if (!normalized) {
     return;
   }
   localStorage.setItem('dumbdollars_saved_email', normalized);
+}
+
+function applyAuthPayload(payload, fallbackEmail = '') {
+  saveAuthToken(payload?.token || '');
+  saveRememberToken(payload?.rememberToken || '');
+  const email = String(payload?.user?.email || fallbackEmail || '').trim().toLowerCase();
+  if (email) {
+    saveEmail(email);
+  }
 }
 
 function applySavedEmail() {
@@ -50,37 +78,46 @@ function applySavedEmail() {
   }
 }
 
-async function signUp(email, password) {
+async function signUp(email, password, options = {}) {
   const payload = await fetchJson('/api/auth/signup', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ email, password })
+    body: JSON.stringify({
+      email,
+      password,
+      remember: options.remember !== false
+    })
   });
-  saveAuthToken(payload.token);
-  saveEmail(email);
+  applyAuthPayload(payload, email);
 }
 
-async function logIn(email, password) {
+async function logIn(email, password, options = {}) {
   const payload = await fetchJson('/api/auth/login', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ email, password })
+    body: JSON.stringify({
+      email,
+      password,
+      remember: options.remember !== false
+    })
   });
-  saveAuthToken(payload.token);
-  saveEmail(email);
+  applyAuthPayload(payload, email);
 }
 
-async function socialSignIn(provider, email) {
+async function socialSignIn(provider, email, options = {}) {
   const payload = await fetchJson('/api/auth/oauth/signin', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ provider, email })
+    body: JSON.stringify({
+      provider,
+      email,
+      remember: options.remember !== false
+    })
   });
-  saveAuthToken(payload.token);
-  saveEmail(email);
+  applyAuthPayload(payload, email);
 }
 
-function goToSocialAuthPage(provider, email) {
+function goToSocialAuthPage(provider, email, remember = true) {
   const normalizedProvider = String(provider || '').trim().toLowerCase();
   const normalizedEmail = normalizeEmailInput(email);
   if (!normalizedProvider) {
@@ -94,7 +131,8 @@ function goToSocialAuthPage(provider, email) {
   const next = encodeURIComponent('/ai-trade.html');
   const providerParam = encodeURIComponent(normalizedProvider);
   const emailParam = encodeURIComponent(normalizedEmail);
-  window.location.href = `/social-auth.html?provider=${providerParam}&email=${emailParam}&next=${next}`;
+  const rememberParam = remember ? '1' : '0';
+  window.location.href = `/social-auth.html?provider=${providerParam}&email=${emailParam}&next=${next}&remember=${rememberParam}`;
 }
 
 function goToAiTrade() {
@@ -102,9 +140,24 @@ function goToAiTrade() {
 }
 
 async function verifySessionAndRedirectIfSignedIn() {
-  const token = localStorage.getItem('dumbdollars_token') || '';
+  let token = localStorage.getItem('dumbdollars_token') || '';
   if (!token) {
-    return;
+    const rememberToken = getRememberToken();
+    if (!rememberToken) {
+      return;
+    }
+    try {
+      const restorePayload = await fetchJson('/api/auth/session/restore', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ rememberToken })
+      });
+      applyAuthPayload(restorePayload, restorePayload?.user?.email || '');
+      token = String(restorePayload?.token || '').trim();
+    } catch (_restoreError) {
+      clearRememberToken();
+      return;
+    }
   }
   try {
     await fetchJson('/api/auth/me', {
@@ -114,7 +167,6 @@ async function verifySessionAndRedirectIfSignedIn() {
     });
     goToAiTrade();
   } catch (_error) {
-    // stale token; let user sign in again
     localStorage.removeItem('dumbdollars_token');
   }
 }
@@ -197,6 +249,8 @@ function setupForms() {
   const loginForm = document.getElementById('ai-access-login-form');
   const socialButtons = Array.from(document.querySelectorAll('.oauth-btn'));
   const signupPasswordInput = document.getElementById('ai-access-signup-password');
+  const loginRememberInput = document.getElementById('ai-access-login-remember');
+  const signupRememberInput = document.getElementById('ai-access-signup-remember');
   if (!signupForm || !loginForm) {
     return;
   }
@@ -222,7 +276,8 @@ function setupForms() {
         throw new Error('Use a stronger password: 10+ chars with upper/lower/number/symbol.');
       }
       setButtonBusy(submitButton, true, idleLabel, 'Creating...');
-      await signUp(email, password);
+      const remember = !(signupRememberInput instanceof HTMLInputElement) || signupRememberInput.checked;
+      await signUp(email, password, { remember });
       setStatus('Account created. Opening AI Trade...');
       goToAiTrade();
     } catch (error) {
@@ -243,7 +298,8 @@ function setupForms() {
         throw new Error('Please enter a valid email address.');
       }
       setButtonBusy(submitButton, true, idleLabel, 'Signing in...');
-      await logIn(email, password);
+      const remember = !(loginRememberInput instanceof HTMLInputElement) || loginRememberInput.checked;
+      await logIn(email, password, { remember });
       setStatus('Login successful. Opening AI Trade...');
       goToAiTrade();
     } catch (error) {
@@ -264,8 +320,11 @@ function setupForms() {
         setStatus('Enter a valid email first, then choose Google/Apple/etc.', true);
         return;
       }
+      const remember = (loginRememberInput instanceof HTMLInputElement && loginRememberInput.checked)
+        || (signupRememberInput instanceof HTMLInputElement && signupRememberInput.checked)
+        || (!(loginRememberInput instanceof HTMLInputElement) && !(signupRememberInput instanceof HTMLInputElement));
       button.disabled = true;
-      goToSocialAuthPage(provider, email);
+      goToSocialAuthPage(provider, email, remember);
       window.setTimeout(() => {
         button.disabled = false;
       }, 1000);

@@ -5,7 +5,10 @@ const {
   findOrCreateUserByAuthProvider,
   normalizeAuthProvider,
   getUserById,
-  sanitizeUser
+  sanitizeUser,
+  createRememberSessionForUser,
+  restoreRememberSession,
+  revokeRememberSession
 } = require('../services/userStore');
 const {
   verifyPassword,
@@ -39,6 +42,23 @@ const OAUTH_PROVIDER_LABELS = {
 };
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/i;
+
+function wantsRememberSession(req) {
+  if (!Object.prototype.hasOwnProperty.call(req.body || {}, 'remember')) {
+    return true;
+  }
+  return Boolean(req.body?.remember);
+}
+
+function maybeCreateRememberSession(user, req) {
+  if (!user?.id || !wantsRememberSession(req)) {
+    return null;
+  }
+  const remember = createRememberSessionForUser(user.id, {
+    userAgent: req.get('user-agent')
+  });
+  return remember || null;
+}
 
 function candidatePasswords(rawPassword) {
   const password = String(rawPassword || '');
@@ -149,7 +169,13 @@ router.post('/signup', async (req, res) => {
     }
     const user = createUser({ email, password });
     const token = signAuthToken({ userId: user.id, email: user.email });
-    return res.status(201).json({ token, user });
+    const remember = maybeCreateRememberSession(user, req);
+    return res.status(201).json({
+      token,
+      user,
+      rememberToken: remember?.rememberToken || null,
+      rememberTokenExpiresAt: remember?.expiresAt || null
+    });
   } catch (error) {
     if (String(error.message) === 'email_exists') {
       const existing = findUserByEmail(String(req.body?.email || '').trim().toLowerCase());
@@ -158,9 +184,12 @@ router.post('/signup', async (req, res) => {
         if (matches) {
           const user = sanitizeUser(existing);
           const token = signAuthToken({ userId: user.id, email: user.email });
+          const remember = maybeCreateRememberSession(user, req);
           return res.status(200).json({
             token,
             user,
+            rememberToken: remember?.rememberToken || null,
+            rememberTokenExpiresAt: remember?.expiresAt || null,
             existingAccount: true,
             message: 'Account already existed. Logged in successfully.'
           });
@@ -230,9 +259,12 @@ router.post('/oauth/signin', (req, res) => {
       authProvider: provider
     });
     const token = signAuthToken({ userId: user.id, email: user.email });
+    const remember = maybeCreateRememberSession(user, req);
     return res.status(created ? 201 : 200).json({
       token,
       user,
+      rememberToken: remember?.rememberToken || null,
+      rememberTokenExpiresAt: remember?.expiresAt || null,
       created,
       provider,
       providerLabel: OAUTH_PROVIDER_LABELS[provider]
@@ -272,10 +304,51 @@ router.post('/login', async (req, res) => {
   }
 
   const token = signAuthToken({ userId: user.id, email: user.email });
+  const remember = maybeCreateRememberSession(user, req);
   return res.json({
     token,
-    user: sanitizeUser(user)
+    user: sanitizeUser(user),
+    rememberToken: remember?.rememberToken || null,
+    rememberTokenExpiresAt: remember?.expiresAt || null
   });
+});
+
+router.post('/session/restore', (req, res) => {
+  const rememberToken = String(req.body?.rememberToken || '').trim();
+  if (!rememberToken) {
+    return res.status(400).json({
+      error: 'missing_remember_token',
+      message: 'Remember token is required.'
+    });
+  }
+  const restored = restoreRememberSession(rememberToken, {
+    userAgent: req.get('user-agent')
+  });
+  if (!restored?.user) {
+    return res.status(401).json({
+      error: 'invalid_remember_token',
+      message: 'Remembered session expired. Please log in again.'
+    });
+  }
+  const token = signAuthToken({ userId: restored.user.id, email: restored.user.email });
+  return res.json({
+    token,
+    user: restored.user,
+    rememberToken: restored.rememberToken,
+    rememberTokenExpiresAt: restored.expiresAt
+  });
+});
+
+router.post('/session/revoke', (req, res) => {
+  const rememberToken = String(req.body?.rememberToken || '').trim();
+  if (!rememberToken) {
+    return res.status(400).json({
+      error: 'missing_remember_token',
+      message: 'Remember token is required.'
+    });
+  }
+  revokeRememberSession(rememberToken);
+  return res.json({ ok: true });
 });
 
 router.get('/me', authRequired, (req, res) => {
