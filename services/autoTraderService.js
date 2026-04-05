@@ -23,6 +23,13 @@ const ALLOWED_TIMEFRAMES = new Set(['intraday', 'swing', 'position']);
 const ALLOWED_TRADING_MODES = new Set(['paper', 'live']);
 const ALLOWED_BROKERS = new Set(['manual', 'robinhood', 'webull', 'interactive-brokers', 'tradestation']);
 const ALLOWED_EXECUTION_MODES = new Set(['manual_confirmed', 'broker_linked']);
+const BROKER_SETUP_DOCS = Object.freeze({
+  robinhood: 'https://robinhood.com/us/en/support/articles/opening-an-account/',
+  webull: 'https://www.webull.com/help/category/47-Open-an-account',
+  'interactive-brokers': 'https://www.interactivebrokers.com/en/accounts/open_account_pro.php',
+  tradestation: 'https://www.tradestation.com/open-an-account/',
+  manual: 'https://dumbdollars.org/ai-implementation-steps.html'
+});
 
 const traderStore = new Map();
 
@@ -113,7 +120,20 @@ function defaultState() {
         accountId: '',
         connectionStatus: 'not_connected',
         bridgeMode: 'manual_confirmed',
-        connectedAt: null
+        connectedAt: null,
+        permissions: {
+          canRead: false,
+          canTrade: false,
+          canViewAccount: false
+        },
+        auth: {
+          apiKeyLast4: '',
+          secretSaved: false,
+          passphraseSaved: false,
+          credentialFingerprint: ''
+        },
+        lastTestedAt: null,
+        lastTestResult: null
       },
       queuedAiTrades: [],
       lastWebsiteSignalSnapshot: null,
@@ -135,10 +155,90 @@ function ensureLiveExecutionState(state) {
   if (!state.liveExecution.brokerConnection || typeof state.liveExecution.brokerConnection !== 'object') {
     state.liveExecution.brokerConnection = defaultState().liveExecution.brokerConnection;
   }
+  if (!state.liveExecution.brokerConnection.permissions || typeof state.liveExecution.brokerConnection.permissions !== 'object') {
+    state.liveExecution.brokerConnection.permissions = defaultState().liveExecution.brokerConnection.permissions;
+  }
+  if (!state.liveExecution.brokerConnection.auth || typeof state.liveExecution.brokerConnection.auth !== 'object') {
+    state.liveExecution.brokerConnection.auth = defaultState().liveExecution.brokerConnection.auth;
+  }
   if (!Array.isArray(state.liveExecution.queuedAiTrades)) {
     state.liveExecution.queuedAiTrades = [];
   }
   return state.liveExecution;
+}
+
+function maskLast4(value) {
+  const clean = String(value || '').replace(/[^a-zA-Z0-9]/g, '');
+  if (!clean) {
+    return '';
+  }
+  return clean.slice(-4).toUpperCase();
+}
+
+function hashCredentialFingerprint(parts = []) {
+  return hashString(parts.map((part) => String(part || '').trim()).join('|')).toString(16).toUpperCase();
+}
+
+function toTitle(value) {
+  return String(value || '')
+    .replace(/-/g, ' ')
+    .replace(/\b\w/g, (char) => char.toUpperCase());
+}
+
+function getBrokerSetupSteps(state, broker) {
+  const liveExecution = ensureLiveExecutionState(state);
+  const connection = liveExecution.brokerConnection || {};
+  const permissions = connection.permissions || {};
+  const auth = connection.auth || {};
+  const liveFunding = state.liveFunding || defaultState().liveFunding;
+  const executionMode = String(liveFunding.executionMode || 'manual_confirmed').toLowerCase();
+  const liveMode = String(state.tradingMode || 'paper').toLowerCase() === 'live';
+
+  const hasAccount = Boolean(String(connection.accountId || '').trim());
+  const permissionsReady = Boolean(permissions.canRead && permissions.canTrade && permissions.canViewAccount);
+  const credentialsReady = Boolean(auth.apiKeyLast4 && auth.secretSaved);
+  const bridgeReady = executionMode === 'broker_linked';
+  const testedReady = Boolean(connection.lastTestResult?.readyForTrading);
+  const fundedReady = Boolean(liveFunding.isFunded);
+
+  return [
+    {
+      key: 'open-account',
+      title: `Open and verify your ${toTitle(broker)} brokerage account`,
+      description: 'Complete KYC, enable 2FA, and make sure trading permissions are active on your broker account.',
+      completed: hasAccount
+    },
+    {
+      key: 'api-access',
+      title: 'Enable API permissions in broker settings',
+      description: 'Grant read/account/trade permissions and keep withdrawal permissions disabled for safety.',
+      completed: permissionsReady
+    },
+    {
+      key: 'add-credentials',
+      title: 'Connect broker API credentials to DumbDollars',
+      description: 'Add account ID, API key, and API secret to create the AI execution bridge profile.',
+      completed: credentialsReady
+    },
+    {
+      key: 'bridge-mode',
+      title: 'Switch Live Funding execution mode to Broker Linked',
+      description: 'Set execution mode to broker_linked so execution tickets can be sent through the broker bridge.',
+      completed: bridgeReady
+    },
+    {
+      key: 'test-connection',
+      title: 'Run broker bridge connection test',
+      description: 'Validate credential format, permissions, funding mode, and execution readiness before auto cycles.',
+      completed: testedReady
+    },
+    {
+      key: 'activate-ai',
+      title: 'Activate live AI execution cycle',
+      description: 'Keep bot active in live mode, with funded capital and broker bridge connected.',
+      completed: Boolean(liveMode && fundedReady && testedReady && bridgeReady)
+    }
+  ];
 }
 
 function isValidEmail(email) {
@@ -787,17 +887,243 @@ function saveAutoTraderLiveTradingProfile(user, details = {}) {
     status: state.liveFunding?.isFunded ? 'funded' : 'profile_saved'
   };
   const liveExecution = ensureLiveExecutionState(state);
-  const brokerConnected = executionMode === 'broker_linked' && broker !== 'manual';
+  const existingConnection = liveExecution.brokerConnection || defaultState().liveExecution.brokerConnection;
+  const brokerChanged = String(existingConnection.broker || 'manual') !== broker;
+  const preserveConnection = !brokerChanged && Boolean(existingConnection.isConnected);
   liveExecution.brokerConnection = {
-    isConnected: brokerConnected,
+    isConnected: preserveConnection,
     broker,
     accountId: accountLabel,
-    connectionStatus: brokerConnected ? 'connected' : 'manual_confirm_required',
+    connectionStatus: preserveConnection
+      ? 'connected'
+      : executionMode === 'broker_linked'
+        ? 'awaiting_api_connection'
+        : 'manual_confirm_required',
     bridgeMode: executionMode,
-    connectedAt: brokerConnected ? nowIso() : liveExecution.brokerConnection?.connectedAt || null
+    connectedAt: preserveConnection ? existingConnection.connectedAt || nowIso() : null,
+    permissions: preserveConnection
+      ? existingConnection.permissions
+      : {
+        canRead: false,
+        canTrade: false,
+        canViewAccount: false
+      },
+    auth: preserveConnection
+      ? existingConnection.auth
+      : {
+        apiKeyLast4: '',
+        secretSaved: false,
+        passphraseSaved: false,
+        credentialFingerprint: ''
+      },
+    lastTestedAt: preserveConnection ? existingConnection.lastTestedAt || null : null,
+    lastTestResult: preserveConnection ? existingConnection.lastTestResult || null : null
   };
   state.updatedAt = nowIso();
   return state;
+}
+
+function getAutoTraderBrokerConnectionGuide(user, options = {}) {
+  const userId = user?.id;
+  if (!userId) {
+    throw new Error('missing_user');
+  }
+  const state = getState(userId);
+  const liveExecution = ensureLiveExecutionState(state);
+  const requestedBroker = String(options.broker || '').trim().toLowerCase();
+  const broker = requestedBroker
+    ? parseBrokerOrThrow(requestedBroker)
+    : parseBrokerOrThrow(state.liveFunding?.broker || liveExecution.brokerConnection?.broker || 'manual');
+  const connection = liveExecution.brokerConnection || defaultState().liveExecution.brokerConnection;
+  const steps = getBrokerSetupSteps(state, broker);
+  return {
+    broker,
+    brokerLabel: toTitle(broker),
+    docsUrl: BROKER_SETUP_DOCS[broker] || BROKER_SETUP_DOCS.manual,
+    current: {
+      ...(connection || {}),
+      bridgeMode: String(state.liveFunding?.executionMode || connection.bridgeMode || 'manual_confirmed'),
+      accountId: connection.accountId || state.liveFunding?.accountHolder || ''
+    },
+    funding: {
+      tradingMode: state.tradingMode || 'paper',
+      isFunded: Boolean(state.liveFunding?.isFunded),
+      fundedUsd: Number(state.liveFunding?.fundedUsd || 0),
+      status: state.liveFunding?.status || 'not_funded'
+    },
+    steps
+  };
+}
+
+function connectAutoTraderBrokerBridge(user, details = {}) {
+  const userId = user?.id;
+  if (!userId) {
+    throw new Error('missing_user');
+  }
+  const state = getState(userId);
+  const broker = parseBrokerOrThrow(details.broker);
+  if (broker === 'manual') {
+    throw new Error('invalid_broker_connection');
+  }
+  const accountId = String(details.accountId || details.accountLabel || details.accountHolder || '').trim();
+  if (!accountId || accountId.length > 80) {
+    throw new Error('invalid_account_id');
+  }
+  const apiKey = String(details.apiKey || '').trim();
+  const apiSecret = String(details.apiSecret || '').trim();
+  const passphrase = String(details.passphrase || '').trim();
+  if (apiKey.length < 8 || apiSecret.length < 8) {
+    throw new Error('invalid_api_credentials');
+  }
+  const permissions = {
+    canRead: Boolean(details.canRead ?? details.permissionRead),
+    canTrade: Boolean(details.canTrade ?? details.permissionTrade),
+    canViewAccount: Boolean(details.canViewAccount ?? details.permissionAccount)
+  };
+  if (!(permissions.canRead && permissions.canTrade && permissions.canViewAccount)) {
+    throw new Error('invalid_broker_permissions');
+  }
+  const riskAcknowledged = Boolean(details.riskAcknowledged || details.riskAcknowledgement);
+  if (!riskAcknowledged) {
+    throw new Error('invalid_risk_acknowledgement');
+  }
+
+  const bridgeMode = parseExecutionMode(details.bridgeMode || details.executionMode || 'broker_linked');
+  const paymentRail = String(details.paymentRail || state.liveFunding?.paymentRail || 'bank_transfer').trim().toLowerCase() || 'bank_transfer';
+  state.liveFunding = {
+    ...(state.liveFunding || defaultState().liveFunding),
+    broker,
+    accountHolder: accountId,
+    executionMode: bridgeMode,
+    paymentRail,
+    riskAcknowledged,
+    status: state.liveFunding?.isFunded ? 'funded' : 'profile_saved'
+  };
+
+  const credentialFingerprint = hashCredentialFingerprint([broker, accountId, apiKey, apiSecret, passphrase]);
+  const liveExecution = ensureLiveExecutionState(state);
+  liveExecution.brokerConnection = {
+    isConnected: bridgeMode === 'broker_linked',
+    broker,
+    accountId,
+    connectionStatus: bridgeMode === 'broker_linked' ? 'connected' : 'manual_confirm_required',
+    bridgeMode,
+    connectedAt: bridgeMode === 'broker_linked' ? nowIso() : null,
+    permissions,
+    auth: {
+      apiKeyLast4: maskLast4(apiKey),
+      secretSaved: true,
+      passphraseSaved: Boolean(passphrase),
+      credentialFingerprint
+    },
+    lastTestedAt: null,
+    lastTestResult: null
+  };
+  state.updatedAt = nowIso();
+  return getAutoTraderBrokerConnectionGuide(user, { broker });
+}
+
+function testAutoTraderBrokerBridge(user, options = {}) {
+  const userId = user?.id;
+  if (!userId) {
+    throw new Error('missing_user');
+  }
+  const state = getState(userId);
+  const liveExecution = ensureLiveExecutionState(state);
+  const connection = liveExecution.brokerConnection || defaultState().liveExecution.brokerConnection;
+  const broker = parseBrokerOrThrow(options.broker || connection.broker || state.liveFunding?.broker || 'manual');
+  if (broker === 'manual') {
+    throw new Error('invalid_broker_connection');
+  }
+  const permissions = connection.permissions || {};
+  const auth = connection.auth || {};
+  const bridgeMode = String(state.liveFunding?.executionMode || connection.bridgeMode || 'manual_confirmed').toLowerCase();
+  const liveMode = String(state.tradingMode || 'paper').toLowerCase() === 'live';
+
+  const checks = [
+    {
+      key: 'credentials',
+      label: 'Credentials saved',
+      ok: Boolean(auth.apiKeyLast4 && auth.secretSaved),
+      detail: auth.apiKeyLast4
+        ? `API key ending in ${auth.apiKeyLast4} saved`
+        : 'Missing API key/secret in broker connection profile.'
+    },
+    {
+      key: 'permissions',
+      label: 'Broker API permissions',
+      ok: Boolean(permissions.canRead && permissions.canTrade && permissions.canViewAccount),
+      detail: `Read=${Boolean(permissions.canRead)}, Trade=${Boolean(permissions.canTrade)}, Account=${Boolean(permissions.canViewAccount)}`
+    },
+    {
+      key: 'bridge_mode',
+      label: 'Execution mode is broker_linked',
+      ok: bridgeMode === 'broker_linked',
+      detail: `Current execution mode: ${bridgeMode}`
+    },
+    {
+      key: 'funding',
+      label: 'Live account funded',
+      ok: Boolean(state.liveFunding?.isFunded),
+      detail: `Funded capital: $${Number(state.liveFunding?.fundedUsd || 0).toLocaleString()}`
+    },
+    {
+      key: 'live_mode',
+      label: 'Trading mode is live',
+      ok: liveMode,
+      detail: `Current trading mode: ${state.tradingMode || 'paper'}`
+    }
+  ];
+
+  const readyForTrading = checks.every((check) => check.ok);
+  const testedAt = nowIso();
+  liveExecution.brokerConnection = {
+    ...connection,
+    broker,
+    bridgeMode,
+    isConnected: readyForTrading,
+    connectionStatus: readyForTrading ? 'connected' : 'connection_incomplete',
+    connectedAt: readyForTrading ? (connection.connectedAt || testedAt) : null,
+    lastTestedAt: testedAt,
+    lastTestResult: {
+      readyForTrading,
+      checks
+    }
+  };
+  state.updatedAt = nowIso();
+
+  return {
+    broker,
+    testedAt,
+    readyForTrading,
+    checks,
+    nextActions: checks
+      .filter((check) => !check.ok)
+      .map((check) => `Fix: ${check.label}`),
+    guide: getAutoTraderBrokerConnectionGuide(user, { broker })
+  };
+}
+
+function disconnectAutoTraderBrokerBridge(user) {
+  const userId = user?.id;
+  if (!userId) {
+    throw new Error('missing_user');
+  }
+  const state = getState(userId);
+  const liveExecution = ensureLiveExecutionState(state);
+  const previousBroker = String(liveExecution.brokerConnection?.broker || state.liveFunding?.broker || 'manual');
+  liveExecution.brokerConnection = defaultState().liveExecution.brokerConnection;
+  state.liveFunding = {
+    ...(state.liveFunding || defaultState().liveFunding),
+    broker: 'manual',
+    executionMode: 'manual_confirmed'
+  };
+  state.updatedAt = nowIso();
+  return {
+    disconnected: true,
+    previousBroker,
+    guide: getAutoTraderBrokerConnectionGuide(user, { broker: 'manual' })
+  };
 }
 
 function queueAiTradeForExecution(user, input = {}) {
@@ -942,6 +1268,7 @@ function getAutoTraderAccountView(user) {
   const liveExecution = ensureLiveExecutionState(state);
   const broker = liveFunding.broker || 'manual';
   const accountHolder = liveFunding.accountHolder || 'live-account';
+  const setupBroker = parseBrokerOrThrow(liveFunding.broker || liveExecution.brokerConnection?.broker || 'manual');
 
   return {
     account: {
@@ -978,12 +1305,17 @@ function getAutoTraderAccountView(user) {
       brokerConnection: liveExecution.brokerConnection,
       queuedAiTrades: (liveExecution.queuedAiTrades || []).slice(0, 20),
       lastPlan: liveExecution.lastPlan || null,
-      lastWebsiteSignalSnapshot: liveExecution.lastWebsiteSignalSnapshot || null
+      lastWebsiteSignalSnapshot: liveExecution.lastWebsiteSignalSnapshot || null,
+      setup: {
+        docsUrl: BROKER_SETUP_DOCS[setupBroker] || BROKER_SETUP_DOCS.manual,
+        steps: getBrokerSetupSteps(state, setupBroker)
+      }
     },
     config: state.config,
     paperTrading: state.paperTrading || defaultState().paperTrading,
     safety: {
       mode: state.tradingMode === 'live' ? 'live_funding_mode' : 'paper_trading',
+      liveBrokerConnected: Boolean(liveExecution?.brokerConnection?.isConnected),
       paperTradingConnected: Boolean(state.paperTrading?.isConnected),
       disclaimer: state.tradingMode === 'live'
         ? 'Live funding is enabled. Direct broker order placement still requires broker API integration.'
@@ -1016,7 +1348,11 @@ function getAutoTraderStatus(user) {
       brokerConnection: liveExecution.brokerConnection,
       queuedAiTrades: (liveExecution.queuedAiTrades || []).slice(0, 20),
       lastPlan: liveExecution.lastPlan || null,
-      lastWebsiteSignalSnapshot: liveExecution.lastWebsiteSignalSnapshot || null
+      lastWebsiteSignalSnapshot: liveExecution.lastWebsiteSignalSnapshot || null,
+      setup: {
+        docsUrl: BROKER_SETUP_DOCS[parseBrokerOrThrow(state.liveFunding?.broker || liveExecution.brokerConnection?.broker || 'manual')] || BROKER_SETUP_DOCS.manual,
+        steps: getBrokerSetupSteps(state, parseBrokerOrThrow(state.liveFunding?.broker || liveExecution.brokerConnection?.broker || 'manual'))
+      }
     },
     updatedAt: state.updatedAt,
     sectorUniverse: Object.keys(SECTOR_UNIVERSE).map((sector) => ({
@@ -1025,7 +1361,7 @@ function getAutoTraderStatus(user) {
     })),
     safety: {
       mode: state.tradingMode === 'live' ? 'live_funding_mode' : 'paper_trading',
-      liveBrokerConnected: false,
+      liveBrokerConnected: Boolean(liveExecution?.brokerConnection?.isConnected),
       paperTradingConnected: Boolean(state.paperTrading?.isConnected),
       disclaimer: state.tradingMode === 'live'
         ? 'Live funding is enabled, but direct broker placement still requires broker API integration.'
@@ -1047,6 +1383,10 @@ module.exports = {
   getAutoTraderPaperTradingProfile,
   saveAutoTraderPaperTradingProfile,
   saveAutoTraderLiveTradingProfile,
+  getAutoTraderBrokerConnectionGuide,
+  connectAutoTraderBrokerBridge,
+  testAutoTraderBrokerBridge,
+  disconnectAutoTraderBrokerBridge,
   queueAiTradeForExecution,
   getAutoTraderAccountView,
   runAutoTraderCycle,

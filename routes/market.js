@@ -26,6 +26,10 @@ const {
   getAutoTraderAccountView,
   saveAutoTraderPaperTradingProfile,
   saveAutoTraderLiveTradingProfile,
+  getAutoTraderBrokerConnectionGuide,
+  connectAutoTraderBrokerBridge,
+  testAutoTraderBrokerBridge,
+  disconnectAutoTraderBrokerBridge,
   queueAiTradeForExecution,
   runAutoTraderCycle,
   listAutoTraderSectors,
@@ -886,6 +890,99 @@ router.post('/auto-trader/live-profile', requireSignedIn, requireLiveFundingAcce
     return res.status(400).json({
       error: 'invalid_request',
       message: 'Could not save live trading profile.'
+    });
+  }
+});
+
+router.get('/auto-trader/broker-connect/steps', requireSignedIn, (req, res) => {
+  try {
+    const broker = String(req.query?.broker || '').trim().toLowerCase();
+    const payload = getAutoTraderBrokerConnectionGuide(req.user, { broker });
+    return res.json(payload);
+  } catch (error) {
+    if (String(error.message || '') === 'invalid_broker') {
+      return res.status(400).json({
+        error: 'invalid_broker',
+        message: 'Broker name is invalid.'
+      });
+    }
+    return res.status(400).json({
+      error: 'invalid_request',
+      message: 'Could not load broker connection steps.'
+    });
+  }
+});
+
+router.post('/auto-trader/broker-connect', requireSignedIn, requireLiveFundingAccess, (req, res) => {
+  try {
+    const payload = connectAutoTraderBrokerBridge(req.user, req.body || {});
+    return res.json(payload);
+  } catch (error) {
+    const code = String(error.message || '');
+    if (code === 'invalid_broker' || code === 'invalid_broker_connection') {
+      return res.status(400).json({
+        error: 'invalid_broker',
+        message: 'Select a supported broker before connecting.'
+      });
+    }
+    if (code === 'invalid_account_id') {
+      return res.status(400).json({
+        error: 'invalid_account_id',
+        message: 'Broker account ID is required.'
+      });
+    }
+    if (code === 'invalid_api_credentials') {
+      return res.status(400).json({
+        error: 'invalid_api_credentials',
+        message: 'API key/secret are required and must be valid length.'
+      });
+    }
+    if (code === 'invalid_broker_permissions') {
+      return res.status(400).json({
+        error: 'invalid_broker_permissions',
+        message: 'Enable read/account/trade API permissions before connecting.'
+      });
+    }
+    if (code === 'invalid_risk_acknowledgement') {
+      return res.status(400).json({
+        error: 'invalid_risk_acknowledgement',
+        message: 'You must acknowledge live trading risk to connect the broker bridge.'
+      });
+    }
+    return res.status(400).json({
+      error: 'invalid_request',
+      message: 'Could not connect broker bridge.'
+    });
+  }
+});
+
+router.post('/auto-trader/broker-connect/test', requireSignedIn, requireLiveFundingAccess, (req, res) => {
+  try {
+    const payload = testAutoTraderBrokerBridge(req.user, req.body || {});
+    return res.json(payload);
+  } catch (error) {
+    const code = String(error.message || '');
+    if (code === 'invalid_broker' || code === 'invalid_broker_connection') {
+      return res.status(400).json({
+        error: 'invalid_broker',
+        message: 'Select a supported non-manual broker before running connection test.'
+      });
+    }
+    return res.status(400).json({
+      error: 'invalid_request',
+      message: 'Could not run broker bridge test.'
+    });
+  }
+});
+
+router.post('/auto-trader/broker-connect/disconnect', requireSignedIn, requireLiveFundingAccess, (req, res) => {
+  try {
+    const payload = disconnectAutoTraderBrokerBridge(req.user);
+    return res.json(payload);
+  } catch (_error) {
+    return res.status(400).json({
+      error: 'invalid_request',
+      message: 'Could not disconnect broker bridge.'
     });
   }
 });

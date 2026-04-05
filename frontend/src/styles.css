@@ -304,6 +304,16 @@ body {
   padding: 0.68rem;
 }
 
+.bot-position-card--success {
+  border-color: rgba(16, 185, 129, 0.5);
+  background: rgba(16, 185, 129, 0.11);
+}
+
+.bot-position-card--warning {
+  border-color: rgba(239, 68, 68, 0.5);
+  background: rgba(239, 68, 68, 0.1);
+}
+
 .bot-position-card h4 {
   margin: 0 0 0.32rem;
   color: #fde68a;
@@ -321,6 +331,32 @@ body {
 .bot-position-card--compact p {
   margin: 0.16rem 0;
   font-size: 0.82rem;
+}
+
+.broker-step-list {
+  display: grid;
+  gap: 0.55rem;
+}
+
+.broker-step-item {
+  border-radius: 10px;
+  border: 1px solid rgba(148, 163, 184, 0.34);
+  background: rgba(2, 6, 23, 0.78);
+  padding: 0.62rem 0.68rem;
+}
+
+.broker-step-item p {
+  margin: 0.2rem 0;
+}
+
+.broker-step-item--done {
+  border-color: rgba(16, 185, 129, 0.55);
+  background: rgba(16, 185, 129, 0.12);
+}
+
+.broker-step-item--todo {
+  border-color: rgba(245, 158, 11, 0.5);
+  background: rgba(245, 158, 11, 0.11);
 }
 
 .ai-bot-status-chip {

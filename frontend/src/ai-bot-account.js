@@ -182,12 +182,16 @@ function renderCycleActivity(rows) {
 function renderExecutionCenter(execution) {
   const summaryTarget = document.getElementById('ai-account-execution-summary');
   const queueTarget = document.getElementById('ai-account-queued-ai-trades');
-  if (!summaryTarget || !queueTarget) {
+  const stepsTarget = document.getElementById('ai-account-broker-setup-steps');
+  if (!summaryTarget || !queueTarget || !stepsTarget) {
     return;
   }
   const brokerConnection = execution?.brokerConnection || {};
   const lastPlan = execution?.lastPlan || null;
   const snapshot = execution?.lastWebsiteSignalSnapshot || null;
+  const setup = execution?.setup || {};
+  const setupSteps = Array.isArray(setup.steps) ? setup.steps : [];
+  const pendingSetupCount = setupSteps.filter((step) => !step.completed).length;
   summaryTarget.innerHTML = `
     <article class="bot-position-card">
       <p><strong>Broker Bridge:</strong> ${brokerConnection.isConnected ? 'CONNECTED' : 'MANUAL / NOT CONNECTED'}</p>
@@ -195,9 +199,27 @@ function renderExecutionCenter(execution) {
       <p><strong>Last Plan:</strong> ${lastPlan?.generatedAt || 'N/A'}</p>
       <p><strong>Plan Tickets:</strong> ${Number(lastPlan?.orderTickets?.length || 0)} • <strong>Manual Action:</strong> ${lastPlan?.manualActionRequired ? 'Yes' : 'No'}</p>
       <p><strong>Website Inputs:</strong> AI queue ${Number(snapshot?.sources?.aiTradeQueue || 0)} • Trend ${Number(snapshot?.sources?.trendTrades || 0)} • High IV ${Number(snapshot?.sources?.highIvTracker || 0)}</p>
+      <p><strong>Broker setup pending steps:</strong> ${pendingSetupCount}</p>
+      <p class="small-note">Setup docs: ${setup?.docsUrl ? `<a class="open-link" href="${setup.docsUrl}" target="_blank" rel="noopener noreferrer">${setup.docsUrl}</a>` : 'N/A'}</p>
       <p class="small-note">Ranked symbols: ${(snapshot?.rankedSymbols || []).slice(0, 6).join(', ') || 'N/A'}</p>
     </article>
   `;
+
+  stepsTarget.innerHTML = '';
+  if (!setupSteps.length) {
+    stepsTarget.innerHTML = '<div class="pro-lock">No broker setup steps available.</div>';
+  } else {
+    setupSteps.forEach((step, index) => {
+      const card = document.createElement('article');
+      card.className = `bot-position-card ${step.completed ? 'bot-position-card--success' : 'bot-position-card--warning'}`;
+      card.innerHTML = `
+        <p><strong>Step ${index + 1}:</strong> ${step.title}</p>
+        <p class="small-note">${step.description || ''}</p>
+        <p class="small-note"><strong>Status:</strong> ${step.completed ? 'Complete' : 'Pending'}</p>
+      `;
+      stepsTarget.appendChild(card);
+    });
+  }
 
   const queued = Array.isArray(execution?.queuedAiTrades) ? execution.queuedAiTrades : [];
   queueTarget.innerHTML = '';

@@ -13,21 +13,21 @@
         <div class="pro-plan-logo-wrap" aria-hidden="true">
           <img class="pro-plan-logo-image" src="./logo-mark.svg" alt="" />
         </div>
-        <h1 id="brokerage-onboarding-title">Open a Live Brokerage Account</h1>
-        <p class="pro-plan-subtitle">Pick a broker and open your live account. After you finish account setup with your broker, return here and connect it to AI funding mode.</p>
+        <h1 id="brokerage-onboarding-title">Connect AI to Your Broker</h1>
+        <p class="pro-plan-subtitle">Follow these steps to connect your broker bridge so DumbDollars AI can generate execution-ready trade tickets for your live funded account.</p>
 
         <section class="pro-plan-box">
-          <h3>Before you open an account</h3>
+          <h3>Step 1: Open and verify your brokerage account</h3>
           <ul class="detail-list">
             <li>Use your legal name and matching identity documents.</li>
             <li>Enable two-factor authentication on the broker account.</li>
-            <li>After approval, come back to DumbDollars and set your broker in Live Funding Mode.</li>
+            <li>After approval, return here to connect API access.</li>
           </ul>
         </section>
 
         <form id="brokerage-picker-form" class="pro-plan-box ai-bot-form" novalidate>
           <label>
-            Select broker
+            Broker to connect
             <select id="brokerage-picker-select">
               <option value="robinhood">Robinhood</option>
               <option value="webull">Webull</option>
@@ -43,6 +43,67 @@
         </form>
 
         <section id="brokerage-selection-summary" class="ai-trade-consensus"></section>
+
+        <section class="ai-trade-consensus">
+          <h3>Step 2-6: Broker Bridge Setup Checklist</h3>
+          <div id="broker-setup-steps" class="broker-step-list"></div>
+        </section>
+
+        <form id="broker-connect-form" class="pro-plan-box ai-bot-form" novalidate>
+          <h3>Connect Broker API Bridge</h3>
+          <p class="small-note">This stores connection metadata and credential fingerprints so AI execution tickets can route through your broker setup.</p>
+          <div class="ai-bot-grid">
+            <label>
+              Broker account ID / alias
+              <input id="broker-connect-account-id" type="text" maxlength="80" placeholder="DU123456 / account alias" required />
+            </label>
+            <label>
+              API key
+              <input id="broker-connect-api-key" type="text" maxlength="120" placeholder="Broker API key" required />
+            </label>
+            <label>
+              API secret
+              <input id="broker-connect-api-secret" type="password" maxlength="160" placeholder="Broker API secret" required />
+            </label>
+            <label>
+              Passphrase (optional)
+              <input id="broker-connect-passphrase" type="password" maxlength="120" placeholder="Optional broker passphrase" />
+            </label>
+          </div>
+          <fieldset class="ai-bot-sectors">
+            <legend>Required API permissions</legend>
+            <label><input id="broker-connect-perm-read" type="checkbox" checked /> Read market/account data</label>
+            <label><input id="broker-connect-perm-account" type="checkbox" checked /> View account balances/positions</label>
+            <label><input id="broker-connect-perm-trade" type="checkbox" checked /> Trade permission enabled</label>
+          </fieldset>
+          <label>
+            Bridge mode
+            <select id="broker-connect-bridge-mode">
+              <option value="broker_linked" selected>Broker Linked (AI execution bridge)</option>
+              <option value="manual_confirmed">Manual Confirmed</option>
+            </select>
+          </label>
+          <label class="small-note">
+            <input id="broker-connect-risk-ack" type="checkbox" checked />
+            I understand live trading risk and want AI to prepare broker-linked execution tickets.
+          </label>
+          <div class="ai-bot-actions">
+            <button id="brokerage-connect-ai" type="submit">Save AI Broker Connection</button>
+            <button id="brokerage-test-ai" class="btn-secondary" type="button">Run Connection Test</button>
+            <button id="brokerage-disconnect-ai" class="btn-secondary" type="button">Disconnect Broker Bridge</button>
+          </div>
+        </form>
+
+        <section class="ai-trade-consensus">
+          <h3>Current Broker Bridge Status</h3>
+          <div id="broker-connection-status"></div>
+        </section>
+
+        <section class="ai-trade-consensus">
+          <h3>Connection Test Results</h3>
+          <div id="broker-connection-test-results" class="stack"></div>
+        </section>
+
         <section class="ai-trade-consensus">
           <h3>Direct broker links</h3>
           <ul class="detail-list">
