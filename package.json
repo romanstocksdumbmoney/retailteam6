@@ -1,0 +1,27 @@
+{
+  "name": "retailteam6-api",
+  "version": "1.0.0",
+  "description": "A lightweight market news and earnings API built with Express.",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "test": "node --test"
+  },
+  "keywords": [
+    "express",
+    "api",
+    "stocks"
+  ],
+  "author": "",
+  "license": "MIT",
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "express": "^5.1.0"
+  },
+  "devDependencies": {
+    "supertest": "^7.1.1"
+  }
+}
