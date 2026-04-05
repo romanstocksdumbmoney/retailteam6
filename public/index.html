@@ -3,83 +3,286 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Expense Reporting App</title>
+    <title>Dumb Dollars Expense Reporter</title>
     <style>
       :root {
-        color-scheme: light dark;
-        font-family: Arial, sans-serif;
+        --bg: #0b1220;
+        --panel: #121b2f;
+        --panel-soft: #1a2640;
+        --text: #e5edff;
+        --muted: #a8b3cc;
+        --accent: #6aa5ff;
+        --accent-2: #4ade80;
+        --border: #2c3b5d;
+        --error: #f87171;
+      }
+
+      * {
+        box-sizing: border-box;
       }
 
       body {
-        margin: 24px auto;
-        max-width: 900px;
-        padding: 0 16px 40px;
+        margin: 0;
+        font-family: Inter, Segoe UI, Roboto, Arial, sans-serif;
+        background: radial-gradient(circle at 20% 10%, #192649 0%, var(--bg) 45%);
+        color: var(--text);
       }
 
-      h1, h2 {
-        margin-bottom: 8px;
+      .wrap {
+        max-width: 1080px;
+        margin: 0 auto;
+        padding: 28px 18px 44px;
       }
 
-      section {
-        border: 1px solid #6b7280;
-        border-radius: 8px;
+      .hero {
+        background: linear-gradient(135deg, #173064 0%, #1d3b70 50%, #1f5cbf 100%);
+        border: 1px solid #2f5799;
+        border-radius: 16px;
+        padding: 22px;
+        margin-bottom: 18px;
+        box-shadow: 0 18px 48px rgba(0, 0, 0, 0.3);
+      }
+
+      .hero h1 {
+        margin: 0 0 10px;
+        font-size: 1.9rem;
+        letter-spacing: 0.2px;
+      }
+
+      .hero p {
+        margin: 0;
+        color: #d7e4ff;
+      }
+
+      .price-pill {
+        display: inline-block;
+        margin-top: 12px;
+        background: rgba(10, 18, 32, 0.55);
+        border: 1px solid #8ab6ff;
+        color: #eaf2ff;
+        border-radius: 999px;
+        padding: 6px 12px;
+        font-size: 0.9rem;
+      }
+
+      .grid {
+        display: grid;
+        gap: 14px;
+      }
+
+      @media (min-width: 980px) {
+        .grid {
+          grid-template-columns: 1.15fr 1fr;
+        }
+      }
+
+      .card {
+        background: linear-gradient(160deg, var(--panel) 0%, var(--panel-soft) 100%);
+        border: 1px solid var(--border);
+        border-radius: 14px;
         padding: 16px;
-        margin-bottom: 16px;
+        box-shadow: 0 12px 32px rgba(0, 0, 0, 0.2);
+      }
+
+      .card h2 {
+        margin-top: 0;
+      }
+
+      .sub {
+        margin-top: -4px;
+        color: var(--muted);
+        font-size: 0.92rem;
       }
 
       label {
         display: block;
-        margin-bottom: 8px;
+        margin-bottom: 10px;
+        font-size: 0.92rem;
+        color: #dbe6ff;
+      }
+
+      input,
+      select {
+        width: 100%;
+        margin-top: 4px;
+        background: #0e1729;
+        color: var(--text);
+        border: 1px solid #3a4d74;
+        border-radius: 9px;
+        padding: 10px;
+      }
+
+      input:focus,
+      select:focus {
+        outline: 2px solid rgba(106, 165, 255, 0.35);
+        border-color: var(--accent);
+      }
+
+      .row {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
       }
 
       button {
-        margin-top: 8px;
-        padding: 8px 12px;
+        border: 1px solid #3567bb;
+        background: linear-gradient(180deg, #4280e4 0%, #2f64ba 100%);
+        color: #f5f9ff;
+        border-radius: 10px;
+        padding: 10px 14px;
+        font-weight: 600;
         cursor: pointer;
       }
 
-      pre {
-        background: #111827;
-        color: #f9fafb;
-        border-radius: 6px;
-        padding: 12px;
-        overflow: auto;
+      button.secondary {
+        border: 1px solid #45608d;
+        background: #182744;
+      }
+
+      button.success {
+        border: 1px solid #2f8f5a;
+        background: linear-gradient(180deg, #2ca869 0%, #257f50 100%);
+      }
+
+      button:disabled {
+        opacity: 0.55;
+        cursor: not-allowed;
+      }
+
+      .status {
+        min-height: 1.2em;
+        margin: 10px 0 0;
       }
 
       .error {
-        color: #ef4444;
+        color: var(--error);
+      }
+
+      .success {
+        color: var(--accent-2);
+      }
+
+      pre {
+        background: #0b1220;
+        border: 1px solid #2a395c;
+        color: #e2ebff;
+        border-radius: 10px;
+        padding: 12px;
+        overflow: auto;
+        max-height: 300px;
+      }
+
+      .token-row {
+        display: grid;
+        grid-template-columns: 1fr auto;
+        gap: 8px;
+      }
+
+      .muted {
+        color: var(--muted);
+        font-size: 0.9rem;
+      }
+
+      .hidden {
+        display: none;
       }
     </style>
   </head>
   <body>
-    <h1>Expense Reporting Tool</h1>
-    <p>Upload a receipt photo to scan vendor/total/date, auto-categorize the expense, and generate monthly reports.</p>
+    <main class="wrap">
+      <section class="hero">
+        <h1>Dumb Dollars Expense Reporter</h1>
+        <p>Scan receipt images or videos, auto-fill details, review for accuracy, and export monthly reports to Excel.</p>
+        <span class="price-pill">$10/month Pro access required</span>
+      </section>
 
-    <section>
-      <h2>Scan Receipt</h2>
-      <form id="receipt-form">
+      <section class="card">
+        <h2>Subscription Access</h2>
+        <p class="sub">Start Stripe checkout for $10/month, then apply your returned access token to unlock paid features.</p>
+        <form id="subscription-form">
+          <label>
+            Email
+            <input id="subscription-email" type="email" placeholder="you@dumbdollars.org" required />
+          </label>
+          <div class="row">
+            <button class="success" type="submit">Go to Stripe Checkout</button>
+          </div>
+        </form>
+        <p id="subscription-status" class="status"></p>
         <label>
-          Receipt image
-          <input id="receipt-file" name="receipt" type="file" accept="image/*" required />
+          Access token
+          <div class="token-row">
+            <input id="subscription-token" type="text" placeholder="sub_..." />
+            <button id="save-token" class="secondary" type="button">Save token</button>
+          </div>
         </label>
-        <button type="submit">Upload and Scan</button>
-      </form>
-      <p id="scan-status"></p>
-      <pre id="scan-result">No receipt scanned yet.</pre>
-    </section>
+        <p class="muted">After checkout returns to this page, click <strong>Use session to unlock</strong> to generate your token.</p>
+        <div class="row">
+          <button id="confirm-checkout" class="secondary" type="button">Use session to unlock</button>
+        </div>
+        <p id="token-status" class="status muted"></p>
+      </section>
 
-    <section>
-      <h2>Monthly Report</h2>
-      <form id="report-form">
-        <label>
-          Month (YYYY-MM)
-          <input id="report-month" type="month" required />
-        </label>
-        <button type="submit">Generate Report</button>
-      </form>
-      <p id="report-status"></p>
-      <pre id="report-result">No report generated yet.</pre>
-    </section>
+      <section class="grid">
+        <div class="card">
+          <h2>Scan Receipt</h2>
+          <p class="sub">Upload image/video, then review extracted fields before saving.</p>
+          <form id="receipt-form">
+            <label>
+              Receipt image or video
+              <input id="receipt-file" name="receipt" type="file" accept="image/*,video/*" required />
+            </label>
+            <div class="row">
+              <button type="submit">Upload and Scan</button>
+            </div>
+          </form>
+          <p id="scan-status" class="status"></p>
+          <pre id="scan-result">No receipt scanned yet.</pre>
+        </div>
+
+        <div id="review-section" class="card hidden">
+          <h2>Review & Save</h2>
+          <p class="sub">Confirm values so totals and categorization stay accurate.</p>
+          <form id="review-form">
+            <label>
+              Vendor
+              <input id="review-vendor" type="text" required />
+            </label>
+            <label>
+              Total (USD)
+              <input id="review-total" type="number" min="0" step="0.01" required />
+            </label>
+            <label>
+              Expense Date
+              <input id="review-date" type="date" required />
+            </label>
+            <label>
+              Category
+              <select id="review-category" required></select>
+            </label>
+            <button class="success" type="submit">Save Expense</button>
+          </form>
+          <p id="save-status" class="status"></p>
+        </div>
+      </section>
+
+      <section class="card">
+        <h2>Monthly Report</h2>
+        <p class="sub">Generate JSON summary or export a full Excel workbook.</p>
+        <form id="report-form">
+          <label>
+            Month (YYYY-MM)
+            <input id="report-month" type="month" required />
+          </label>
+          <div class="row">
+            <button type="submit">Generate Report</button>
+            <button id="export-excel" class="secondary" type="button">Export to Excel (.xlsx)</button>
+          </div>
+        </form>
+        <p id="report-status" class="status"></p>
+        <pre id="report-result">No report generated yet.</pre>
+      </section>
+    </main>
 
     <script src="/app.js"></script>
   </body>

@@ -2,8 +2,9 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 
 const { parseReceiptText } = require('../services/receiptParser');
-const { categorizeExpense } = require('../services/categorizationService');
+const { categorizeExpense, getSupportedCategories } = require('../services/categorizationService');
 const { generateMonthlyReport } = require('../services/reportService');
+const { buildMonthlyReportWorkbook } = require('../services/excelExportService');
 
 test('parseReceiptText extracts vendor, total, and date', () => {
   const sampleText = `
@@ -31,6 +32,13 @@ test('categorizeExpense maps known vendors to categories', () => {
   assert.equal(categorization.matchedKeyword, 'uber');
 });
 
+test('getSupportedCategories includes Other and known categories', () => {
+  const categories = getSupportedCategories();
+  assert.ok(categories.includes('Meals'));
+  assert.ok(categories.includes('Transportation'));
+  assert.ok(categories.includes('Other'));
+});
+
 test('generateMonthlyReport aggregates totals correctly', () => {
   const expenses = [
     { vendor: 'ACME CAFE', total: 15, category: 'Meals', expenseDate: '2026-04-03' },
@@ -51,3 +59,29 @@ test('generateMonthlyReport aggregates totals correctly', () => {
   assert.equal(report.byVendor[0].vendor, 'ACME CAFE');
   assert.equal(report.byVendor[0].total, 25);
 });
+
+test('buildMonthlyReportWorkbook creates worksheets with expected names', async () => {
+  const report = {
+    month: '2026-04',
+    expenseCount: 1,
+    totalAmount: 12.75,
+    averageExpense: 12.75,
+    byCategory: [{ category: 'Meals', total: 12.75 }],
+    byVendor: [{ vendor: 'ACME CAFE', total: 12.75 }],
+    items: [{
+      id: '1',
+      expenseDate: '2026-04-05',
+      vendor: 'ACME CAFE',
+      category: 'Meals',
+      total: 12.75,
+      ocrConfidence: 92.5,
+      createdAt: '2026-04-05T00:00:00.000Z',
+    }],
+  };
+  const workbook = await buildMonthlyReportWorkbook(report);
+  assert.deepEqual(
+    workbook.worksheets.map((worksheet) => worksheet.name),
+    ['Summary', 'By Category', 'By Vendor', 'Items'],
+  );
+});
+

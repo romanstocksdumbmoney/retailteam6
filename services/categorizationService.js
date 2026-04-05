@@ -10,6 +10,10 @@ const categoryKeywords = {
   Entertainment: ['movie', 'cinema', 'theater', 'spotify', 'netflix'],
 };
 
+function getSupportedCategories() {
+  return [...Object.keys(categoryKeywords), 'Other'];
+}
+
 function categorizeExpense({ vendor, rawText }) {
   const searchable = `${vendor || ''} ${rawText || ''}`.toLowerCase();
 
@@ -25,4 +29,5 @@ function categorizeExpense({ vendor, rawText }) {
 
 module.exports = {
   categorizeExpense,
+  getSupportedCategories,
 };

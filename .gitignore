@@ -1,4 +1,5 @@
 node_modules/
 uploads/
 data/expenses.json
+data/subscriptions.json
 *.log
