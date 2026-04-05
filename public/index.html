@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Expense Reporting App</title>
+    <style>
+      :root {
+        color-scheme: light dark;
+        font-family: Arial, sans-serif;
+      }
+
+      body {
+        margin: 24px auto;
+        max-width: 900px;
+        padding: 0 16px 40px;
+      }
+
+      h1, h2 {
+        margin-bottom: 8px;
+      }
+
+      section {
+        border: 1px solid #6b7280;
+        border-radius: 8px;
+        padding: 16px;
+        margin-bottom: 16px;
+      }
+
+      label {
+        display: block;
+        margin-bottom: 8px;
+      }
+
+      button {
+        margin-top: 8px;
+        padding: 8px 12px;
+        cursor: pointer;
+      }
+
+      pre {
+        background: #111827;
+        color: #f9fafb;
+        border-radius: 6px;
+        padding: 12px;
+        overflow: auto;
+      }
+
+      .error {
+        color: #ef4444;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Expense Reporting Tool</h1>
+    <p>Upload a receipt photo to scan vendor/total/date, auto-categorize the expense, and generate monthly reports.</p>
+
+    <section>
+      <h2>Scan Receipt</h2>
+      <form id="receipt-form">
+        <label>
+          Receipt image
+          <input id="receipt-file" name="receipt" type="file" accept="image/*" required />
+        </label>
+        <button type="submit">Upload and Scan</button>
+      </form>
+      <p id="scan-status"></p>
+      <pre id="scan-result">No receipt scanned yet.</pre>
+    </section>
+
+    <section>
+      <h2>Monthly Report</h2>
+      <form id="report-form">
+        <label>
+          Month (YYYY-MM)
+          <input id="report-month" type="month" required />
+        </label>
+        <button type="submit">Generate Report</button>
+      </form>
+      <p id="report-status"></p>
+      <pre id="report-result">No report generated yet.</pre>
+    </section>
+
+    <script src="/app.js"></script>
+  </body>
+</html>
