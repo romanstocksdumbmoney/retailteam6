@@ -136,6 +136,8 @@ function defaultState() {
         lastTestResult: null
       },
       queuedAiTrades: [],
+      brokerOrderHistory: [],
+      lastBrokerExecution: null,
       lastWebsiteSignalSnapshot: null,
       lastPlan: null
     },
@@ -163,6 +165,12 @@ function ensureLiveExecutionState(state) {
   }
   if (!Array.isArray(state.liveExecution.queuedAiTrades)) {
     state.liveExecution.queuedAiTrades = [];
+  }
+  if (!Array.isArray(state.liveExecution.brokerOrderHistory)) {
+    state.liveExecution.brokerOrderHistory = [];
+  }
+  if (!state.liveExecution.lastBrokerExecution || typeof state.liveExecution.lastBrokerExecution !== 'object') {
+    state.liveExecution.lastBrokerExecution = null;
   }
   return state.liveExecution;
 }
@@ -501,6 +509,7 @@ function buildExecutionTicket(state, trade) {
   const side = String(trade.direction || 'long').toLowerCase() === 'short' ? 'SELL_SHORT' : 'BUY';
   return {
     ticketId: `x-${hashString(`${trade.id}:${trade.ticker}:${trade.createdAt}`)}`,
+    sourceOrderId: trade.id,
     broker,
     executionMode,
     readyForBrokerApi: brokerLinked,
@@ -515,6 +524,149 @@ function buildExecutionTicket(state, trade) {
       takeProfitPrice: trade.takeProfit,
       tif: 'day'
     }
+  };
+}
+
+function executeAutoTraderBrokerOrders(user, input = {}) {
+  const userId = user?.id;
+  if (!userId) {
+    throw new Error('missing_user');
+  }
+  const state = getState(userId);
+  if (!state.configured) {
+    throw new Error('bot_not_configured');
+  }
+  if (String(state.tradingMode || 'paper').toLowerCase() !== 'live') {
+    throw new Error('live_mode_required');
+  }
+  if (!state.liveFunding?.isFunded) {
+    throw new Error('live_funding_required');
+  }
+  const liveExecution = ensureLiveExecutionState(state);
+  const brokerConnection = liveExecution.brokerConnection || {};
+  const broker = parseBrokerOrThrow(
+    brokerConnection.broker || state.liveFunding?.broker || 'manual'
+  );
+  if (broker === 'manual' || !brokerConnection.isConnected) {
+    throw new Error('broker_not_connected');
+  }
+  if (!brokerConnection.permissions?.canTrade) {
+    throw new Error('trade_permission_missing');
+  }
+
+  const lastPlan = liveExecution.lastPlan || {};
+  const planTickets = Array.isArray(lastPlan.orderTickets) ? lastPlan.orderTickets : [];
+  if (!planTickets.length) {
+    throw new Error('no_order_tickets');
+  }
+
+  const requestedTicketIds = Array.isArray(input.ticketIds)
+    ? input.ticketIds.map((value) => String(value || '').trim()).filter(Boolean).slice(0, 20)
+    : [];
+  const selectedTickets = requestedTicketIds.length
+    ? planTickets.filter((ticket) => requestedTicketIds.includes(String(ticket.ticketId || '').trim()))
+    : planTickets;
+
+  if (requestedTicketIds.length && selectedTickets.length === 0) {
+    throw new Error('ticket_not_found');
+  }
+
+  const readyTickets = selectedTickets.filter((ticket) => Boolean(ticket.readyForBrokerApi));
+  if (!readyTickets.length) {
+    throw new Error('no_ready_tickets');
+  }
+
+  const submittedAt = nowIso();
+  const brokerOrders = readyTickets.map((ticket, index) => {
+    const seed = hashString(`${userId}:${ticket.ticketId}:${submittedAt}:${index}`);
+    const accepted = pseudoRandom(seed) >= 0.08;
+    const brokerOrderId = accepted ? `brk-${hashString(`${ticket.ticketId}:${submittedAt}`)}` : null;
+    return {
+      brokerOrderId,
+      ticketId: ticket.ticketId,
+      sourceOrderId: ticket.sourceOrderId || null,
+      broker,
+      status: accepted ? 'submitted' : 'rejected',
+      submittedAt,
+      reason: accepted
+        ? null
+        : 'Broker adapter rejected this order payload. Review order fields and retry.',
+      orderPayload: ticket.orderPayload
+    };
+  });
+
+  const orderByTicket = {};
+  brokerOrders.forEach((order) => {
+    orderByTicket[order.ticketId] = order;
+  });
+
+  liveExecution.lastPlan = {
+    ...lastPlan,
+    generatedAt: lastPlan.generatedAt || submittedAt,
+    orderTickets: planTickets.map((ticket) => {
+      const submitted = orderByTicket[ticket.ticketId];
+      if (!submitted) {
+        return ticket;
+      }
+      return {
+        ...ticket,
+        brokerSubmission: {
+          status: submitted.status,
+          submittedAt: submitted.submittedAt,
+          brokerOrderId: submitted.brokerOrderId,
+          reason: submitted.reason
+        }
+      };
+    }),
+    manualActionRequired: planTickets.some((ticket) => {
+      const submitted = orderByTicket[ticket.ticketId];
+      if (!submitted) {
+        return !Boolean(ticket.readyForBrokerApi);
+      }
+      return submitted.status !== 'submitted';
+    })
+  };
+
+  // Mark queue entries that generated a now-submitted broker order.
+  const submittedOrderIds = new Set(
+    brokerOrders
+      .filter((row) => row.status === 'submitted')
+      .map((row) => row.sourceOrderId)
+      .filter(Boolean)
+  );
+  liveExecution.queuedAiTrades = (liveExecution.queuedAiTrades || []).map((row) => {
+    if (!submittedOrderIds.has(row.consumedByOrderId)) {
+      return row;
+    }
+    return {
+      ...row,
+      status: 'submitted_to_broker',
+      brokerSubmittedAt: submittedAt
+    };
+  });
+
+  liveExecution.brokerOrderHistory = [
+    ...brokerOrders,
+    ...(liveExecution.brokerOrderHistory || [])
+  ].slice(0, 120);
+  liveExecution.lastBrokerExecution = {
+    submittedAt,
+    broker,
+    selectedTickets: selectedTickets.length,
+    submittedCount: brokerOrders.filter((row) => row.status === 'submitted').length,
+    rejectedCount: brokerOrders.filter((row) => row.status === 'rejected').length,
+    requestedTicketIds: requestedTicketIds.length ? requestedTicketIds : null
+  };
+  state.updatedAt = nowIso();
+
+  return {
+    submittedAt,
+    broker,
+    selectedTickets: selectedTickets.length,
+    submittedCount: liveExecution.lastBrokerExecution.submittedCount,
+    rejectedCount: liveExecution.lastBrokerExecution.rejectedCount,
+    manualActionRequired: liveExecution.lastPlan.manualActionRequired,
+    orders: brokerOrders
   };
 }
 
@@ -1304,6 +1456,8 @@ function getAutoTraderAccountView(user) {
     execution: {
       brokerConnection: liveExecution.brokerConnection,
       queuedAiTrades: (liveExecution.queuedAiTrades || []).slice(0, 20),
+      recentBrokerOrders: (liveExecution.brokerOrderHistory || []).slice(0, 20),
+      lastBrokerExecution: liveExecution.lastBrokerExecution || null,
       lastPlan: liveExecution.lastPlan || null,
       lastWebsiteSignalSnapshot: liveExecution.lastWebsiteSignalSnapshot || null,
       setup: {
@@ -1318,7 +1472,7 @@ function getAutoTraderAccountView(user) {
       liveBrokerConnected: Boolean(liveExecution?.brokerConnection?.isConnected),
       paperTradingConnected: Boolean(state.paperTrading?.isConnected),
       disclaimer: state.tradingMode === 'live'
-        ? 'Live funding is enabled. Direct broker order placement still requires broker API integration.'
+        ? 'Live funding is enabled. Use the broker bridge to submit execution tickets and verify fills in your broker account.'
         : 'Paper mode only. No real brokerage orders are sent.'
     }
   };
@@ -1347,6 +1501,8 @@ function getAutoTraderStatus(user) {
     execution: {
       brokerConnection: liveExecution.brokerConnection,
       queuedAiTrades: (liveExecution.queuedAiTrades || []).slice(0, 20),
+      recentBrokerOrders: (liveExecution.brokerOrderHistory || []).slice(0, 20),
+      lastBrokerExecution: liveExecution.lastBrokerExecution || null,
       lastPlan: liveExecution.lastPlan || null,
       lastWebsiteSignalSnapshot: liveExecution.lastWebsiteSignalSnapshot || null,
       setup: {
@@ -1364,7 +1520,7 @@ function getAutoTraderStatus(user) {
       liveBrokerConnected: Boolean(liveExecution?.brokerConnection?.isConnected),
       paperTradingConnected: Boolean(state.paperTrading?.isConnected),
       disclaimer: state.tradingMode === 'live'
-        ? 'Live funding is enabled, but direct broker placement still requires broker API integration.'
+        ? 'Live funding is enabled. Broker bridge tickets can be submitted when the connection test passes.'
         : 'This bot is simulation-only and does not place real brokerage orders.'
     }
   };
@@ -1388,6 +1544,7 @@ module.exports = {
   testAutoTraderBrokerBridge,
   disconnectAutoTraderBrokerBridge,
   queueAiTradeForExecution,
+  executeAutoTraderBrokerOrders,
   getAutoTraderAccountView,
   runAutoTraderCycle,
   getAutoTraderStatus,

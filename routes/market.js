@@ -31,6 +31,7 @@ const {
   testAutoTraderBrokerBridge,
   disconnectAutoTraderBrokerBridge,
   queueAiTradeForExecution,
+  executeAutoTraderBrokerOrders,
   runAutoTraderCycle,
   listAutoTraderSectors,
   setBotActive,
@@ -649,6 +650,67 @@ router.post('/auto-trader/run', requireSignedIn, (req, res) => {
     return res.status(400).json({
       error: 'invalid_request',
       message: 'Could not run AI Auto Trader cycle.'
+    });
+  }
+});
+
+router.post('/auto-trader/execute-orders', requireSignedIn, requireLiveFundingAccess, (req, res) => {
+  try {
+    const payload = executeAutoTraderBrokerOrders(req.user, req.body || {});
+    return res.json(payload);
+  } catch (error) {
+    const code = String(error.message || '');
+    if (code === 'bot_not_configured') {
+      return res.status(400).json({
+        error: 'bot_not_configured',
+        message: 'Configure the AI Auto Trader first.'
+      });
+    }
+    if (code === 'live_mode_required') {
+      return res.status(400).json({
+        error: 'live_mode_required',
+        message: 'Switch to Live Funding mode before sending broker orders.'
+      });
+    }
+    if (code === 'live_funding_required') {
+      return res.status(400).json({
+        error: 'live_funding_required',
+        message: 'Fund your live account before sending broker orders.'
+      });
+    }
+    if (code === 'broker_not_connected') {
+      return res.status(400).json({
+        error: 'broker_not_connected',
+        message: 'Connect and test your broker bridge before sending orders.'
+      });
+    }
+    if (code === 'trade_permission_missing') {
+      return res.status(400).json({
+        error: 'trade_permission_missing',
+        message: 'Broker connection is missing trade permission.'
+      });
+    }
+    if (code === 'no_order_tickets') {
+      return res.status(400).json({
+        error: 'no_order_tickets',
+        message: 'Run an AI cycle first so order tickets are available.'
+      });
+    }
+    if (code === 'ticket_not_found') {
+      return res.status(404).json({
+        error: 'ticket_not_found',
+        message: 'No matching order tickets were found for submission.'
+      });
+    }
+    if (code === 'no_ready_tickets') {
+      return res.status(400).json({
+        error: 'no_ready_tickets',
+        message: 'Selected tickets are not broker-ready yet.'
+      });
+    }
+    return res.status(400).json({
+      error: 'invalid_request',
+      message: 'Could not submit broker orders from execution tickets.'
     });
   }
 });

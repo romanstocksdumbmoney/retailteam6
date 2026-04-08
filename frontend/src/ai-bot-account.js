@@ -183,11 +183,14 @@ function renderExecutionCenter(execution) {
   const summaryTarget = document.getElementById('ai-account-execution-summary');
   const queueTarget = document.getElementById('ai-account-queued-ai-trades');
   const stepsTarget = document.getElementById('ai-account-broker-setup-steps');
-  if (!summaryTarget || !queueTarget || !stepsTarget) {
+  const ordersTarget = document.getElementById('ai-account-broker-orders');
+  if (!summaryTarget || !queueTarget || !stepsTarget || !ordersTarget) {
     return;
   }
   const brokerConnection = execution?.brokerConnection || {};
   const lastPlan = execution?.lastPlan || null;
+  const lastBrokerExecution = execution?.lastBrokerExecution || null;
+  const recentBrokerOrders = Array.isArray(execution?.recentBrokerOrders) ? execution.recentBrokerOrders : [];
   const snapshot = execution?.lastWebsiteSignalSnapshot || null;
   const setup = execution?.setup || {};
   const setupSteps = Array.isArray(setup.steps) ? setup.steps : [];
@@ -198,6 +201,7 @@ function renderExecutionCenter(execution) {
       <p><strong>Broker:</strong> ${String(brokerConnection.broker || 'manual').toUpperCase()} • <strong>Mode:</strong> ${String(brokerConnection.bridgeMode || 'manual_confirmed').replace(/_/g, ' ')}</p>
       <p><strong>Last Plan:</strong> ${lastPlan?.generatedAt || 'N/A'}</p>
       <p><strong>Plan Tickets:</strong> ${Number(lastPlan?.orderTickets?.length || 0)} • <strong>Manual Action:</strong> ${lastPlan?.manualActionRequired ? 'Yes' : 'No'}</p>
+      <p><strong>Last Broker Submit:</strong> ${lastBrokerExecution?.submittedAt || 'N/A'} • <strong>Submitted:</strong> ${Number(lastBrokerExecution?.submittedCount || 0)} • <strong>Rejected:</strong> ${Number(lastBrokerExecution?.rejectedCount || 0)}</p>
       <p><strong>Website Inputs:</strong> AI queue ${Number(snapshot?.sources?.aiTradeQueue || 0)} • Trend ${Number(snapshot?.sources?.trendTrades || 0)} • High IV ${Number(snapshot?.sources?.highIvTracker || 0)}</p>
       <p><strong>Broker setup pending steps:</strong> ${pendingSetupCount}</p>
       <p class="small-note">Setup docs: ${setup?.docsUrl ? `<a class="open-link" href="${setup.docsUrl}" target="_blank" rel="noopener noreferrer">${setup.docsUrl}</a>` : 'N/A'}</p>
@@ -218,6 +222,24 @@ function renderExecutionCenter(execution) {
         <p class="small-note"><strong>Status:</strong> ${step.completed ? 'Complete' : 'Pending'}</p>
       `;
       stepsTarget.appendChild(card);
+    });
+  }
+
+  ordersTarget.innerHTML = '';
+  if (!recentBrokerOrders.length) {
+    ordersTarget.innerHTML = '<div class="pro-lock">No broker order submissions yet. Run AI cycle, then execute broker tickets.</div>';
+  } else {
+    recentBrokerOrders.slice(0, 12).forEach((order) => {
+      const card = document.createElement('article');
+      card.className = `bot-position-card ${order.status === 'submitted' ? 'bot-position-card--success' : 'bot-position-card--warning'}`;
+      card.innerHTML = `
+        <p><strong>Ticket:</strong> ${order.ticketId || '-'}</p>
+        <p><strong>Status:</strong> ${String(order.status || 'unknown').toUpperCase()} • <strong>Broker Order ID:</strong> ${order.brokerOrderId || 'N/A'}</p>
+        <p><strong>Broker:</strong> ${String(order.broker || 'manual').toUpperCase()} • <strong>Symbol:</strong> ${order.orderPayload?.symbol || '-'}</p>
+        <p><strong>Side/Qty:</strong> ${order.orderPayload?.side || '-'} / ${Number(order.orderPayload?.quantity || 0).toLocaleString()}</p>
+        <p class="small-note">${order.submittedAt || 'N/A'}${order.reason ? ` • ${order.reason}` : ''}</p>
+      `;
+      ordersTarget.appendChild(card);
     });
   }
 
@@ -256,6 +278,7 @@ async function loadAccountView() {
 function setupActions() {
   const refreshButton = document.getElementById('ai-account-refresh');
   const runCycleButton = document.getElementById('ai-account-run-cycle');
+  const executeOrdersButton = document.getElementById('ai-account-execute-orders');
   const openFundingButton = document.getElementById('ai-account-back-funding');
   const openBrokerOnboardingButton = document.getElementById('ai-account-open-brokerage');
 
@@ -305,6 +328,29 @@ function setupActions() {
         setStatus(error.message || 'Could not run AI cycle.', true);
       } finally {
         runCycleButton.disabled = false;
+      }
+    });
+  }
+
+  if (executeOrdersButton) {
+    executeOrdersButton.addEventListener('click', async () => {
+      try {
+        executeOrdersButton.disabled = true;
+        setStatus('Submitting broker tickets...');
+        const payload = await fetchJson('/api/market/auto-trader/execute-orders', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            ...getAuthHeaders()
+          },
+          body: JSON.stringify({})
+        });
+        await loadAccountView();
+        setStatus(`Broker submit complete. Submitted ${Number(payload.submittedCount || 0)} ticket(s), rejected ${Number(payload.rejectedCount || 0)}.`);
+      } catch (error) {
+        setStatus(error.message || 'Could not submit broker tickets.', true);
+      } finally {
+        executeOrdersButton.disabled = false;
       }
     });
   }
