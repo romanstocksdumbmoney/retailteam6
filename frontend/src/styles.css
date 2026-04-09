@@ -907,6 +907,20 @@ h1 {
   margin-top: 0.45rem;
 }
 
+#brokerage-onboarding-status-top {
+  min-height: 2.25rem;
+  margin-bottom: 0.65rem;
+  padding: 0.52rem 0.68rem;
+  border: 1px solid rgba(250, 204, 21, 0.36);
+  border-radius: 10px;
+  background: rgba(30, 41, 59, 0.45);
+}
+
+#brokerage-onboarding-status-top.auth-error {
+  border-color: rgba(248, 113, 113, 0.42);
+  background: rgba(127, 29, 29, 0.18);
+}
+
 input,
 select,
 button {

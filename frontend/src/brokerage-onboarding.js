@@ -435,13 +435,19 @@ function setupForm() {
   }
 
   renderSelectedBrokerSummary(null);
-  loadBrokerGuide().catch((error) => {
-    setStatus(error.message || 'Could not load broker setup guide.', true);
-  });
+  setStatus('Loading broker setup guide...');
+  loadBrokerGuide()
+    .then(() => {
+      setStatus('Broker setup guide loaded. Use One-Click Connect or Save + Test.');
+    })
+    .catch((error) => {
+      setStatus(error.message || 'Could not load broker setup guide.', true);
+    });
 
   select.addEventListener('change', () => {
     localStorage.setItem('dumbdollars_selected_broker', getSelectedBroker());
     renderSelectedBrokerSummary(null);
+    setStatus('Loading selected broker guide...');
     loadBrokerGuide().catch((error) => {
       setStatus(error.message || 'Could not load broker setup guide.', true);
     });
@@ -564,6 +570,7 @@ function setupForm() {
 }
 
 function init() {
+  setStatus('Broker connection page ready.');
   setupForm();
   renderConnectionMethodFields();
 }
