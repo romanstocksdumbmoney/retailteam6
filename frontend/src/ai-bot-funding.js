@@ -343,6 +343,8 @@ async function saveTestAreaSettings() {
 
 function setupForm() {
   const buyButton = document.getElementById('ai-live-buy-access');
+  const buyLiveModeShortcutButton = document.getElementById('ai-buy-live-mode');
+  const openLiveAiAccountButton = document.getElementById('ai-open-live-ai-account');
   const testForm = document.getElementById('ai-test-area-form');
   const createPaperConnectButton = document.getElementById('ai-test-create-paper-account');
   const fundingForm = document.getElementById('ai-funding-form');
@@ -387,6 +389,20 @@ function setupForm() {
     });
   }
 
+  if (buyLiveModeShortcutButton instanceof HTMLButtonElement) {
+    buyLiveModeShortcutButton.addEventListener('click', async () => {
+      try {
+        buyLiveModeShortcutButton.disabled = true;
+        setStatus('Starting checkout for Live Funding Mode...');
+        await buyLiveFundingAccess();
+      } catch (error) {
+        setStatus(error.message || 'Could not start checkout.', true);
+      } finally {
+        buyLiveModeShortcutButton.disabled = false;
+      }
+    });
+  }
+
   if (buyButton) {
     buyButton.addEventListener('click', async () => {
       try {
@@ -396,6 +412,26 @@ function setupForm() {
       } catch (error) {
         setStatus(error.message || 'Could not start checkout.', true);
         buyButton.disabled = false;
+      }
+    });
+  }
+
+  if (openLiveAiAccountButton instanceof HTMLButtonElement) {
+    openLiveAiAccountButton.addEventListener('click', async () => {
+      try {
+        openLiveAiAccountButton.disabled = true;
+        setStatus('Opening live AI account flow...');
+        const profile = await loadFundingProfile();
+        if (!isFundingAccessAllowed(profile)) {
+          setStatus('Live Funding Mode is locked. Start checkout first, then return here.', true);
+          await buyLiveFundingAccess();
+          return;
+        }
+        window.location.href = '/brokerage-onboarding.html';
+      } catch (error) {
+        setStatus(error.message || 'Could not open live AI account flow.', true);
+      } finally {
+        openLiveAiAccountButton.disabled = false;
       }
     });
   }

@@ -101,6 +101,11 @@ function buildRouteSuggestion(input, pathname) {
 
   const routes = [
     {
+      href: '/ai-bot-funding.html',
+      label: 'Live AI Account Setup',
+      keywords: ['live account', 'open live account', 'live ai', 'ai will run', 'run ai on my account', 'hands-free live', 'ai run it']
+    },
+    {
       href: '/brokerage-onboarding.html',
       label: 'Broker Connection',
       keywords: ['broker', 'robinhood', 'connect account', 'connection test', 'bridge']
@@ -194,6 +199,8 @@ function buildCopilotReply(input, context, pathname) {
     message = 'Account sign-up must be done by the user (identity/KYC). After sign-up, return here to connect broker permissions for AI execution.';
   } else if (text.includes('risk') || text.includes('reward')) {
     message = 'Use max risk per trade and min reward/risk ratio to filter weaker setups. Higher minimum reward/risk means fewer but cleaner proposals.';
+  } else if (includesAny(text, ['live account', 'open live account', 'live ai', 'ai will run', 'hands-free live', 'run ai on my account'])) {
+    message = 'To open a live AI account flow: choose Live Funding mode, connect broker bridge, run the bridge test, then enable hands-free live execution.';
   } else if (text.includes('broker') || text.includes('connect')) {
     message = 'For broker mode: save credentials, run bridge test, and clear pending setup steps. AI live automation should only be enabled after those checks pass.';
   } else if (text.includes('paper') || text.includes('test')) {
@@ -495,11 +502,15 @@ function mountAiCopilotWidget() {
   shell.className = 'ai-copilot-shell';
   shell.innerHTML = `
     <button type="button" class="ai-copilot-fab" id="ai-copilot-fab" aria-controls="ai-copilot-panel" aria-expanded="false">
-      AI Copilot
+      <span class="ai-copilot-fab-dot" aria-hidden="true"></span>
+      <span>AI Copilot</span>
     </button>
     <section class="ai-copilot-panel" id="ai-copilot-panel" hidden aria-live="polite" aria-label="AI Copilot helper">
       <header class="ai-copilot-header">
-        <strong>AI Copilot</strong>
+        <div>
+          <strong>AI Copilot</strong>
+          <p class="small-note">Chat, routing, and live account help</p>
+        </div>
         <button type="button" id="ai-copilot-close" class="btn-secondary">Close</button>
       </header>
       <p class="small-note">Helping on: ${context.pageTitle}</p>
@@ -507,6 +518,13 @@ function mountAiCopilotWidget() {
       <div class="ai-copilot-feed" id="ai-copilot-feed"></div>
       <div class="ai-copilot-actions">
         <a class="open-link" href="${context.nextHref}">${context.nextLabel}</a>
+        <a class="open-link" href="/ai-bot-funding.html">Open Live AI Account</a>
+      </div>
+      <div class="ai-copilot-quick-actions" id="ai-copilot-quick-actions">
+        <button type="button" class="ai-copilot-quick-btn" data-copilot-prompt="Open live AI account setup">Open Live AI Account</button>
+        <button type="button" class="ai-copilot-quick-btn" data-copilot-prompt="Open stock scanner and outlook tools">Stock Tools</button>
+        <button type="button" class="ai-copilot-quick-btn" data-copilot-prompt="Open broker connection setup">Broker Connect</button>
+        <button type="button" class="ai-copilot-quick-btn" data-copilot-prompt="Open checkout page">Checkout</button>
       </div>
       <form id="ai-copilot-form" class="ai-copilot-form" novalidate>
         <label for="ai-copilot-input" class="small-note">Ask for help</label>
@@ -547,6 +565,7 @@ function mountAiCopilotWidget() {
   const reportCategory = document.getElementById('ai-copilot-report-category');
   const reportMessage = document.getElementById('ai-copilot-report-message');
   const reportContact = document.getElementById('ai-copilot-report-contact');
+  const quickActions = document.getElementById('ai-copilot-quick-actions');
 
   if (!fab || !panel || !closeButton || !form || !input || !feed || !health || !reportToggle || !reportForm || !reportCategory || !reportMessage || !reportContact) {
     return;
@@ -573,6 +592,47 @@ function mountAiCopilotWidget() {
     row.appendChild(link);
     feed.appendChild(row);
     feed.scrollTop = feed.scrollHeight;
+  };
+
+  const maybeRedirectToRoute = (route) => {
+    if (!route || !route.wantsRedirect) {
+      return;
+    }
+    setTimeout(() => {
+      window.location.assign(route.href);
+    }, 250);
+  };
+
+  const handleQuestion = (question) => {
+    const normalizedQuestion = String(question || '').trim();
+    if (!normalizedQuestion) {
+      return;
+    }
+    appendMessage('user', normalizedQuestion);
+    if (normalizedQuestion.toLowerCase().includes('check complaint status')) {
+      const ticketId = getLastComplaintTicketId();
+      if (!ticketId) {
+        appendMessage('assistant', 'No complaint ticket found yet. Use "Report an issue" to create one.');
+        return;
+      }
+      appendMessage('assistant', `Checking complaint ticket ${ticketId}...`);
+      fetchComplaintTicketStatus(ticketId)
+        .then((payload) => {
+          const complaint = payload?.complaint || {};
+          const currentStatus = statusLabel(complaint.status);
+          appendMessage('assistant', `Ticket ${ticketId} status: ${currentStatus}.`);
+        })
+        .catch(() => {
+          appendMessage('assistant', 'Could not load ticket status right now. Please try again in a moment.');
+        });
+      return;
+    }
+    const reply = buildCopilotReply(normalizedQuestion, context, pathname);
+    appendMessage('assistant', reply.message);
+    if (reply.route) {
+      appendRouteLink(reply.route);
+      maybeRedirectToRoute(reply.route);
+    }
   };
 
   context.starterTips.forEach((tip, index) => {
@@ -651,40 +711,27 @@ function mountAiCopilotWidget() {
     if (!question) {
       return;
     }
-    if (question.toLowerCase().includes('check complaint status')) {
-      const ticketId = getLastComplaintTicketId();
-      if (!ticketId) {
-        appendMessage('assistant', 'No complaint ticket found yet. Use "Report an issue" to create one.');
-        input.value = '';
-        return;
-      }
-      appendMessage('user', question);
-      appendMessage('assistant', `Checking complaint ticket ${ticketId}...`);
-      fetchComplaintTicketStatus(ticketId)
-        .then((payload) => {
-          const complaint = payload?.complaint || {};
-          const currentStatus = statusLabel(complaint.status);
-          appendMessage('assistant', `Ticket ${ticketId} status: ${currentStatus}.`);
-        })
-        .catch(() => {
-          appendMessage('assistant', 'Could not load ticket status right now. Please try again in a moment.');
-        });
-      input.value = '';
-      return;
-    }
-    appendMessage('user', question);
-    const reply = buildCopilotReply(question, context, pathname);
-    appendMessage('assistant', reply.message);
-    if (reply.route) {
-      appendRouteLink(reply.route);
-      if (reply.route.wantsRedirect) {
-        setTimeout(() => {
-          window.location.assign(reply.route.href);
-        }, 250);
-      }
-    }
+    handleQuestion(question);
     input.value = '';
   });
+
+  if (quickActions) {
+    quickActions.addEventListener('click', (event) => {
+      const target = event.target;
+      if (!(target instanceof HTMLElement)) {
+        return;
+      }
+      const button = target.closest('button[data-copilot-prompt]');
+      if (!(button instanceof HTMLButtonElement)) {
+        return;
+      }
+      const prompt = String(button.dataset.copilotPrompt || '').trim();
+      if (!prompt) {
+        return;
+      }
+      handleQuestion(prompt);
+    });
+  }
 
   reportToggle.addEventListener('click', () => {
     const opening = reportForm.hidden;
