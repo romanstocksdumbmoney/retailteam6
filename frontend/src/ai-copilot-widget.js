@@ -1,12 +1,21 @@
+function normalizePathname(pathname) {
+  const raw = String(pathname || '/').trim() || '/';
+  if (raw === '/index.html') {
+    return '/';
+  }
+  return raw.startsWith('/') ? raw : `/${raw}`;
+}
+
 function getAiCopilotContext(pathname) {
+  const page = normalizePathname(pathname);
   const baseContext = {
-    pageTitle: 'AI Trading',
+    pageTitle: 'DumbDollars',
     nextHref: '/ai-bot-trader.html',
-    nextLabel: 'Open AI Trader setup',
+    nextLabel: 'Open AI setup',
     starterTips: [
-      'Use the quick-nav bar at the top to jump between setup, funding, and broker pages.',
-      'You can ask things like: "what do I fill out here?" or "what is my next step?"',
-      'Broker sign-up must be completed by the user due identity verification requirements.'
+      'Use the quick links above to move around the app quickly.',
+      'Ask things like: "what should I do next?" or "what do I put here?"',
+      'AI can assist with strategy and routing, but broker sign-up/KYC must be completed by the user.'
     ]
   };
 
@@ -70,12 +79,122 @@ function getAiCopilotContext(pathname) {
         'Save credentials, run connection test, and resolve pending checklist steps.',
         'Once bridge is ready, go back to account view for trading actions.'
       ]
+    },
+    '/': {
+      pageTitle: 'Dashboard',
+      nextHref: '/ai-bot-trader.html',
+      nextLabel: 'Open AI Trader setup',
+      starterTips: [
+        'Use module search to jump to any feature quickly.',
+        'For AI trading, start with AI setup, then Funding/Test, then Broker Connect.',
+        'If you are new, start paper mode first before moving to live.'
+      ]
+    },
+    '/pro.html': {
+      pageTitle: 'Pro plan',
+      nextHref: '/payment.html',
+      nextLabel: 'Continue to payment page',
+      starterTips: [
+        'Review pro features first, then continue to payment.',
+        'You can return to dashboard anytime from the back link.',
+        'After upgrade, AI live features are easier to unlock.'
+      ]
+    },
+    '/payment.html': {
+      pageTitle: 'Payment review',
+      nextHref: '/checkout.html',
+      nextLabel: 'Continue to checkout',
+      starterTips: [
+        'Review benefits and billing safety details here.',
+        'Continue to checkout for secure Stripe flow.',
+        'If checkout fails, come back and retry.'
+      ]
+    },
+    '/checkout.html': {
+      pageTitle: 'Checkout',
+      nextHref: '/payment.html',
+      nextLabel: 'Back to payment review',
+      starterTips: [
+        'This is the final step before hosted checkout.',
+        'After purchase, return to dashboard and AI pages.',
+        'Use Manage Billing later from the dashboard.'
+      ]
+    },
+    '/ai-trade.html': {
+      pageTitle: 'AI Trade analyzer',
+      nextHref: '/ai-bot-funding.html',
+      nextLabel: 'Open Funding + Test Area',
+      starterTips: [
+        'Upload a chart to get AI trade analysis.',
+        'Queue strong setups to live execution flow when ready.',
+        'Use Funding/Test page to control risk and capital.'
+      ]
+    },
+    '/ai-trade-access.html': {
+      pageTitle: 'AI Trade access',
+      nextHref: '/ai-trade.html',
+      nextLabel: 'Open AI Trade',
+      starterTips: [
+        'Sign up or log in first to unlock AI trading tools.',
+        'After login, go to AI Trade and AI Bot Trader pages.',
+        'Keep remember-login enabled for smoother sessions.'
+      ]
+    },
+    '/ai-analyzer.html': {
+      pageTitle: 'AI screenshot analyzer',
+      nextHref: '/ai-bot-trader.html',
+      nextLabel: 'Open AI Bot Trader',
+      starterTips: [
+        'Upload screenshots to review if a trade was good or risky.',
+        'Use scores and pattern suggestions to refine your setup.',
+        'Then apply what you learned in AI Bot Trader config.'
+      ]
+    },
+    '/ai-implementation-steps.html': {
+      pageTitle: 'AI implementation steps',
+      nextHref: '/ai-bot-trader.html',
+      nextLabel: 'Start with AI setup',
+      starterTips: [
+        'Follow steps in order: setup, test, then live.',
+        'Risk controls should be in place before automation.',
+        'Broker sign-up/KYC cannot be automated and must be user-completed.'
+      ]
+    },
+    '/insider-trades.html': {
+      pageTitle: 'Insider trades',
+      nextHref: '/',
+      nextLabel: 'Back to dashboard',
+      starterTips: [
+        'Use this as signal context, not stand-alone trade advice.',
+        'Refresh to update list and check large value moves.',
+        'Combine with AI Trade and Trend modules for better decisions.'
+      ]
+    },
+    '/portfolios.html': {
+      pageTitle: 'Portfolios',
+      nextHref: '/',
+      nextLabel: 'Back to dashboard',
+      starterTips: [
+        'Filter for strong performance and larger asset managers.',
+        'Use trade activity as idea generation, then verify risk.',
+        'Cross-check with scanner and AI modules before acting.'
+      ]
+    },
+    '/social-auth.html': {
+      pageTitle: 'Social sign-in',
+      nextHref: '/',
+      nextLabel: 'Back to dashboard',
+      starterTips: [
+        'Pick provider and confirm your email carefully.',
+        'If a provider fails, retry or use email/password login.',
+        'After login, continue from dashboard quick links.'
+      ]
     }
   };
 
   return {
     ...baseContext,
-    ...(contexts[pathname] || {})
+    ...(contexts[page] || {})
   };
 }
 
@@ -100,6 +219,12 @@ function getCopilotResponse(input, context) {
   if (text.includes('paper') || text.includes('test')) {
     return 'Paper/Test mode is the safest first run. Tune risk and prompt quality there before enabling live execution.';
   }
+  if (text.includes('pay') || text.includes('checkout') || text.includes('billing')) {
+    return 'For billing: review payment details, continue to checkout, then return to dashboard after success. Use Manage Billing for subscription changes.';
+  }
+  if (text.includes('login') || text.includes('sign in') || text.includes('auth')) {
+    return 'If sign-in fails, retry once, confirm email/password, or use social provider. Keep remember-login enabled for a smoother experience.';
+  }
   if (text.includes('trade') || text.includes('execute') || text.includes('submit')) {
     return 'In account view, run a cycle, review proposals, select trades, and submit. If hands-free mode is enabled, auto-submit can run after readiness checks.';
   }
@@ -107,25 +232,34 @@ function getCopilotResponse(input, context) {
 }
 
 function buildQuickNav(pathname) {
+  const page = normalizePathname(pathname);
   const links = [
+    { href: '/', label: 'Dashboard' },
+    { href: '/pro.html', label: 'Pro' },
+    { href: '/payment.html', label: 'Payment' },
+    { href: '/checkout.html', label: 'Checkout' },
+    { href: '/ai-trade.html', label: 'AI Trade' },
     { href: '/ai-bot-trader.html', label: 'AI Setup' },
     { href: '/ai-bot-funding.html', label: 'Funding + Test' },
     { href: '/ai-bot-paper-connect.html', label: 'Paper Connect' },
     { href: '/ai-bot-account.html', label: 'Account View' },
     { href: '/brokerage-onboarding.html', label: 'Broker Connect' }
   ];
-  if (pathname === '/ai-bot-funding-payment.html') {
+  if (page === '/ai-bot-funding-payment.html') {
     links.splice(2, 0, { href: '/ai-bot-funding-payment.html', label: 'Funding Payment' });
   }
   return links;
 }
 
 function mountAiQuickNav() {
-  const card = document.querySelector('.ai-trade-page-card, .payment-page-card');
-  if (!card) {
+  if (document.querySelector('.ai-page-quick-nav')) {
     return;
   }
-  const pathname = window.location.pathname || '/';
+  const host = document.querySelector('.ai-trade-page-card, .payment-page-card, .pro-page-card, .container');
+  if (!host) {
+    return;
+  }
+  const pathname = normalizePathname(window.location.pathname || '/');
   const nav = document.createElement('section');
   nav.className = 'ai-page-quick-nav';
   nav.setAttribute('aria-label', 'AI trading quick navigation');
@@ -135,25 +269,29 @@ function mountAiQuickNav() {
     <h3>Quick AI Navigation</h3>
     <div class="ai-page-quick-nav-links">
       ${links.map((link) => {
-        const active = pathname === link.href;
+        const active = pathname === normalizePathname(link.href);
         return `<a class="${active ? 'ai-page-quick-link ai-page-quick-link--active' : 'ai-page-quick-link'}" href="${link.href}">${link.label}</a>`;
       }).join('')}
     </div>
   `;
 
-  const heading = card.querySelector('h1');
-  if (heading && heading.parentElement === card) {
+  const heading = host.querySelector(':scope > h1, :scope h1');
+  if (heading && heading.parentElement === host) {
     heading.insertAdjacentElement('afterend', nav);
     return;
   }
-  card.prepend(nav);
+  host.prepend(nav);
 }
 
 function mountAiCopilotWidget() {
-  const pathname = window.location.pathname || '/';
+  if (document.getElementById('ai-copilot-shell')) {
+    return;
+  }
+  const pathname = normalizePathname(window.location.pathname || '/');
   const context = getAiCopilotContext(pathname);
 
   const shell = document.createElement('div');
+  shell.id = 'ai-copilot-shell';
   shell.className = 'ai-copilot-shell';
   shell.innerHTML = `
     <button type="button" class="ai-copilot-fab" id="ai-copilot-fab" aria-controls="ai-copilot-panel" aria-expanded="false">
