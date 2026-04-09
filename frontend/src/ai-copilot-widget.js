@@ -233,20 +233,34 @@ function getCopilotResponse(input, context) {
 
 function buildQuickNav(pathname) {
   const page = normalizePathname(pathname);
-  const links = [
-    { href: '/', label: 'Dashboard' },
-    { href: '/pro.html', label: 'Pro' },
-    { href: '/payment.html', label: 'Payment' },
-    { href: '/checkout.html', label: 'Checkout' },
-    { href: '/ai-trade.html', label: 'AI Trade' },
-    { href: '/ai-bot-trader.html', label: 'AI Setup' },
-    { href: '/ai-bot-funding.html', label: 'Funding + Test' },
-    { href: '/ai-bot-paper-connect.html', label: 'Paper Connect' },
-    { href: '/ai-bot-account.html', label: 'Account View' },
-    { href: '/brokerage-onboarding.html', label: 'Broker Connect' }
+  const tradeFlow = [
+    { href: '/ai-bot-trader.html', label: '1) Setup AI' },
+    { href: '/ai-bot-funding.html', label: '2) Funding/Test' },
+    { href: '/brokerage-onboarding.html', label: '3) Broker Connect' },
+    { href: '/ai-bot-account.html', label: '4) Run + Trade' }
   ];
+  const core = [
+    { href: '/', label: 'Dashboard' },
+    { href: '/ai-trade.html', label: 'AI Trade' },
+    { href: '/ai-analyzer.html', label: 'AI Analyzer' },
+    { href: '/pro.html', label: 'Pro' }
+  ];
+  const links = page.startsWith('/ai-bot') || page === '/brokerage-onboarding.html'
+    ? tradeFlow
+    : core;
   if (page === '/ai-bot-funding-payment.html') {
-    links.splice(2, 0, { href: '/ai-bot-funding-payment.html', label: 'Funding Payment' });
+    return [
+      { href: '/ai-bot-funding.html', label: 'Funding Setup' },
+      { href: '/ai-bot-funding-payment.html', label: 'Funding Payment' },
+      { href: '/ai-bot-account.html', label: 'Account View' }
+    ];
+  }
+  if (page === '/payment.html' || page === '/checkout.html') {
+    return [
+      { href: '/pro.html', label: 'Pro Plan' },
+      { href: '/payment.html', label: 'Payment' },
+      { href: '/checkout.html', label: 'Checkout' }
+    ];
   }
   return links;
 }

@@ -786,6 +786,51 @@ h1 {
   padding: 0.85rem;
 }
 
+.start-here-card {
+  margin-top: 0.8rem;
+  border: 1px solid rgba(250, 204, 21, 0.4);
+  border-radius: 12px;
+  background: linear-gradient(180deg, rgba(15, 23, 42, 0.86), rgba(2, 6, 23, 0.86));
+  padding: 0.9rem;
+}
+
+.start-here-card h2 {
+  margin: 0 0 0.4rem;
+  color: #fde68a;
+}
+
+.start-here-steps {
+  display: grid;
+  gap: 0.55rem;
+  margin-top: 0.55rem;
+}
+
+.start-here-step {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  border: 1px solid rgba(148, 163, 184, 0.32);
+  border-radius: 10px;
+  background: rgba(2, 6, 23, 0.72);
+  padding: 0.55rem 0.6rem;
+}
+
+.start-here-step strong {
+  color: #fef08a;
+  font-size: 0.92rem;
+}
+
+.start-here-step p {
+  margin: 0.2rem 0 0;
+  color: #dbe2ee;
+  font-size: 0.82rem;
+}
+
+.start-here-step .open-link {
+  white-space: nowrap;
+}
+
 .module-search-form {
   margin-bottom: 0.5rem;
 }
@@ -1137,6 +1182,10 @@ label {
   margin: 0 0 0.45rem;
   font-size: 0.95rem;
   color: #fde68a;
+}
+
+.ai-page-quick-nav .small-note {
+  margin: 0.15rem 0 0.55rem;
 }
 
 .ai-page-quick-nav-links {
