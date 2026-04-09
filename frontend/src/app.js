@@ -1125,6 +1125,10 @@ function openAiImplementationGuidePage() {
   window.location.href = '/ai-implementation-steps.html';
 }
 
+function openAiLiveAccountSetupPage() {
+  window.location.href = '/ai-live-account-setup.html';
+}
+
 function openAiTradeEntryPage() {
   const hasStoredToken = Boolean(authToken || localStorage.getItem('dumbdollars_token'));
   if (currentUser || hasStoredToken) {
@@ -2440,6 +2444,7 @@ function setupAiSidebar() {
   const autoTraderButton = document.getElementById('open-ai-auto-trader');
   const liveBrokerageButton = document.getElementById('open-live-brokerage-account');
   const aiImplementationStepsButton = document.getElementById('open-ai-implementation-steps');
+  const aiLiveAccountSetupButton = document.getElementById('open-ai-live-account-setup');
   const aiAnalyzerButton = document.getElementById('open-ai-analyzer');
 
   // Bind module navigation/actions early so these links still work even if one sidebar filter control is absent.
@@ -2495,6 +2500,12 @@ function setupAiSidebar() {
   if (aiImplementationStepsButton) {
     aiImplementationStepsButton.addEventListener('click', () => {
       openAiImplementationGuidePage();
+    });
+  }
+
+  if (aiLiveAccountSetupButton) {
+    aiLiveAccountSetupButton.addEventListener('click', () => {
+      openAiLiveAccountSetupPage();
     });
   }
 

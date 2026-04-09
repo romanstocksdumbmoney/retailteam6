@@ -830,6 +830,59 @@ h1 {
   border-color: rgba(250, 204, 21, 0.6);
 }
 
+.ai-live-setup-flow {
+  display: grid;
+  gap: 0.62rem;
+}
+
+.ai-live-setup-step {
+  border: 1px solid rgba(148, 163, 184, 0.34);
+  border-radius: 12px;
+  background: rgba(2, 6, 23, 0.72);
+  padding: 0.62rem 0.7rem;
+}
+
+.ai-live-setup-step h4 {
+  margin: 0 0 0.32rem;
+  color: #fde68a;
+}
+
+.ai-live-setup-step p {
+  margin: 0.2rem 0;
+  font-size: 0.85rem;
+}
+
+.ai-live-setup-step .ai-bot-actions {
+  margin-top: 0.45rem;
+}
+
+.ai-live-setup-step ul {
+  margin: 0.3rem 0 0.1rem;
+  padding-left: 1.05rem;
+}
+
+.ai-live-setup-step li {
+  margin: 0.24rem 0;
+  color: #dbe2ee;
+  font-size: 0.82rem;
+}
+
+.ai-live-setup-warning {
+  border: 1px solid rgba(239, 68, 68, 0.4);
+  border-radius: 12px;
+  background: rgba(127, 29, 29, 0.18);
+  padding: 0.64rem 0.7rem;
+}
+
+.ai-live-setup-warning h3 {
+  margin: 0 0 0.28rem;
+  color: #fecaca;
+}
+
+.ai-live-setup-warning p {
+  margin: 0.2rem 0;
+}
+
 .dashboard-organizer-card {
   margin-top: 0.8rem;
   border: 1px solid rgba(234, 179, 8, 0.4);

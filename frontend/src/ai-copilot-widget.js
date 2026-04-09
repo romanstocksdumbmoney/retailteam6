@@ -386,6 +386,16 @@ function getAiCopilotContext(pathname) {
         'Broker sign-up/KYC cannot be automated and must be user-completed.'
       ]
     },
+    '/ai-live-account-setup.html': {
+      pageTitle: 'Set up Trading account with AI',
+      nextHref: '/ai-bot-funding.html',
+      nextLabel: 'Open Funding + Test Area',
+      starterTips: [
+        'Use this page as your exact checklist to get AI running on your account.',
+        'Complete broker onboarding and connection test before turning on hands-free live mode.',
+        'Start with small size first even after setup is complete.'
+      ]
+    },
     '/insider-trades.html': {
       pageTitle: 'Insider trades',
       nextHref: '/',
