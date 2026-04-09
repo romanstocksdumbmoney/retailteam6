@@ -31,12 +31,17 @@ async function fetchJson(url, options = {}) {
 }
 
 function setStatus(text, isError = false) {
-  const node = document.getElementById('brokerage-onboarding-status');
-  if (!node) {
+  const nodes = [
+    document.getElementById('brokerage-onboarding-status-top'),
+    document.getElementById('brokerage-onboarding-status')
+  ].filter(Boolean);
+  if (!nodes.length) {
     return;
   }
-  node.textContent = text;
-  node.className = isError ? 'small-note auth-error' : 'small-note';
+  nodes.forEach((node) => {
+    node.textContent = text;
+    node.className = isError ? 'small-note auth-error' : 'small-note';
+  });
 }
 
 function getSelectedBroker() {
@@ -449,8 +454,13 @@ function setupForm() {
   }
 
   if (robinhoodShortcutButton instanceof HTMLButtonElement) {
-    robinhoodShortcutButton.addEventListener('click', () => {
-      activateRobinhoodExistingAccountShortcut();
+    robinhoodShortcutButton.addEventListener('click', async () => {
+      robinhoodShortcutButton.disabled = true;
+      try {
+        await runOneClickRobinhoodAiConnect();
+      } finally {
+        robinhoodShortcutButton.disabled = false;
+      }
     });
   }
 
