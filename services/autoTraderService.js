@@ -275,7 +275,10 @@ function getBrokerSetupSteps(state, broker) {
     ? Boolean(auth.loginSaved && auth.loginUsernameMasked)
     : Boolean(auth.apiKeyLast4 && auth.secretSaved);
   const bridgeReady = executionMode === 'broker_linked';
-  const testedReady = Boolean(connection.lastTestResult?.readyForTrading);
+  const testedReady = Boolean(
+    connection.lastTestResult
+    && (connection.lastTestResult.bridgeReady || connection.lastTestResult.readyForTrading)
+  );
   const fundedReady = Boolean(liveFunding.isFunded);
 
   return [
