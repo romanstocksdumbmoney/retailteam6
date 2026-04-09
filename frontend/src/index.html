@@ -79,6 +79,28 @@
             </a>
           </div>
         </section>
+        <section id="dashboard-organizer" class="dashboard-organizer-card" aria-labelledby="dashboard-organizer-title">
+          <div class="section-header">
+            <h2 id="dashboard-organizer-title">Choose a cleaner workspace view</h2>
+            <span class="chip">Organized</span>
+          </div>
+          <p class="small-note">Switch views depending on what you are trying to do right now.</p>
+          <div class="dashboard-mode-grid" role="group" aria-label="Dashboard workspace modes">
+            <button type="button" class="btn-secondary dashboard-mode-btn" data-dashboard-mode="essentials" aria-pressed="false">
+              Essentials
+            </button>
+            <button type="button" class="btn-secondary dashboard-mode-btn" data-dashboard-mode="ai" aria-pressed="false">
+              AI Trading
+            </button>
+            <button type="button" class="btn-secondary dashboard-mode-btn" data-dashboard-mode="research" aria-pressed="false">
+              Research
+            </button>
+            <button type="button" class="btn-secondary dashboard-mode-btn" data-dashboard-mode="full" aria-pressed="false">
+              Full Workspace
+            </button>
+          </div>
+          <p id="dashboard-organizer-status" class="small-note">Essentials view keeps only the most important modules visible.</p>
+        </section>
         <section class="module-command-card" aria-labelledby="module-command-title">
           <div class="section-header">
             <h2 id="module-command-title">Find a module fast</h2>
@@ -172,7 +194,7 @@
 
       <div class="app-layout">
         <aside id="sidebar-panel" class="sidebar card">
-          <details class="module-dropdown" open>
+          <details id="sidebar-core-dropdown" class="module-dropdown" open>
             <summary class="module-dropdown-summary">
               <span>Free + Core modules</span>
               <span class="chip">Core</span>
@@ -271,7 +293,7 @@
             </div>
           </details>
 
-          <details class="module-dropdown">
+          <details id="sidebar-pro-dropdown" class="module-dropdown">
             <summary class="module-dropdown-summary">
               <span>Pro modules</span>
               <span class="chip pro">Pro</span>
@@ -318,7 +340,7 @@
             </div>
           </details>
 
-          <details class="module-dropdown">
+          <details id="sidebar-ai-dropdown" class="module-dropdown">
             <summary class="module-dropdown-summary">
               <span>AI Trading + Account Tools</span>
               <span class="chip">AI Trading</span>

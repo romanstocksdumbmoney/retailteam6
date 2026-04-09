@@ -15,6 +15,7 @@ let activeInsiderSortBy = 'anomaly_desc';
 let activeInsiderUnusualOnly = true;
 let insiderAutoRefreshTimerId = null;
 let sidebarOpen = false;
+let dashboardModeController = null;
 let billingInfo = null;
 let proPopupVisible = false;
 let earningsRefreshIntervalId = null;
@@ -147,6 +148,41 @@ const MODULE_NAV_TARGETS = Object.freeze([
     aliases: ['learn ai', 'implementation', 'ai steps']
   }
 ]);
+const DASHBOARD_MODE_STORAGE_KEY = 'dumbdollars_dashboard_mode_v1';
+const DASHBOARD_MAIN_MODULE_SELECTORS = Object.freeze([
+  '#stock-outlook-module',
+  '#earnings-module',
+  '#scanner-module',
+  '#options-module',
+  '#unusual-moves-module'
+]);
+const SIDEBAR_DROPDOWN_IDS = Object.freeze([
+  'sidebar-core-dropdown',
+  'sidebar-pro-dropdown',
+  'sidebar-ai-dropdown'
+]);
+const DASHBOARD_MODE_CONFIG = Object.freeze({
+  essentials: {
+    helperText: 'Essentials view: outlook + earnings + core AI flow shortcuts.',
+    mainSelectors: ['#stock-outlook-module', '#earnings-module'],
+    sidebarDropdownIds: ['sidebar-core-dropdown', 'sidebar-ai-dropdown']
+  },
+  ai: {
+    helperText: 'AI Trading view: focuses on setup, funding, broker, and execution flow.',
+    mainSelectors: ['#stock-outlook-module', '#earnings-module'],
+    sidebarDropdownIds: ['sidebar-ai-dropdown', 'sidebar-core-dropdown']
+  },
+  research: {
+    helperText: 'Research view: scanner, options, unusual flow, and pro intelligence modules.',
+    mainSelectors: ['#stock-outlook-module', '#earnings-module', '#scanner-module', '#options-module', '#unusual-moves-module'],
+    sidebarDropdownIds: ['sidebar-core-dropdown', 'sidebar-pro-dropdown']
+  },
+  full: {
+    helperText: 'Full workspace view: all modules shown.',
+    mainSelectors: 'all',
+    sidebarDropdownIds: 'all'
+  }
+});
 function isSecureCheckoutUrl(url) {
   if (typeof url !== 'string' || !url) {
     return false;
@@ -575,6 +611,9 @@ function jumpToModule(target) {
   if (!target || !target.selector) {
     return false;
   }
+  if (dashboardModeController && typeof dashboardModeController.revealForTarget === 'function') {
+    dashboardModeController.revealForTarget(target);
+  }
   const element = document.querySelector(target.selector);
   if (!(element instanceof HTMLElement)) {
     return false;
@@ -663,6 +702,142 @@ function setupModuleNavigation() {
     }
     setModuleSearchStatus(`Jumped to ${target.label}.`);
   });
+}
+
+function getSidebarDropdownById(id) {
+  const node = document.getElementById(id);
+  return node instanceof HTMLDetailsElement ? node : null;
+}
+
+function resolveDashboardMode(mode) {
+  const normalized = String(mode || '').trim().toLowerCase();
+  if (Object.prototype.hasOwnProperty.call(DASHBOARD_MODE_CONFIG, normalized)) {
+    return normalized;
+  }
+  return 'essentials';
+}
+
+function setupDashboardOrganization() {
+  const container = document.getElementById('dashboard-organizer');
+  const statusNode = document.getElementById('dashboard-organizer-status');
+  if (!container) {
+    return;
+  }
+  const modeButtons = Array.from(container.querySelectorAll('[data-dashboard-mode]'));
+  if (!modeButtons.length) {
+    return;
+  }
+
+  const setStatus = (text) => {
+    if (!statusNode) {
+      return;
+    }
+    statusNode.textContent = text;
+  };
+
+  const applyMode = (requestedMode, options = {}) => {
+    const { save = true, statusOverride = '' } = options;
+    const mode = resolveDashboardMode(requestedMode);
+    const config = DASHBOARD_MODE_CONFIG[mode];
+    const visibleMainSelectors = config.mainSelectors === 'all'
+      ? new Set(DASHBOARD_MAIN_MODULE_SELECTORS)
+      : new Set(config.mainSelectors || []);
+
+    DASHBOARD_MAIN_MODULE_SELECTORS.forEach((selector) => {
+      const element = document.querySelector(selector);
+      if (element instanceof HTMLElement) {
+        element.hidden = !visibleMainSelectors.has(selector);
+      }
+    });
+
+    const visibleDropdownIds = config.sidebarDropdownIds === 'all'
+      ? new Set(SIDEBAR_DROPDOWN_IDS)
+      : new Set(config.sidebarDropdownIds || []);
+    SIDEBAR_DROPDOWN_IDS.forEach((dropdownId) => {
+      const dropdown = getSidebarDropdownById(dropdownId);
+      if (!dropdown) {
+        return;
+      }
+      const visible = visibleDropdownIds.has(dropdownId);
+      dropdown.hidden = !visible;
+      if (!visible) {
+        dropdown.open = false;
+      }
+    });
+
+    const visibleDropdowns = SIDEBAR_DROPDOWN_IDS
+      .map((dropdownId) => getSidebarDropdownById(dropdownId))
+      .filter((dropdown) => dropdown && !dropdown.hidden);
+    if (visibleDropdowns.length > 0 && !visibleDropdowns.some((dropdown) => dropdown.open)) {
+      visibleDropdowns[0].open = true;
+    }
+
+    modeButtons.forEach((button) => {
+      const buttonMode = resolveDashboardMode(button.getAttribute('data-dashboard-mode'));
+      const active = buttonMode === mode;
+      button.classList.toggle('dashboard-mode-btn--active', active);
+      button.setAttribute('aria-pressed', active ? 'true' : 'false');
+    });
+
+    document.body.setAttribute('data-dashboard-mode', mode);
+    if (save) {
+      localStorage.setItem(DASHBOARD_MODE_STORAGE_KEY, mode);
+    }
+    setStatus(statusOverride || config.helperText || 'Workspace updated.');
+    return mode;
+  };
+
+  const revealForTarget = (target) => {
+    if (!target || !target.selector) {
+      return;
+    }
+    const currentMode = resolveDashboardMode(document.body.getAttribute('data-dashboard-mode'));
+    const currentConfig = DASHBOARD_MODE_CONFIG[currentMode];
+    let nextMode = currentMode;
+    if (target.panel === 'main') {
+      const mainVisible = currentConfig.mainSelectors === 'all'
+        || (Array.isArray(currentConfig.mainSelectors) && currentConfig.mainSelectors.includes(target.selector));
+      if (!mainVisible) {
+        const advancedMainSelectors = new Set(['#scanner-module', '#options-module', '#unusual-moves-module']);
+        nextMode = advancedMainSelectors.has(target.selector) ? 'research' : 'full';
+      }
+    } else if (target.panel === 'sidebar') {
+      const selector = String(target.selector || '').trim();
+      const proSelectors = new Set(['#trend-trades-section', '#high-iv-section', '#premium-spikes-section']);
+      const aiSelectors = new Set(['#ai-trade-section', '#ai-auto-trader-section', '#ai-analyzer-section', '#ai-implementation-section']);
+      const requiredDropdownId = proSelectors.has(selector)
+        ? 'sidebar-pro-dropdown'
+        : (aiSelectors.has(selector) ? 'sidebar-ai-dropdown' : 'sidebar-core-dropdown');
+      const dropdownVisible = currentConfig.sidebarDropdownIds === 'all'
+        || (Array.isArray(currentConfig.sidebarDropdownIds) && currentConfig.sidebarDropdownIds.includes(requiredDropdownId));
+      if (!dropdownVisible) {
+        nextMode = requiredDropdownId === 'sidebar-pro-dropdown'
+          ? 'research'
+          : (requiredDropdownId === 'sidebar-ai-dropdown' ? 'ai' : 'essentials');
+      }
+    }
+    if (nextMode !== currentMode) {
+      applyMode(nextMode, {
+        save: true,
+        statusOverride: `Switched to ${nextMode} view to open ${target.label}.`
+      });
+    }
+  };
+
+  dashboardModeController = {
+    applyMode,
+    revealForTarget
+  };
+
+  modeButtons.forEach((button) => {
+    button.addEventListener('click', () => {
+      const mode = button.getAttribute('data-dashboard-mode');
+      applyMode(mode, { save: true });
+    });
+  });
+
+  const savedMode = resolveDashboardMode(localStorage.getItem(DASHBOARD_MODE_STORAGE_KEY) || 'essentials');
+  applyMode(savedMode, { save: false });
 }
 
 function getPremiumSpikeProofMap() {
@@ -2700,6 +2875,7 @@ async function init() {
   setupSidebarMenu();
   setupSidebarDropdowns();
   setupModuleNavigation();
+  setupDashboardOrganization();
   setupAiSidebar();
   setupModuleDeepLinks();
   setupStockForm();

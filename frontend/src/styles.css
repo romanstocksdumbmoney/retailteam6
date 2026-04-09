@@ -799,6 +799,63 @@ h1 {
   color: #fde68a;
 }
 
+.start-here-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+  gap: 0.55rem;
+  margin-top: 0.55rem;
+}
+
+.start-here-link {
+  display: grid;
+  gap: 0.2rem;
+  border: 1px solid rgba(148, 163, 184, 0.34);
+  border-radius: 10px;
+  background: rgba(2, 6, 23, 0.72);
+  padding: 0.58rem 0.62rem;
+  text-decoration: none;
+}
+
+.start-here-link strong {
+  color: #fef08a;
+  font-size: 0.9rem;
+}
+
+.start-here-link span {
+  color: #dbe2ee;
+  font-size: 0.8rem;
+}
+
+.start-here-link:hover {
+  border-color: rgba(250, 204, 21, 0.6);
+}
+
+.dashboard-organizer-card {
+  margin-top: 0.8rem;
+  border: 1px solid rgba(234, 179, 8, 0.4);
+  border-radius: 12px;
+  background: linear-gradient(180deg, rgba(30, 41, 59, 0.78), rgba(2, 6, 23, 0.82));
+  padding: 0.85rem;
+}
+
+.dashboard-mode-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+}
+
+.dashboard-mode-btn {
+  width: 100%;
+  justify-content: center;
+}
+
+.dashboard-mode-btn--active {
+  border-color: rgba(250, 204, 21, 0.82) !important;
+  background: rgba(250, 204, 21, 0.18) !important;
+  color: #fef08a !important;
+}
+
 .start-here-steps {
   display: grid;
   gap: 0.55rem;
