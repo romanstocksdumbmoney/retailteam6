@@ -121,6 +121,11 @@ function buildRouteSuggestion(input, pathname) {
       keywords: ['ai bot', 'auto trader', 'setup ai', 'hands-free', 'risk reward', 'prompt control']
     },
     {
+      href: '/ai-live-account-setup.html',
+      label: 'AI Live Account Guide',
+      keywords: ['guided', 'set up trading account', 'setup trading account', 'ai setup guide', 'start here ai']
+    },
+    {
       href: '/ai-bot-funding.html',
       label: 'Funding + Test Area',
       keywords: ['funding', 'deposit', 'paper trade', 'test area', 'live funding']
@@ -531,6 +536,7 @@ function mountAiCopilotWidget() {
         <a class="open-link" href="/ai-bot-funding.html">Open Live AI Account</a>
       </div>
       <div class="ai-copilot-quick-actions" id="ai-copilot-quick-actions">
+        <button type="button" class="ai-copilot-quick-btn" data-copilot-prompt="Open AI live account setup guide">AI Setup Guide</button>
         <button type="button" class="ai-copilot-quick-btn" data-copilot-prompt="Open live AI account setup">Open Live AI Account</button>
         <button type="button" class="ai-copilot-quick-btn" data-copilot-prompt="Open stock scanner and outlook tools">Stock Tools</button>
         <button type="button" class="ai-copilot-quick-btn" data-copilot-prompt="Open broker connection setup">Broker Connect</button>

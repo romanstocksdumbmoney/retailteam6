@@ -110,7 +110,7 @@ function providerLabel(provider) {
 
 function setupButtons() {
   const emailInput = document.getElementById('social-auth-email');
-  const buttons = Array.from(document.querySelectorAll('.social-auth-continue-btn'));
+  const buttons = Array.from(document.querySelectorAll('.social-auth-provider-btn, .social-auth-continue-btn'));
   if (!(emailInput instanceof HTMLInputElement)) {
     return;
   }
