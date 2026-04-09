@@ -1353,6 +1353,41 @@ label {
   margin: 0.3rem 0 0.55rem;
 }
 
+.ai-copilot-health {
+  margin: 0.2rem 0 0.35rem;
+}
+
+.ai-copilot-health--ok {
+  color: #86efac;
+}
+
+.ai-copilot-health--error {
+  color: #fca5a5;
+}
+
+.ai-copilot-report-toggle {
+  width: 100%;
+  margin-top: 0.5rem;
+}
+
+.ai-copilot-report-form {
+  margin-top: 0.45rem;
+  display: grid;
+  gap: 0.4rem;
+  border-top: 1px solid rgba(148, 163, 184, 0.3);
+  padding-top: 0.5rem;
+}
+
+.ai-copilot-report-form select,
+.ai-copilot-report-form textarea,
+.ai-copilot-report-form input {
+  width: 100%;
+}
+
+.ai-copilot-report-form textarea {
+  resize: vertical;
+}
+
 @media (max-width: 680px) {
   .ai-copilot-shell {
     left: 10px;

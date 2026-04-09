@@ -39,12 +39,19 @@ const {
   setAutoTraderFundingMode,
   fundAutoTrader
 } = require('../services/autoTraderService');
+const {
+  createComplaintTicket,
+  getComplaintTicket,
+  listComplaintTicketsForReview,
+  updateComplaintTicketStatus
+} = require('../services/complaintStore');
 const { createFundingCheckoutSession } = require('../services/stripeService');
 const { parseAuthToken } = require('../services/authService');
 const { getUserById } = require('../services/userStore');
 
 const router = express.Router();
 const FREE_SCAN_METHODS = new Set(['llm-sentiment']);
+const COMPLAINT_REVIEW_TOKEN = String(process.env.COMPLAINT_REVIEW_TOKEN || '').trim();
 
 function parsePlan(req) {
   return req.user && req.user.plan === 'pro' ? 'pro' : 'free';
@@ -92,6 +99,24 @@ function requireSignedIn(req, res, next) {
     return res.status(401).json({
       error: 'unauthorized',
       message: 'Login required.'
+    });
+  }
+  return next();
+}
+
+function hasComplaintReviewAccess(req) {
+  const suppliedToken = String(req.header('x-complaint-review-token') || req.query?.reviewToken || '').trim();
+  if (COMPLAINT_REVIEW_TOKEN) {
+    return suppliedToken && suppliedToken === COMPLAINT_REVIEW_TOKEN;
+  }
+  return Boolean(req.user && req.user.plan === 'pro');
+}
+
+function requireComplaintReviewAccess(req, res, next) {
+  if (!hasComplaintReviewAccess(req)) {
+    return res.status(403).json({
+      error: 'review_access_denied',
+      message: 'Complaint review access denied.'
     });
   }
   return next();
@@ -1164,6 +1189,74 @@ router.post('/auto-trader/prompt-control', requireSignedIn, (req, res) => {
     return res.status(400).json({
       error: 'invalid_request',
       message: 'Could not update AI prompt control.'
+    });
+  }
+});
+
+router.post('/copilot/complaints', (req, res) => {
+  try {
+    const payload = createComplaintTicket(req.body || {}, {
+      user: req.user || null,
+      userAgent: req.get('user-agent') || '',
+      pagePath: req.body?.pagePath || req.get('referer') || '/'
+    });
+    return res.status(201).json({
+      complaint: payload,
+      message: `Complaint received. Ticket ID: ${payload.ticketId}`
+    });
+  } catch (error) {
+    if (String(error.message || '') === 'invalid_complaint_message') {
+      return res.status(400).json({
+        error: 'invalid_complaint_message',
+        message: 'Please describe the issue with at least 8 characters.'
+      });
+    }
+    return res.status(400).json({
+      error: 'invalid_request',
+      message: 'Could not submit complaint ticket.'
+    });
+  }
+});
+
+router.get('/copilot/complaints/:ticketId', (req, res) => {
+  const ticket = getComplaintTicket(req.params.ticketId);
+  if (!ticket) {
+    return res.status(404).json({
+      error: 'complaint_not_found',
+      message: 'Complaint ticket not found.'
+    });
+  }
+  return res.json({ complaint: ticket });
+});
+
+router.get('/copilot/complaints-review', requireComplaintReviewAccess, (req, res) => {
+  const status = String(req.query?.status || '').trim().toLowerCase();
+  const limit = Number(req.query?.limit || 50);
+  const payload = listComplaintTicketsForReview({ status, limit });
+  return res.json(payload);
+});
+
+router.patch('/copilot/complaints/:ticketId/status', requireComplaintReviewAccess, (req, res) => {
+  try {
+    const payload = updateComplaintTicketStatus(req.params.ticketId, req.body || {});
+    return res.json({ complaint: payload });
+  } catch (error) {
+    const code = String(error.message || '');
+    if (code === 'complaint_not_found') {
+      return res.status(404).json({
+        error: 'complaint_not_found',
+        message: 'Complaint ticket not found.'
+      });
+    }
+    if (code === 'invalid_complaint_status') {
+      return res.status(400).json({
+        error: 'invalid_complaint_status',
+        message: 'Status must be open, investigating, fixed, or closed.'
+      });
+    }
+    return res.status(400).json({
+      error: 'invalid_request',
+      message: 'Could not update complaint ticket.'
     });
   }
 });

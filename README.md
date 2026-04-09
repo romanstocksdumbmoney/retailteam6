@@ -83,6 +83,7 @@ Stripe pricing config:
 Production hardening env vars:
 - `ALLOWED_ORIGINS` (comma-separated trusted origins; required in production)
 - `NODE_ENV=production`
+- `COMPLAINT_REVIEW_TOKEN` (optional but recommended; required to access complaint review/update endpoints safely)
 
 ## API Endpoints
 ### Public endpoints
@@ -92,6 +93,8 @@ Production hardening env vars:
 - `GET /api/market/stock-search?q=TSLA`
 - `GET /api/market/scan-x?ticker=TSLA&method=llm-sentiment` (free method)
 - `GET /api/market/earnings-gambling?limit=5`
+- `POST /api/market/copilot/complaints` (submit user complaint ticket)
+- `GET /api/market/copilot/complaints/:ticketId` (track one complaint ticket status)
 - `GET /health`
 
 ### Pro endpoints (requires authenticated user with active Stripe Pro subscription)
@@ -101,6 +104,14 @@ Production hardening env vars:
 - `GET /api/market/scan-x?ticker=TSLA&method=multi` (and other non-free methods)
 
 If account is not Pro, locked endpoints return `403` with an upgrade message.
+
+### Complaint review endpoints (operator access)
+- `GET /api/market/copilot/complaints-review?status=open&limit=50`
+- `PATCH /api/market/copilot/complaints/:ticketId/status` with `{ "status": "investigating|fixed|closed", "resolutionNote": "..." }`
+
+Access control:
+- If `COMPLAINT_REVIEW_TOKEN` is set, send it in `x-complaint-review-token` header.
+- If `COMPLAINT_REVIEW_TOKEN` is not set, Pro signed-in users can access review endpoints (dev fallback).
 
 ## Frontend scripts
 From the `frontend` directory:

@@ -69,6 +69,13 @@ const checkoutLimiter = rateLimit({
     legacyHeaders: false,
     message: { error: 'rate_limited', message: 'Too many checkout attempts. Try again later.' }
 });
+const complaintLimiter = rateLimit({
+    windowMs: 10 * 60 * 1000,
+    max: 40,
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: { error: 'rate_limited', message: 'Too many complaint submissions. Try again later.' }
+});
 
 app.use('/api/auth/signup', authLimiter);
 app.use('/api/auth/login', authLimiter);
@@ -78,6 +85,7 @@ app.use('/api/auth/session/revoke', authLimiter);
 app.use('/api/auth/stripe/create-checkout-session', checkoutLimiter);
 app.use('/api/auth/stripe/confirm-checkout-session', checkoutLimiter);
 app.use('/api/auth/stripe/create-customer-portal', checkoutLimiter);
+app.use('/api/market/copilot/complaints', complaintLimiter);
 
 app.use((req, res, next) => {
     if (req.path === '/api/auth/stripe/webhook') {

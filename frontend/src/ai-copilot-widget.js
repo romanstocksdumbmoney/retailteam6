@@ -6,6 +6,89 @@ function normalizePathname(pathname) {
   return raw.startsWith('/') ? raw : `/${raw}`;
 }
 
+const AUTH_TOKEN_STORAGE_KEY = 'dumbdollars_token';
+const LAST_COMPLAINT_TICKET_KEY = 'dumbdollars_last_complaint_ticket';
+
+function getStoredAuthToken() {
+  try {
+    return String(localStorage.getItem(AUTH_TOKEN_STORAGE_KEY) || '').trim();
+  } catch (_error) {
+    return '';
+  }
+}
+
+function getLastComplaintTicketId() {
+  try {
+    return String(localStorage.getItem(LAST_COMPLAINT_TICKET_KEY) || '').trim();
+  } catch (_error) {
+    return '';
+  }
+}
+
+function setLastComplaintTicketId(ticketId) {
+  try {
+    const value = String(ticketId || '').trim();
+    if (!value) {
+      localStorage.removeItem(LAST_COMPLAINT_TICKET_KEY);
+      return;
+    }
+    localStorage.setItem(LAST_COMPLAINT_TICKET_KEY, value);
+  } catch (_error) {
+    // Non-fatal if storage is unavailable.
+  }
+}
+
+async function submitCopilotComplaint(input = {}) {
+  const authToken = getStoredAuthToken();
+  const headers = { 'Content-Type': 'application/json' };
+  if (authToken) {
+    headers.authorization = `Bearer ${authToken}`;
+  }
+  const response = await fetch('/api/market/copilot/complaints', {
+    method: 'POST',
+    headers,
+    body: JSON.stringify(input)
+  });
+  let payload = {};
+  try {
+    payload = await response.json();
+  } catch (_error) {
+    payload = {};
+  }
+  if (!response.ok) {
+    const error = new Error(payload.message || 'Could not submit complaint.');
+    error.status = response.status;
+    error.body = payload;
+    throw error;
+  }
+  return payload;
+}
+
+async function fetchComplaintTicketStatus(ticketId) {
+  const response = await fetch(`/api/market/copilot/complaints/${encodeURIComponent(ticketId)}`, { method: 'GET' });
+  let payload = {};
+  try {
+    payload = await response.json();
+  } catch (_error) {
+    payload = {};
+  }
+  if (!response.ok) {
+    const error = new Error(payload.message || 'Could not load complaint status.');
+    error.status = response.status;
+    error.body = payload;
+    throw error;
+  }
+  return payload;
+}
+
+function statusLabel(status) {
+  const key = String(status || '').trim().toLowerCase();
+  if (!key) {
+    return 'Open';
+  }
+  return key.charAt(0).toUpperCase() + key.slice(1);
+}
+
 function getAiCopilotContext(pathname) {
   const page = normalizePathname(pathname);
   const baseContext = {
@@ -225,6 +308,9 @@ function getCopilotResponse(input, context) {
   if (text.includes('login') || text.includes('sign in') || text.includes('auth')) {
     return 'If sign-in fails, retry once, confirm email/password, or use social provider. Keep remember-login enabled for a smoother experience.';
   }
+  if (text.includes('complaint') || text.includes('report issue') || text.includes('bug report') || text.includes('not working')) {
+    return 'Use "Report an issue" in this Copilot panel. Include what page you are on and what button failed. You will get a ticket ID we can track and fix.';
+  }
   if (text.includes('trade') || text.includes('execute') || text.includes('submit') || text.includes('auto')) {
     return 'In account view, run a cycle, review proposals, select trades, and submit. If hands-free mode is enabled, auto-submit can run after readiness checks.';
   }
@@ -317,6 +403,7 @@ function mountAiCopilotWidget() {
         <button type="button" id="ai-copilot-close" class="btn-secondary">Close</button>
       </header>
       <p class="small-note">Helping on: ${context.pageTitle}</p>
+      <p class="small-note ai-copilot-health" id="ai-copilot-health">Copilot status: checking...</p>
       <div class="ai-copilot-feed" id="ai-copilot-feed"></div>
       <div class="ai-copilot-actions">
         <a class="open-link" href="${context.nextHref}">${context.nextLabel}</a>
@@ -325,6 +412,24 @@ function mountAiCopilotWidget() {
         <label for="ai-copilot-input" class="small-note">Ask for help</label>
         <input id="ai-copilot-input" type="text" maxlength="220" placeholder="What should I do next?" />
         <button type="submit">Ask Copilot</button>
+      </form>
+      <button type="button" id="ai-copilot-report-toggle" class="btn-secondary ai-copilot-report-toggle">Report an issue</button>
+      <form id="ai-copilot-report-form" class="ai-copilot-report-form" hidden novalidate>
+        <label for="ai-copilot-report-category" class="small-note">Issue category</label>
+        <select id="ai-copilot-report-category">
+          <option value="bug">Bug / button not working</option>
+          <option value="login">Login / session</option>
+          <option value="navigation">Navigation confusion</option>
+          <option value="ai-copilot">AI Copilot helper</option>
+          <option value="billing">Billing / checkout</option>
+          <option value="trading">AI trading / broker flow</option>
+          <option value="other">Other</option>
+        </select>
+        <label for="ai-copilot-report-message" class="small-note">What happened?</label>
+        <textarea id="ai-copilot-report-message" maxlength="1400" rows="4" placeholder="Describe exactly what did not work."></textarea>
+        <label for="ai-copilot-report-contact" class="small-note">Contact email (optional)</label>
+        <input id="ai-copilot-report-contact" type="email" maxlength="254" placeholder="name@email.com" />
+        <button type="submit">Submit complaint ticket</button>
       </form>
     </section>
   `;
@@ -336,8 +441,14 @@ function mountAiCopilotWidget() {
   const form = document.getElementById('ai-copilot-form');
   const input = document.getElementById('ai-copilot-input');
   const feed = document.getElementById('ai-copilot-feed');
+  const health = document.getElementById('ai-copilot-health');
+  const reportToggle = document.getElementById('ai-copilot-report-toggle');
+  const reportForm = document.getElementById('ai-copilot-report-form');
+  const reportCategory = document.getElementById('ai-copilot-report-category');
+  const reportMessage = document.getElementById('ai-copilot-report-message');
+  const reportContact = document.getElementById('ai-copilot-report-contact');
 
-  if (!fab || !panel || !closeButton || !form || !input || !feed) {
+  if (!fab || !panel || !closeButton || !form || !input || !feed || !health || !reportToggle || !reportForm || !reportCategory || !reportMessage || !reportContact) {
     return;
   }
 
@@ -356,6 +467,32 @@ function mountAiCopilotWidget() {
   if (liveAutoHintPages.has(pathname)) {
     appendMessage('assistant', 'To make AI trade for you: turn on "hands-free live execution", connect broker bridge, run the bridge test, and keep live funding mode active.');
   }
+  const lastTicketId = getLastComplaintTicketId();
+  if (lastTicketId) {
+    appendMessage('assistant', `Your last complaint ticket is ${lastTicketId}. Ask "check complaint status" to check progress.`);
+  }
+
+  const setHealth = (label, statusClass) => {
+    health.textContent = label;
+    health.classList.remove('ai-copilot-health--ok', 'ai-copilot-health--error');
+    if (statusClass) {
+      health.classList.add(statusClass);
+    }
+  };
+
+  const runHealthCheck = async () => {
+    try {
+      const response = await fetch('/health', { cache: 'no-store' });
+      if (response.ok) {
+        setHealth('Copilot status: online and ready.', 'ai-copilot-health--ok');
+      } else {
+        setHealth('Copilot status: API warning. Reporting still available.', 'ai-copilot-health--error');
+      }
+    } catch (_error) {
+      setHealth('Copilot status: network issue detected.', 'ai-copilot-health--error');
+    }
+  };
+  runHealthCheck();
 
   const openPanel = () => {
     panel.hidden = false;
@@ -382,9 +519,75 @@ function mountAiCopilotWidget() {
     if (!question) {
       return;
     }
+    if (question.toLowerCase().includes('check complaint status')) {
+      const ticketId = getLastComplaintTicketId();
+      if (!ticketId) {
+        appendMessage('assistant', 'No complaint ticket found yet. Use "Report an issue" to create one.');
+        input.value = '';
+        return;
+      }
+      appendMessage('user', question);
+      appendMessage('assistant', `Checking complaint ticket ${ticketId}...`);
+      fetchComplaintTicketStatus(ticketId)
+        .then((payload) => {
+          const complaint = payload?.complaint || {};
+          const currentStatus = statusLabel(complaint.status);
+          appendMessage('assistant', `Ticket ${ticketId} status: ${currentStatus}.`);
+        })
+        .catch(() => {
+          appendMessage('assistant', 'Could not load ticket status right now. Please try again in a moment.');
+        });
+      input.value = '';
+      return;
+    }
     appendMessage('user', question);
     appendMessage('assistant', getCopilotResponse(question, context));
     input.value = '';
+  });
+
+  reportToggle.addEventListener('click', () => {
+    const opening = reportForm.hidden;
+    reportForm.hidden = !opening;
+    reportToggle.textContent = opening ? 'Hide issue form' : 'Report an issue';
+    if (opening) {
+      setTimeout(() => reportMessage.focus(), 0);
+    }
+  });
+
+  reportForm.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    const category = String(reportCategory.value || 'other').trim().toLowerCase();
+    const message = String(reportMessage.value || '').trim();
+    const contactEmail = String(reportContact.value || '').trim();
+    if (message.length < 8) {
+      appendMessage('assistant', 'Please include a little more detail so we can reproduce and fix the issue.');
+      return;
+    }
+    reportToggle.disabled = true;
+    try {
+      const payload = await submitCopilotComplaint({
+        category,
+        message,
+        contactEmail,
+        pagePath: pathname,
+        pageTitle: context.pageTitle,
+        userAgent: navigator?.userAgent || ''
+      });
+      const ticketId = String(payload?.complaint?.ticketId || '').trim();
+      if (ticketId) {
+        setLastComplaintTicketId(ticketId);
+      }
+      appendMessage('assistant', ticketId
+        ? `Complaint submitted. Ticket ID: ${ticketId}. We can now track this and fix it.`
+        : 'Complaint submitted successfully.');
+      reportForm.reset();
+      reportForm.hidden = true;
+      reportToggle.textContent = 'Report an issue';
+    } catch (error) {
+      appendMessage('assistant', String(error?.message || 'Could not submit complaint. Please retry.'));
+    } finally {
+      reportToggle.disabled = false;
+    }
   });
 }
 
