@@ -48,6 +48,27 @@ function getSelectedBroker() {
   return BROKER_OPENING_LINKS[broker] ? broker : 'robinhood';
 }
 
+function activateRobinhoodExistingAccountShortcut() {
+  const brokerSelect = document.getElementById('brokerage-picker-select');
+  const connectionMethodSelect = document.getElementById('broker-connect-method');
+  if (brokerSelect instanceof HTMLSelectElement) {
+    brokerSelect.value = 'robinhood';
+    localStorage.setItem('dumbdollars_selected_broker', 'robinhood');
+  }
+  if (connectionMethodSelect instanceof HTMLSelectElement) {
+    connectionMethodSelect.value = 'existing_account';
+  }
+  renderConnectionMethodFields();
+  loadBrokerGuide().catch((error) => {
+    setStatus(error.message || 'Could not load Robinhood setup guide.', true);
+  });
+  const loginField = document.getElementById('broker-connect-login-username');
+  if (loginField instanceof HTMLInputElement) {
+    loginField.focus();
+  }
+  setStatus('Robinhood existing-account mode enabled. Enter your login and save broker connection.');
+}
+
 function getConnectFormPayload() {
   const connectionMethod = String(document.getElementById('broker-connect-method')?.value || 'api_keys').trim().toLowerCase();
   const accountId = String(document.getElementById('broker-connect-account-id')?.value || '').trim();
@@ -347,6 +368,7 @@ function setupForm() {
   const continueButton = document.getElementById('brokerage-go-funding');
   const connectForm = document.getElementById('broker-connect-form');
   const connectionMethodSelect = document.getElementById('broker-connect-method');
+  const robinhoodShortcutButton = document.getElementById('broker-connect-robinhood-existing');
   const testButton = document.getElementById('brokerage-test-ai');
   const disconnectButton = document.getElementById('brokerage-disconnect-ai');
 
@@ -375,6 +397,12 @@ function setupForm() {
   if (connectionMethodSelect instanceof HTMLSelectElement) {
     connectionMethodSelect.addEventListener('change', () => {
       renderConnectionMethodFields();
+    });
+  }
+
+  if (robinhoodShortcutButton instanceof HTMLButtonElement) {
+    robinhoodShortcutButton.addEventListener('click', () => {
+      activateRobinhoodExistingAccountShortcut();
     });
   }
 
