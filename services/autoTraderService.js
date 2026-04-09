@@ -280,43 +280,58 @@ function getBrokerSetupSteps(state, broker) {
     && (connection.lastTestResult.bridgeReady || connection.lastTestResult.readyForTrading)
   );
   const fundedReady = Boolean(liveFunding.isFunded);
+  const linkFor = (path, anchor = '') => `${String(path || '/').trim()}${anchor ? `#${anchor}` : ''}`;
 
   return [
     {
       key: 'open-account',
       title: `Open and verify your ${toTitle(broker)} brokerage account`,
       description: 'Complete KYC, enable 2FA, and make sure trading permissions are active on your broker account.',
-      completed: hasAccount
+      completed: hasAccount,
+      actionLabel: 'Open broker signup',
+      actionHref: BROKER_SETUP_DOCS[broker] || BROKER_SETUP_DOCS.manual,
+      actionExternal: true
     },
     {
       key: 'api-access',
       title: 'Enable API permissions in broker settings',
       description: 'Grant read/account/trade permissions and keep withdrawal permissions disabled for safety.',
-      completed: permissionsReady
+      completed: permissionsReady,
+      actionLabel: 'Open broker settings',
+      actionHref: BROKER_SETUP_DOCS[broker] || BROKER_SETUP_DOCS.manual,
+      actionExternal: true
     },
     {
       key: 'add-credentials',
       title: 'Connect broker credentials to DumbDollars',
       description: 'Use API keys or existing broker sign-in credentials to create the AI execution bridge profile.',
-      completed: credentialsReady
+      completed: credentialsReady,
+      actionLabel: 'Go to credentials form',
+      actionHref: linkFor('/brokerage-onboarding.html', 'broker-connect-form')
     },
     {
       key: 'bridge-mode',
       title: 'Switch Live Funding execution mode to Broker Linked',
       description: 'Set execution mode to broker_linked so execution tickets can be sent through the broker bridge.',
-      completed: bridgeReady
+      completed: bridgeReady,
+      actionLabel: 'Open funding mode settings',
+      actionHref: linkFor('/ai-bot-funding.html', 'ai-funding-form')
     },
     {
       key: 'test-connection',
       title: 'Run broker bridge connection test',
       description: 'Validate credential format, permissions, funding mode, and execution readiness before auto cycles.',
-      completed: testedReady
+      completed: testedReady,
+      actionLabel: 'Run test on broker page',
+      actionHref: linkFor('/brokerage-onboarding.html', 'broker-connect-form')
     },
     {
       key: 'activate-ai',
       title: 'Activate live AI execution cycle',
       description: 'Keep bot active in live mode, with funded capital and broker bridge connected.',
-      completed: Boolean(liveMode && fundedReady && testedReady && bridgeReady)
+      completed: Boolean(liveMode && fundedReady && testedReady && bridgeReady),
+      actionLabel: 'Open AI account execution',
+      actionHref: linkFor('/ai-bot-account.html', 'ai-account-title')
     }
   ];
 }

@@ -276,9 +276,16 @@ function renderSetupSteps(steps = []) {
   steps.forEach((step, index) => {
     const row = document.createElement('article');
     row.className = `broker-step-item ${step.completed ? 'broker-step-item--done' : 'broker-step-item--todo'}`;
+    const stepTitle = step.navigateUrl
+      ? `<a class="open-link" href="${step.navigateUrl}"><strong>Step ${index + 1}:</strong> ${step.title}</a>`
+      : `<strong>Step ${index + 1}:</strong> ${step.title}`;
+    const actionLine = step.navigateUrl
+      ? `<p class="small-note"><a class="open-link" href="${step.navigateUrl}">${step.actionLabel || 'Open fix location'}</a></p>`
+      : '';
     row.innerHTML = `
-      <p><strong>Step ${index + 1}:</strong> ${step.title}</p>
+      <p>${stepTitle}</p>
       <p class="small-note">${step.description}</p>
+      ${actionLine}
       <p class="small-note"><strong>Status:</strong> ${step.completed ? 'Complete' : 'Pending'}</p>
     `;
     target.appendChild(row);

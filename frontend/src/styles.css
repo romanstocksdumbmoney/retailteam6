@@ -349,6 +349,16 @@ body {
   margin: 0.2rem 0;
 }
 
+.broker-step-link {
+  color: #fde047;
+  text-decoration: underline;
+  font-weight: 700;
+}
+
+.broker-step-link:hover {
+  color: #fef08a;
+}
+
 .broker-step-item--done {
   border-color: rgba(16, 185, 129, 0.55);
   background: rgba(16, 185, 129, 0.12);
