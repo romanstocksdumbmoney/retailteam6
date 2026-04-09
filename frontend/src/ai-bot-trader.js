@@ -124,6 +124,7 @@ function applyConfigToForm(config = {}) {
   setInput('ai-bot-prompt', config.prompt || '');
   setInput('ai-bot-risk-pct', config.riskPerTradePct ?? 1.5);
   setInput('ai-bot-target-return-pct', config.targetReturnPct ?? 12);
+  setInput('ai-bot-min-rr', config.minRewardRiskRatio ?? 2);
   setInput('ai-bot-max-sector-exposure-pct', config.maxSectorExposurePct ?? 35);
   setInput('ai-bot-max-gross-exposure-pct', config.maxGrossExposurePct ?? 100);
   setInput('ai-bot-target-holdings', config.maxPositions ?? 4);
@@ -182,6 +183,7 @@ function renderPlan(payload) {
       <p><strong>Max positions:</strong> ${cfg.maxPositions || 0}</p>
       <p><strong>Stop Loss %:</strong> ${cfg.stopLossPct || 0}%</p>
       <p><strong>Take Profit %:</strong> ${cfg.takeProfitPct || 0}%</p>
+      <p><strong>Min Reward/Risk:</strong> ${Number(cfg.minRewardRiskRatio || 2).toLocaleString(undefined, { maximumFractionDigits: 2 })}x</p>
       <p><strong>Sectors:</strong> ${(cfg.sectors || []).join(', ') || 'N/A'}</p>
     </article>
   `;
@@ -344,7 +346,7 @@ async function saveBotConfig() {
   const payload = {
     prompt,
     capitalUsd: getNumberInputValue('ai-bot-capital', 10000),
-    riskPct: riskPerTradePct,
+    riskPerTradePct,
     chasePct: 0.8,
     allocationPerTradePct: Math.max(4, Math.min(60, Math.round(100 / Math.max(1, targetHoldings)))),
     maxSectorExposurePct: getNumberInputValue('ai-bot-max-sector-exposure-pct', 35),
@@ -352,6 +354,7 @@ async function saveBotConfig() {
     stopLossPct: Math.max(0.5, riskPerTradePct * 1.5),
     takeProfitPct: Math.max(1.2, riskPerTradePct * 3),
     targetReturnPct: getNumberInputValue('ai-bot-target-return-pct', 8),
+    minRewardRiskRatio: getNumberInputValue('ai-bot-min-rr', 2),
     testAreaCapitalUsd: getNumberInputValue('ai-bot-test-capital', 10000),
     testAreaRiskPct: getNumberInputValue('ai-bot-test-risk-pct', riskPerTradePct),
     maxGrossExposurePct: getNumberInputValue('ai-bot-max-gross-exposure-pct', 100),

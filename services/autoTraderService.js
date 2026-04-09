@@ -98,6 +98,7 @@ function defaultConfig() {
     prompt: 'Momentum setups with disciplined risk.',
     chasePct: 0.8,
     riskPerTradePct: 1.5,
+    minRewardRiskRatio: 1.8,
     targetReturnPct: 12,
     allocationPerTradePct: 20,
     maxSectorExposurePct: 35,
@@ -166,6 +167,13 @@ function defaultState() {
         lastTestResult: null
       },
       queuedAiTrades: [],
+      pendingTradeProposals: [],
+      riskRewardGate: {
+        minRewardRiskRatio: 1.8,
+        passed: 0,
+        rejected: 0,
+        generatedAt: null
+      },
       brokerOrderHistory: [],
       promptActivity: [],
       lastBrokerExecution: null,
@@ -201,6 +209,17 @@ function ensureLiveExecutionState(state) {
   }
   if (!Array.isArray(state.liveExecution.queuedAiTrades)) {
     state.liveExecution.queuedAiTrades = [];
+  }
+  if (!Array.isArray(state.liveExecution.pendingTradeProposals)) {
+    state.liveExecution.pendingTradeProposals = [];
+  }
+  if (!state.liveExecution.riskRewardGate || typeof state.liveExecution.riskRewardGate !== 'object') {
+    state.liveExecution.riskRewardGate = {
+      minRewardRiskRatio: Number(state.config?.minRewardRiskRatio || defaultConfig().minRewardRiskRatio),
+      passed: 0,
+      rejected: 0,
+      generatedAt: null
+    };
   }
   if (!Array.isArray(state.liveExecution.brokerOrderHistory)) {
     state.liveExecution.brokerOrderHistory = [];
@@ -391,6 +410,7 @@ function sanitizeConfig(input = {}) {
     prompt: String(input.prompt || '').trim().slice(0, 500) || defaultConfig().prompt,
     chasePct: roundUsd(clamp(Number(input.chasePct || 0.8), 0, 10)),
     riskPerTradePct: roundUsd(clamp(Number(input.riskPerTradePct || 1.5), 0.1, 10)),
+    minRewardRiskRatio: roundUsd(clamp(Number(input.minRewardRiskRatio || 1.8), 0.5, 8)),
     targetReturnPct: roundUsd(clamp(Number.isFinite(targetReturnRaw) ? targetReturnRaw : 12, 1, 200)),
     allocationPerTradePct: roundUsd(clamp(Number(input.allocationPerTradePct || 20), 2, 80)),
     maxSectorExposurePct: roundUsd(clamp(Number(input.maxSectorExposurePct || 35), 10, 100)),
@@ -717,6 +737,19 @@ function buildExecutionTicket(state, trade) {
       stopLossPrice: trade.stopLoss,
       takeProfitPrice: trade.takeProfit,
       tif: 'day'
+    },
+    proposal: {
+      ticker: trade.ticker,
+      direction: trade.direction,
+      sector: trade.sector,
+      shares: trade.shares,
+      entryPrice: trade.entry,
+      notionalUsd: trade.notionalUsd,
+      riskUsd: trade.riskUsd,
+      potentialRewardUsd: trade.potentialRewardUsd,
+      rewardRiskRatio: trade.rewardRiskRatio,
+      promptAlignmentScore: Number(trade.promptAlignment?.score || 0),
+      websiteSignalScore: Number(trade.websiteSignalScore || 0)
     }
   };
 }
@@ -793,6 +826,7 @@ function executeAutoTraderBrokerOrders(user, input = {}) {
   brokerOrders.forEach((order) => {
     orderByTicket[order.ticketId] = order;
   });
+  const selectedTicketSet = new Set(selectedTickets.map((ticket) => String(ticket.ticketId || '').trim()).filter(Boolean));
 
   liveExecution.lastPlan = {
     ...lastPlan,
@@ -821,6 +855,35 @@ function executeAutoTraderBrokerOrders(user, input = {}) {
     })
   };
 
+  liveExecution.pendingTradeProposals = (liveExecution.pendingTradeProposals || []).map((proposal) => {
+    const ticketId = String(proposal.ticketId || '').trim();
+    if (!selectedTicketSet.has(ticketId)) {
+      return proposal;
+    }
+    const submitted = orderByTicket[ticketId];
+    if (!submitted) {
+      return {
+        ...proposal,
+        status: 'selected_not_ready',
+        lastActionAt: submittedAt
+      };
+    }
+    if (submitted.status === 'submitted') {
+      return {
+        ...proposal,
+        status: 'submitted_to_broker',
+        brokerSubmittedAt: submittedAt,
+        brokerOrderId: submitted.brokerOrderId || null
+      };
+    }
+    return {
+      ...proposal,
+      status: 'rejected_by_broker',
+      brokerSubmittedAt: submittedAt,
+      rejectionReason: submitted.reason || 'Broker rejected this trade.'
+    };
+  });
+
   // Mark queue entries that generated a now-submitted broker order.
   const submittedOrderIds = new Set(
     brokerOrders
@@ -829,7 +892,8 @@ function executeAutoTraderBrokerOrders(user, input = {}) {
       .filter(Boolean)
   );
   liveExecution.queuedAiTrades = (liveExecution.queuedAiTrades || []).map((row) => {
-    if (!submittedOrderIds.has(row.consumedByOrderId)) {
+    const sourceOrderId = row.consumedByOrderId || row.proposedByOrderId;
+    if (!submittedOrderIds.has(sourceOrderId)) {
       return row;
     }
     return {
@@ -883,22 +947,27 @@ function runAutoTraderCycle(user) {
     throw new Error('insufficient_cash');
   }
 
+  const liveExecution = ensureLiveExecutionState(state);
+  const requiresApproval = String(state.tradingMode || 'paper').toLowerCase() === 'live';
   const seed = hashString(`${userId}:${minuteSeed()}:${state.config.prompt}`);
   const websiteSignals = buildWebsiteSignalSnapshot(state, userId);
   const promptControl = parsePromptControl(state.config.prompt);
-  const pendingQueue = (ensureLiveExecutionState(state).queuedAiTrades || [])
+  const pendingQueue = (liveExecution.queuedAiTrades || [])
     .filter((row) => row.status === 'pending')
     .slice(0, 30);
   const closedPositions = closeRandomPositions(state, seed);
   const maxNewTrades = Math.max(1, Math.min(4, state.config.maxPositions - state.openPositions.length));
   const candidateTrades = [];
+  let rejectedByRiskReward = 0;
+  let planningCashUsd = Number(state.cashUsd || 0);
   const startingCash = state.cashUsd;
   const startingPortfolio = roundUsd(
     state.cashUsd + state.openPositions.reduce((sum, position) => sum + Number(position.notionalUsd || 0), 0)
   );
 
   for (let i = 0; i < maxNewTrades; i += 1) {
-    if (state.cashUsd < 100) {
+    const availableCashUsd = requiresApproval ? planningCashUsd : Number(state.cashUsd || 0);
+    if (availableCashUsd < 100) {
       break;
     }
     const promptSectors = promptControl.preferredSectors
@@ -952,7 +1021,7 @@ function runAutoTraderCycle(user) {
       : roundUsd(entry * (1 - state.config.takeProfitPct / 100));
 
     const perTradeBudget = Math.min(
-      state.cashUsd,
+      availableCashUsd,
       roundUsd(startingPortfolio * (state.config.allocationPerTradePct / 100))
     );
     const unitRisk = Math.max(0.01, Math.abs(entry - stopLoss));
@@ -982,13 +1051,18 @@ function runAutoTraderCycle(user) {
     if (grossExposurePct > state.config.maxGrossExposurePct + 0.01) {
       continue;
     }
-    if (notionalUsd > state.cashUsd) {
+    if (notionalUsd > availableCashUsd) {
       continue;
     }
 
     const orderId = `ord-${hashString(`${ticker}:${seed}:${i}`)}`;
     const riskUsd = roundUsd(unitRisk * shares);
     const potentialRewardUsd = roundUsd(Math.abs(takeProfit - entry) * shares);
+    const rewardRiskRatio = roundUsd(potentialRewardUsd / Math.max(0.01, riskUsd));
+    if (rewardRiskRatio < Number(state.config.minRewardRiskRatio || 1.8)) {
+      rejectedByRiskReward += 1;
+      continue;
+    }
     const trade = {
       id: orderId,
       ticker,
@@ -1004,6 +1078,7 @@ function runAutoTraderCycle(user) {
       notionalUsd,
       riskUsd,
       potentialRewardUsd,
+      rewardRiskRatio,
       signalSources: [
         queueDirection ? 'ai_trade_queue' : null,
         trendDirection ? 'trend_trades' : null,
@@ -1033,15 +1108,27 @@ function runAutoTraderCycle(user) {
     };
     trade.executionTicket = buildExecutionTicket(state, trade);
     candidateTrades.push(trade);
-    state.cashUsd = roundUsd(state.cashUsd - notionalUsd);
     if (queuedSignal) {
-      queuedSignal.status = 'consumed';
-      queuedSignal.consumedAt = trade.createdAt;
-      queuedSignal.consumedByOrderId = trade.id;
+      if (requiresApproval) {
+        queuedSignal.status = 'proposed';
+        queuedSignal.proposedAt = trade.createdAt;
+        queuedSignal.proposedByOrderId = trade.id;
+      } else {
+        queuedSignal.status = 'consumed';
+        queuedSignal.consumedAt = trade.createdAt;
+        queuedSignal.consumedByOrderId = trade.id;
+      }
+    }
+    if (!requiresApproval) {
+      state.cashUsd = roundUsd(state.cashUsd - notionalUsd);
+    } else {
+      planningCashUsd = roundUsd(planningCashUsd - notionalUsd);
     }
   }
 
-  const placedPositions = candidateTrades.map((trade) => ({
+  const placedPositions = requiresApproval
+    ? []
+    : candidateTrades.map((trade) => ({
     id: trade.id,
     ticker: trade.ticker,
     sector: trade.sector,
@@ -1055,7 +1142,11 @@ function runAutoTraderCycle(user) {
     notionalUsd: trade.notionalUsd,
     openedAt: trade.createdAt
   }));
-  state.openPositions = state.openPositions.concat(placedPositions).slice(-30);
+  if (requiresApproval) {
+    state.openPositions = state.openPositions.slice(-30);
+  } else {
+    state.openPositions = state.openPositions.concat(placedPositions).slice(-30);
+  }
   const promptAdherence = summarizePromptAdherence(candidateTrades, promptControl);
   const cycle = {
     executedAt: nowIso(),
@@ -1073,7 +1164,7 @@ function runAutoTraderCycle(user) {
     promptControl,
     promptAdherence,
     note: state.tradingMode === 'live'
-      ? 'Live mode uses funded capital sizing and website signal routing. Broker-linked tickets are execution-ready only when API bridge is connected.'
+      ? 'Live mode proposes trades using funded risk sizing and waits for your approval before broker submission.'
       : 'Paper-trading simulation uses website signals; no real brokerage orders are sent.'
   };
   const cycleSummary = {
@@ -1089,7 +1180,34 @@ function runAutoTraderCycle(user) {
   };
   state.cycleHistory = [cycleSummary, ...(state.cycleHistory || [])].slice(0, 60);
   state.lastCycle = cycle;
-  const liveExecution = ensureLiveExecutionState(state);
+  const proposalRows = candidateTrades.map((trade) => ({
+    ticketId: trade.executionTicket?.ticketId || '',
+    sourceOrderId: trade.id,
+    ticker: trade.ticker,
+    sector: trade.sector,
+    direction: trade.direction,
+    shares: trade.shares,
+    entry: trade.entry,
+    stopLoss: trade.stopLoss,
+    takeProfit: trade.takeProfit,
+    notionalUsd: trade.notionalUsd,
+    riskUsd: trade.riskUsd,
+    potentialRewardUsd: trade.potentialRewardUsd,
+    rewardRiskRatio: trade.rewardRiskRatio,
+    proposedAt: cycle.executedAt,
+    status: 'pending'
+  }));
+  if (requiresApproval) {
+    liveExecution.pendingTradeProposals = proposalRows.slice(0, 120);
+  } else {
+    liveExecution.pendingTradeProposals = [];
+  }
+  liveExecution.riskRewardGate = {
+    minRewardRiskRatio: Number(state.config.minRewardRiskRatio || defaultConfig().minRewardRiskRatio),
+    passed: candidateTrades.length,
+    rejected: rejectedByRiskReward,
+    generatedAt: cycle.executedAt
+  };
   liveExecution.lastPlan = {
     generatedAt: cycle.executedAt,
     tradingMode: state.tradingMode,
@@ -1097,8 +1215,13 @@ function runAutoTraderCycle(user) {
     broker: state.liveFunding?.broker || 'manual',
     promptControl,
     promptAdherence,
+    requiresApproval,
+    riskRewardGate: liveExecution.riskRewardGate,
+    proposalsSummary: {
+      pending: liveExecution.pendingTradeProposals.length
+    },
     orderTickets: candidateTrades.map((trade) => trade.executionTicket),
-    manualActionRequired: candidateTrades.some((trade) => !Boolean(trade.executionTicket?.readyForBrokerApi))
+    manualActionRequired: requiresApproval || candidateTrades.some((trade) => !Boolean(trade.executionTicket?.readyForBrokerApi))
   };
   liveExecution.promptActivity = [
     {
@@ -1106,6 +1229,7 @@ function runAutoTraderCycle(user) {
       action: 'cycle_run',
       prompt: String(state.config.prompt || '').slice(0, 220),
       openedTrades: candidateTrades.length,
+      proposedTrades: proposalRows.length,
       promptAdherenceScore: promptAdherence.score
     },
     ...(liveExecution.promptActivity || [])
@@ -1831,6 +1955,19 @@ function getAutoTraderAccountView(user) {
     execution: {
       brokerConnection: liveExecution.brokerConnection,
       queuedAiTrades: (liveExecution.queuedAiTrades || []).slice(0, 20),
+      pendingTradeProposals: (liveExecution.pendingTradeProposals || [])
+        .filter((row) => String(row.status || 'pending') === 'pending')
+        .slice(0, 30),
+      proposalsSummary: {
+        pending: (liveExecution.pendingTradeProposals || []).filter((row) => String(row.status || 'pending') === 'pending').length,
+        totalTracked: (liveExecution.pendingTradeProposals || []).length
+      },
+      riskRewardGate: liveExecution.riskRewardGate || {
+        minRewardRiskRatio: Number(state.config?.minRewardRiskRatio || defaultConfig().minRewardRiskRatio),
+        passed: 0,
+        rejected: 0,
+        generatedAt: null
+      },
       recentBrokerOrders: (liveExecution.brokerOrderHistory || []).slice(0, 20),
       lastBrokerExecution: liveExecution.lastBrokerExecution || null,
       lastPlan: liveExecution.lastPlan || null,
@@ -1879,6 +2016,19 @@ function getAutoTraderStatus(user) {
     execution: {
       brokerConnection: liveExecution.brokerConnection,
       queuedAiTrades: (liveExecution.queuedAiTrades || []).slice(0, 20),
+      pendingTradeProposals: (liveExecution.pendingTradeProposals || [])
+        .filter((row) => String(row.status || 'pending') === 'pending')
+        .slice(0, 30),
+      proposalsSummary: {
+        pending: (liveExecution.pendingTradeProposals || []).filter((row) => String(row.status || 'pending') === 'pending').length,
+        totalTracked: (liveExecution.pendingTradeProposals || []).length
+      },
+      riskRewardGate: liveExecution.riskRewardGate || {
+        minRewardRiskRatio: Number(state.config?.minRewardRiskRatio || defaultConfig().minRewardRiskRatio),
+        passed: 0,
+        rejected: 0,
+        generatedAt: null
+      },
       recentBrokerOrders: (liveExecution.brokerOrderHistory || []).slice(0, 20),
       lastBrokerExecution: liveExecution.lastBrokerExecution || null,
       lastPlan: liveExecution.lastPlan || null,
