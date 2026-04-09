@@ -69,6 +69,51 @@ function activateRobinhoodExistingAccountShortcut() {
   setStatus('Robinhood existing-account mode enabled. Enter your login and save broker connection.');
 }
 
+async function runOneClickRobinhoodAiConnect() {
+  const token = localStorage.getItem('dumbdollars_token') || '';
+  if (!token) {
+    setStatus('Please log in first, then use One-Click Robinhood AI Connect.', true);
+    return;
+  }
+  const accountIdInput = document.getElementById('broker-connect-account-id');
+  const loginInput = document.getElementById('broker-connect-login-username');
+  const passwordInput = document.getElementById('broker-connect-login-password');
+  const methodSelect = document.getElementById('broker-connect-method');
+  const twoFactorSelect = document.getElementById('broker-connect-two-factor');
+  if (!(accountIdInput instanceof HTMLInputElement)
+    || !(loginInput instanceof HTMLInputElement)
+    || !(passwordInput instanceof HTMLInputElement)
+    || !(methodSelect instanceof HTMLSelectElement)
+    || !(twoFactorSelect instanceof HTMLSelectElement)) {
+    setStatus('Robinhood quick connect controls are missing from this page.', true);
+    return;
+  }
+  activateRobinhoodExistingAccountShortcut();
+  methodSelect.value = 'existing_account';
+  renderConnectionMethodFields();
+  const accountId = String(accountIdInput.value || '').trim();
+  const loginUsername = String(loginInput.value || '').trim();
+  const loginPassword = String(passwordInput.value || '').trim();
+  if (!accountId || !loginUsername || !loginPassword) {
+    setStatus('Enter account ID, Robinhood login, and password, then press One-Click Robinhood AI Connect again.', true);
+    return;
+  }
+  try {
+    setStatus('Running one-click Robinhood AI connect...');
+    await connectBrokerBridge();
+    const testResult = await runConnectionTest();
+    await loadBrokerGuide();
+    setStatus(
+      testResult.readyForTrading
+        ? 'Robinhood connected and AI bridge test passed. You can now run AI cycles and execute tickets.'
+        : 'Robinhood saved, but connection test needs fixes. Review the checklist below.',
+      !testResult.readyForTrading
+    );
+  } catch (error) {
+    setStatus(error.message || 'One-click Robinhood AI connect failed.', true);
+  }
+}
+
 function getConnectFormPayload() {
   const connectionMethod = String(document.getElementById('broker-connect-method')?.value || 'api_keys').trim().toLowerCase();
   const accountId = String(document.getElementById('broker-connect-account-id')?.value || '').trim();
@@ -368,6 +413,8 @@ function setupForm() {
   const continueButton = document.getElementById('brokerage-go-funding');
   const connectForm = document.getElementById('broker-connect-form');
   const connectionMethodSelect = document.getElementById('broker-connect-method');
+  const robinhoodOneClickButton = document.getElementById('brokerage-one-click-robinhood-existing')
+    || document.getElementById('brokerage-one-click-robinhood-ai');
   const robinhoodShortcutButton = document.getElementById('brokerage-connect-robinhood-existing')
     || document.getElementById('broker-connect-robinhood-existing');
   const testButton = document.getElementById('brokerage-test-ai');
@@ -404,6 +451,17 @@ function setupForm() {
   if (robinhoodShortcutButton instanceof HTMLButtonElement) {
     robinhoodShortcutButton.addEventListener('click', () => {
       activateRobinhoodExistingAccountShortcut();
+    });
+  }
+
+  if (robinhoodOneClickButton instanceof HTMLButtonElement) {
+    robinhoodOneClickButton.addEventListener('click', async () => {
+      robinhoodOneClickButton.disabled = true;
+      try {
+        await runOneClickRobinhoodAiConnect();
+      } finally {
+        robinhoodOneClickButton.disabled = false;
+      }
     });
   }
 
