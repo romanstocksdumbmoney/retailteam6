@@ -24,10 +24,10 @@ const ALLOWED_TRADING_MODES = new Set(['paper', 'live']);
 const ALLOWED_BROKERS = new Set(['manual', 'robinhood', 'webull', 'interactive-brokers', 'tradestation']);
 const ALLOWED_EXECUTION_MODES = new Set(['manual_confirmed', 'broker_linked']);
 const BROKER_SETUP_DOCS = Object.freeze({
-  robinhood: 'https://robinhood.com/us/en/support/articles/opening-an-account/',
-  webull: 'https://www.webull.com/help/category/47-Open-an-account',
-  'interactive-brokers': 'https://www.interactivebrokers.com/en/accounts/open_account_pro.php',
-  tradestation: 'https://www.tradestation.com/open-an-account/',
+  robinhood: 'https://robinhood.com/signup',
+  webull: 'https://www.webull.com/help',
+  'interactive-brokers': 'https://www.interactivebrokers.com/en/accounts/open-account-country-list.php',
+  tradestation: 'https://www.tradestation.com/why-tradestation/',
   manual: 'https://dumbdollars.org/ai-implementation-steps.html'
 });
 

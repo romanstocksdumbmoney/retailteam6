@@ -1,8 +1,8 @@
 const BROKER_OPENING_LINKS = {
-  robinhood: 'https://robinhood.com/us/en/support/articles/opening-an-account/',
-  webull: 'https://www.webull.com/help/category/47-Open-an-account',
-  'interactive-brokers': 'https://www.interactivebrokers.com/en/accounts/open_account_pro.php',
-  tradestation: 'https://www.tradestation.com/open-an-account/'
+  robinhood: 'https://robinhood.com/signup',
+  webull: 'https://www.webull.com/',
+  'interactive-brokers': 'https://www.interactivebrokers.com/en/accounts/open-account-country-list.php',
+  tradestation: 'https://www.tradestation.com/'
 };
 
 function getAuthHeaders() {
@@ -220,8 +220,12 @@ function openBrokerSignup() {
     return;
   }
   localStorage.setItem('dumbdollars_selected_broker', broker);
-  setStatus('Opening broker account signup in a new tab...');
-  window.open(target, '_blank', 'noopener,noreferrer');
+  setStatus('Opening broker account signup...');
+  const opened = window.open(target, '_blank', 'noopener,noreferrer');
+  if (!opened) {
+    // Fallback if popup was blocked by the browser.
+    window.location.href = target;
+  }
 }
 
 async function connectBrokerBridge() {
