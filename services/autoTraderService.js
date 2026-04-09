@@ -290,6 +290,8 @@ function getBrokerSetupSteps(state, broker) {
       completed: hasAccount,
       actionLabel: 'Open broker signup',
       actionHref: BROKER_SETUP_DOCS[broker] || BROKER_SETUP_DOCS.manual,
+      navigateUrl: BROKER_SETUP_DOCS[broker] || BROKER_SETUP_DOCS.manual,
+      actionUrl: BROKER_SETUP_DOCS[broker] || BROKER_SETUP_DOCS.manual,
       actionExternal: true
     },
     {
@@ -299,6 +301,8 @@ function getBrokerSetupSteps(state, broker) {
       completed: permissionsReady,
       actionLabel: 'Open broker settings',
       actionHref: BROKER_SETUP_DOCS[broker] || BROKER_SETUP_DOCS.manual,
+      navigateUrl: BROKER_SETUP_DOCS[broker] || BROKER_SETUP_DOCS.manual,
+      actionUrl: BROKER_SETUP_DOCS[broker] || BROKER_SETUP_DOCS.manual,
       actionExternal: true
     },
     {
@@ -307,7 +311,9 @@ function getBrokerSetupSteps(state, broker) {
       description: 'Use API keys or existing broker sign-in credentials to create the AI execution bridge profile.',
       completed: credentialsReady,
       actionLabel: 'Go to credentials form',
-      actionHref: linkFor('/brokerage-onboarding.html', 'broker-connect-form')
+      actionHref: linkFor('/brokerage-onboarding.html', 'broker-connect-form'),
+      navigateUrl: linkFor('/brokerage-onboarding.html', 'broker-connect-form'),
+      actionUrl: linkFor('/brokerage-onboarding.html', 'broker-connect-form')
     },
     {
       key: 'bridge-mode',
@@ -315,7 +321,9 @@ function getBrokerSetupSteps(state, broker) {
       description: 'Set execution mode to broker_linked so execution tickets can be sent through the broker bridge.',
       completed: bridgeReady,
       actionLabel: 'Open funding mode settings',
-      actionHref: linkFor('/ai-bot-funding.html', 'ai-funding-form')
+      actionHref: linkFor('/ai-bot-funding.html', 'ai-funding-form'),
+      navigateUrl: linkFor('/ai-bot-funding.html', 'ai-funding-form'),
+      actionUrl: linkFor('/ai-bot-funding.html', 'ai-funding-form')
     },
     {
       key: 'test-connection',
@@ -323,7 +331,9 @@ function getBrokerSetupSteps(state, broker) {
       description: 'Validate credential format, permissions, funding mode, and execution readiness before auto cycles.',
       completed: testedReady,
       actionLabel: 'Run test on broker page',
-      actionHref: linkFor('/brokerage-onboarding.html', 'broker-connect-form')
+      actionHref: linkFor('/brokerage-onboarding.html', 'broker-connect-form'),
+      navigateUrl: linkFor('/brokerage-onboarding.html', 'broker-connect-form'),
+      actionUrl: linkFor('/brokerage-onboarding.html', 'broker-connect-form')
     },
     {
       key: 'activate-ai',
@@ -331,7 +341,9 @@ function getBrokerSetupSteps(state, broker) {
       description: 'Keep bot active in live mode, with funded capital and broker bridge connected.',
       completed: Boolean(liveMode && fundedReady && testedReady && bridgeReady),
       actionLabel: 'Open AI account execution',
-      actionHref: linkFor('/ai-bot-account.html', 'ai-account-title')
+      actionHref: linkFor('/ai-bot-account.html', 'ai-account-title'),
+      navigateUrl: linkFor('/ai-bot-account.html', 'ai-account-title'),
+      actionUrl: linkFor('/ai-bot-account.html', 'ai-account-title')
     }
   ];
 }
