@@ -925,6 +925,21 @@ h1 {
   background: rgba(127, 29, 29, 0.18);
 }
 
+.broker-inline-status {
+  min-height: 2rem;
+  margin-top: 0.65rem;
+  margin-bottom: 0;
+  padding: 0.5rem 0.65rem;
+  border: 1px solid rgba(250, 204, 21, 0.3);
+  border-radius: 10px;
+  background: rgba(30, 41, 59, 0.35);
+}
+
+.broker-inline-status.auth-error {
+  border-color: rgba(248, 113, 113, 0.42);
+  background: rgba(127, 29, 29, 0.18);
+}
+
 input,
 select,
 button {

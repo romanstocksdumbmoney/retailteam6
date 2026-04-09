@@ -84,6 +84,7 @@ function formatApiError(error, fallback) {
 function setStatus(text, isError = false) {
   const nodes = [
     document.getElementById('brokerage-onboarding-status-top'),
+    document.getElementById('brokerage-onboarding-status-inline'),
     document.getElementById('brokerage-onboarding-status')
   ].filter(Boolean);
   if (!nodes.length) {
@@ -135,17 +136,6 @@ async function runOneClickRobinhoodAiConnect() {
   }
   if (!getStoredToken()) {
     setStatus('Please log in first, then use One-Click Robinhood AI Connect.', true);
-    return;
-  }
-  try {
-    const me = await requestWithAuthRetry('/api/auth/me', { method: 'GET' });
-    const plan = String(me?.user?.plan || '').toLowerCase();
-    if (plan !== 'pro') {
-      setStatus('Live broker connect requires Pro. Upgrade to Pro / Live Funding first.', true);
-      return;
-    }
-  } catch (error) {
-    setStatus(formatApiError(error, 'Could not verify your login session.'), true);
     return;
   }
   const accountIdInput = document.getElementById('broker-connect-account-id');

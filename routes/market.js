@@ -976,7 +976,7 @@ router.get('/auto-trader/broker-connect/steps', requireSignedIn, (req, res) => {
   }
 });
 
-router.post('/auto-trader/broker-connect', requireSignedIn, requireLiveFundingAccess, (req, res) => {
+router.post('/auto-trader/broker-connect', requireSignedIn, (req, res) => {
   try {
     const payload = connectAutoTraderBrokerBridge(req.user, req.body || {});
     return res.json(payload);
@@ -1043,7 +1043,7 @@ router.post('/auto-trader/broker-connect', requireSignedIn, requireLiveFundingAc
   }
 });
 
-router.post('/auto-trader/broker-connect/test', requireSignedIn, requireLiveFundingAccess, (req, res) => {
+router.post('/auto-trader/broker-connect/test', requireSignedIn, (req, res) => {
   try {
     const payload = testAutoTraderBrokerBridge(req.user, req.body || {});
     return res.json(payload);
@@ -1062,7 +1062,7 @@ router.post('/auto-trader/broker-connect/test', requireSignedIn, requireLiveFund
   }
 });
 
-router.post('/auto-trader/broker-connect/disconnect', requireSignedIn, requireLiveFundingAccess, (req, res) => {
+router.post('/auto-trader/broker-connect/disconnect', requireSignedIn, (req, res) => {
   try {
     const payload = disconnectAutoTraderBrokerBridge(req.user);
     return res.json(payload);
