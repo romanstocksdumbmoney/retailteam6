@@ -14,14 +14,54 @@ async function fetchJson(url, options = {}) {
   return response.json();
 }
 
-function getAuthHeaders() {
-  const token = localStorage.getItem('dumbdollars_token') || '';
-  if (!token) {
-    return {};
+function getStoredToken() {
+  return String(localStorage.getItem('dumbdollars_token') || '').trim();
+}
+
+function getAuthHeadersSafe() {
+  if (typeof window.getAuthHeaders === 'function') {
+    return window.getAuthHeaders();
   }
-  return {
-    authorization: `Bearer ${token}`
-  };
+  const token = getStoredToken();
+  return token ? { authorization: `Bearer ${token}` } : {};
+}
+
+async function tryRestoreSession() {
+  if (typeof window.restoreSessionIfNeeded === 'function') {
+    const restored = await window.restoreSessionIfNeeded();
+    if (typeof restored === 'string') {
+      return restored;
+    }
+    return String(restored?.token || '').trim();
+  }
+  return '';
+}
+
+async function requestWithAuthRetry(url, options = {}) {
+  try {
+    return await fetchJson(url, {
+      ...options,
+      headers: {
+        ...(options.headers || {}),
+        ...getAuthHeadersSafe()
+      }
+    });
+  } catch (error) {
+    if (error?.status !== 401) {
+      throw error;
+    }
+    const restoredToken = await tryRestoreSession();
+    if (!restoredToken) {
+      throw error;
+    }
+    return fetchJson(url, {
+      ...options,
+      headers: {
+        ...(options.headers || {}),
+        ...getAuthHeadersSafe()
+      }
+    });
+  }
 }
 
 function fmtUsd(value) {
@@ -113,9 +153,7 @@ function getTextValue(id) {
 }
 
 async function loadProfile() {
-  const payload = await fetchJson('/api/market/auto-trader/paper-profile', {
-    headers: getAuthHeaders()
-  });
+  const payload = await requestWithAuthRetry('/api/market/auto-trader/paper-profile', { method: 'GET' });
   renderConnectionSummary(payload);
 }
 
@@ -129,12 +167,9 @@ async function connectTradingViewPaper() {
     riskPerTradePct: getNumberValue('paper-connect-risk', 1.5),
     aiAccessEnabled: true
   };
-  const saved = await fetchJson('/api/market/auto-trader/paper-profile', {
+  const saved = await requestWithAuthRetry('/api/market/auto-trader/paper-profile', {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      ...getAuthHeaders()
-    },
+    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload)
   });
   renderConnectionSummary(saved);
@@ -189,7 +224,7 @@ function setupActions() {
 }
 
 async function init() {
-  const token = localStorage.getItem('dumbdollars_token') || '';
+  const token = getStoredToken() || await tryRestoreSession();
   if (!token) {
     setStatus('Please log in first to connect paper trading.', true);
     return;

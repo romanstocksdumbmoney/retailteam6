@@ -31,6 +31,7 @@ const {
   testAutoTraderBrokerBridge,
   disconnectAutoTraderBrokerBridge,
   queueAiTradeForExecution,
+  updateAutoTraderPromptControl,
   executeAutoTraderBrokerOrders,
   runAutoTraderCycle,
   listAutoTraderSectors,
@@ -1088,6 +1089,37 @@ router.post('/auto-trader/queue-ai-trade', requireSignedIn, (req, res) => {
     return res.status(400).json({
       error: 'invalid_request',
       message: 'Could not queue AI trade for execution.'
+    });
+  }
+});
+
+router.post('/auto-trader/prompt-control', requireSignedIn, (req, res) => {
+  try {
+    const payload = updateAutoTraderPromptControl(req.user, req.body || {});
+    return res.json(payload);
+  } catch (error) {
+    const code = String(error.message || '');
+    if (code === 'bot_not_configured') {
+      return res.status(400).json({
+        error: 'bot_not_configured',
+        message: 'Configure the AI Auto Trader first.'
+      });
+    }
+    if (code === 'invalid_prompt') {
+      return res.status(400).json({
+        error: 'invalid_prompt',
+        message: 'Prompt cannot be empty and must be 500 chars or less.'
+      });
+    }
+    if (code === 'invalid_prompt_mode') {
+      return res.status(400).json({
+        error: 'invalid_prompt_mode',
+        message: 'Prompt mode must be strict, balanced, or exploratory.'
+      });
+    }
+    return res.status(400).json({
+      error: 'invalid_request',
+      message: 'Could not update AI prompt control.'
     });
   }
 });

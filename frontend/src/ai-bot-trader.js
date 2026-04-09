@@ -9,20 +9,63 @@ async function fetchJson(url, options = {}) {
     }
     const error = new Error(body.message || `Request failed: ${response.status}`);
     error.status = response.status;
+    error.body = body;
     throw error;
   }
   return response.json();
 }
 
-function getAuthHeaders() {
-  const token = localStorage.getItem('dumbdollars_token') || '';
-  if (!token) {
-    return {};
-  }
-  return {
-    authorization: `Bearer ${token}`
-  };
+function getStoredToken() {
+  return String(localStorage.getItem('dumbdollars_token') || '').trim();
 }
+
+function getAuthHeadersSafe() {
+  if (typeof window.getAuthHeaders === 'function') {
+    return window.getAuthHeaders();
+  }
+  const token = getStoredToken();
+  return token ? { authorization: `Bearer ${token}` } : {};
+}
+
+async function tryRestoreSession() {
+  if (typeof window.restoreSessionIfNeeded === 'function') {
+    const restored = await window.restoreSessionIfNeeded();
+    if (typeof restored === 'string') {
+      return restored;
+    }
+    return String(restored?.token || '').trim();
+  }
+  return '';
+}
+
+async function requestWithAuthRetry(url, options = {}) {
+  try {
+    return await fetchJson(url, {
+      ...options,
+      headers: {
+        ...(options.headers || {}),
+        ...getAuthHeadersSafe()
+      }
+    });
+  } catch (error) {
+    if (error?.status !== 401) {
+      throw error;
+    }
+    const restoredToken = await tryRestoreSession();
+    if (!restoredToken) {
+      throw error;
+    }
+    return fetchJson(url, {
+      ...options,
+      headers: {
+        ...(options.headers || {}),
+        ...getAuthHeadersSafe()
+      }
+    });
+  }
+}
+
+let currentControlLink = '';
 
 function setStatus(text, isError = false) {
   const statusNode = document.getElementById('ai-bot-status');
@@ -65,6 +108,36 @@ function getSelectedTradingMode() {
   return String(selected.value || 'paper').trim().toLowerCase() === 'live' ? 'live' : 'paper';
 }
 
+function applyConfigToForm(config = {}) {
+  const setInput = (id, value) => {
+    const node = document.getElementById(id);
+    if (node instanceof HTMLInputElement || node instanceof HTMLTextAreaElement) {
+      node.value = String(value ?? '');
+    }
+  };
+  const setSelect = (id, value) => {
+    const node = document.getElementById(id);
+    if (node instanceof HTMLSelectElement && value) {
+      node.value = String(value);
+    }
+  };
+  setInput('ai-bot-prompt', config.prompt || '');
+  setInput('ai-bot-risk-pct', config.riskPerTradePct ?? 1.5);
+  setInput('ai-bot-target-return-pct', config.targetReturnPct ?? 12);
+  setInput('ai-bot-max-sector-exposure-pct', config.maxSectorExposurePct ?? 35);
+  setInput('ai-bot-max-gross-exposure-pct', config.maxGrossExposurePct ?? 100);
+  setInput('ai-bot-target-holdings', config.maxPositions ?? 4);
+  setSelect('ai-bot-timeframe', config.timeframe || 'intraday');
+
+  const selectedSectors = new Set(Array.isArray(config.sectors) ? config.sectors : []);
+  const checkboxes = document.querySelectorAll('fieldset.ai-bot-sectors input[type="checkbox"]');
+  checkboxes.forEach((node) => {
+    if (node instanceof HTMLInputElement) {
+      node.checked = selectedSectors.size ? selectedSectors.has(node.value) : node.checked;
+    }
+  });
+}
+
 function renderBotSummary(payload) {
   const target = document.getElementById('ai-bot-summary');
   if (!target) {
@@ -78,7 +151,7 @@ function renderBotSummary(payload) {
   const brokerStatus = brokerConnection.isConnected ? 'CONNECTED' : 'NOT CONNECTED';
   target.innerHTML = `
     <article class="bot-position-card">
-      <h4>Status: ${(payload.status || 'paused').toUpperCase()}</h4>
+      <h4>Status: ${(payload.isActive ? 'active' : 'paused').toUpperCase()}</h4>
       <p><strong>Mode:</strong> ${String(payload.tradingMode || 'paper').toUpperCase()}</p>
       <p><strong>Cash:</strong> ${fmtUsd(payload.cashUsd)}</p>
       <p><strong>Total Deposited:</strong> ${fmtUsd(payload.totalDepositedUsd)}</p>
@@ -102,10 +175,10 @@ function renderPlan(payload) {
     <article class="bot-position-card">
       <p><strong>Prompt:</strong> ${cfg.prompt || ''}</p>
       <p><strong>Target Return %:</strong> ${cfg.targetReturnPct || 0}%</p>
-      <p><strong>Chase %:</strong> ${cfg.chasePct || 0}%</p>
       <p><strong>Risk/trade %:</strong> ${cfg.riskPerTradePct || 0}%</p>
       <p><strong>Allocation/trade %:</strong> ${cfg.allocationPerTradePct || 0}%</p>
       <p><strong>Max sector exposure %:</strong> ${cfg.maxSectorExposurePct || 0}%</p>
+      <p><strong>Max gross exposure %:</strong> ${cfg.maxGrossExposurePct || 0}%</p>
       <p><strong>Max positions:</strong> ${cfg.maxPositions || 0}</p>
       <p><strong>Stop Loss %:</strong> ${cfg.stopLossPct || 0}%</p>
       <p><strong>Take Profit %:</strong> ${cfg.takeProfitPct || 0}%</p>
@@ -121,7 +194,7 @@ function renderOrders(cycle) {
   }
   target.innerHTML = '';
   const trades = cycle?.plannedTrades || [];
-  if (trades.length === 0) {
+  if (!trades.length) {
     target.innerHTML = '<div class="pro-lock">No new orders in the latest cycle.</div>';
     return;
   }
@@ -129,6 +202,9 @@ function renderOrders(cycle) {
     const links = (trade.links || [])
       .map((link) => `<a class="open-link" href="${link.url}" target="_blank" rel="noopener noreferrer">${link.label}</a>`)
       .join(' • ');
+    const reasons = Array.isArray(trade.promptAlignment?.reasons)
+      ? trade.promptAlignment.reasons.join(', ')
+      : 'N/A';
     const card = document.createElement('article');
     card.className = 'bot-position-card';
     card.innerHTML = `
@@ -136,8 +212,7 @@ function renderOrders(cycle) {
       <p><strong>Shares:</strong> ${trade.shares} • <strong>Notional:</strong> ${fmtUsd(trade.notionalUsd)}</p>
       <p><strong>Entry:</strong> ${fmtUsd(trade.entry)} • <strong>Chase:</strong> ${fmtUsd(trade.chasePrice)}</p>
       <p><strong>Stop:</strong> ${fmtUsd(trade.stopLoss)} • <strong>Take:</strong> ${fmtUsd(trade.takeProfit)}</p>
-      <p><strong>Risk:</strong> ${fmtUsd(trade.riskUsd)} • <strong>Reward:</strong> ${fmtUsd(trade.potentialRewardUsd)}</p>
-      <p><strong>Website Signal Score:</strong> ${Number(trade.websiteSignalScore || 0)} • <strong>Sources:</strong> ${(trade.signalSources || []).join(', ') || 'N/A'}</p>
+      <p><strong>Prompt Alignment:</strong> ${Number(trade.promptAlignment?.score || 0)} / 100 • ${reasons}</p>
       <p><strong>Execution Ticket:</strong> ${trade.executionTicket?.ticketId || 'N/A'} • ${trade.executionTicket?.readyForBrokerApi ? 'Broker API Ready' : 'Manual Confirm Required'}</p>
       <p class="small-note">${links}</p>
     `;
@@ -157,15 +232,77 @@ function renderLogs(cycle) {
   const closedRows = (cycle.closedPositions || [])
     .map((row) => `<li>${row.ticker} ${row.direction.toUpperCase()} • ${row.result} • PnL ${fmtUsd(row.pnlUsd)}</li>`)
     .join('');
+  const adherence = cycle.promptAdherence || {};
   target.innerHTML = `
     <article class="bot-position-card">
       <p><strong>Executed:</strong> ${cycle.executedAt || 'N/A'}</p>
       <p><strong>Starting Cash:</strong> ${fmtUsd(cycle.startedCashUsd)}</p>
       <p><strong>Ending Cash:</strong> ${fmtUsd(cycle.endingCashUsd)}</p>
-      <p><strong>Note:</strong> ${cycle.note || 'N/A'}</p>
+      <p><strong>Prompt adherence:</strong> ${Number(adherence.score || 0)}/100 • ${adherence.note || 'N/A'}</p>
       <p><strong>Signal Inputs:</strong> AI queue ${Number(cycle.websiteSignals?.sourceCounts?.aiTradeQueue || 0)} • Trend ${Number(cycle.websiteSignals?.sourceCounts?.trendTrades || 0)} • High IV ${Number(cycle.websiteSignals?.sourceCounts?.highIvTracker || 0)}</p>
-      <p class="small-note">Top ranked symbols: ${(cycle.websiteSignals?.rankedSymbols || []).slice(0, 6).join(', ') || 'N/A'}</p>
       <ul class="detail-list">${closedRows || '<li>No positions closed in this cycle.</li>'}</ul>
+    </article>
+  `;
+}
+
+function renderControlCenter(payload) {
+  const target = document.getElementById('ai-control-following');
+  const linkNode = document.getElementById('ai-control-link-value');
+  const copyButton = document.getElementById('ai-control-copy-link');
+  const openButton = document.getElementById('ai-control-open-link');
+  if (!target || !linkNode) {
+    return;
+  }
+  const execution = payload?.execution || {};
+  const controlCenter = execution.controlCenter || {};
+  const promptControl = execution.promptControl || controlCenter.promptControl || {};
+  const promptActivity = Array.isArray(execution.promptActivity)
+    ? execution.promptActivity
+    : (Array.isArray(controlCenter.promptActivity) ? controlCenter.promptActivity : []);
+  const lastPlan = execution.lastPlan || {};
+  const lastCycle = payload?.lastCycle || {};
+  const directLink = String(controlCenter.directControlLink || '/ai-bot-trader.html').trim();
+
+  currentControlLink = directLink;
+  linkNode.textContent = `Control link: ${directLink}`;
+  if (copyButton instanceof HTMLButtonElement) {
+    copyButton.disabled = !directLink;
+  }
+  if (openButton instanceof HTMLButtonElement) {
+    openButton.disabled = !directLink;
+  }
+
+  const guidance = Array.isArray(promptControl.guidance) ? promptControl.guidance : [];
+  const recent = promptActivity.slice(0, 8);
+  const adherence = lastCycle.promptAdherence || lastPlan.promptAdherence || {};
+  const preferredTickers = Array.isArray(promptControl.preferredTickers) ? promptControl.preferredTickers : [];
+  const avoidTickers = Array.isArray(promptControl.avoidTickers) ? promptControl.avoidTickers : [];
+  const preferredSectors = Array.isArray(promptControl.preferredSectors) ? promptControl.preferredSectors : [];
+
+  target.innerHTML = `
+    <article class="bot-position-card">
+      <h4>What AI is following right now</h4>
+      <p><strong>Direction:</strong> ${String(promptControl.directionPreference || 'neutral').toUpperCase()}</p>
+      <p><strong>Preferred symbols:</strong> ${preferredTickers.join(', ') || 'None specified'}</p>
+      <p><strong>Avoid symbols:</strong> ${avoidTickers.join(', ') || 'None specified'}</p>
+      <p><strong>Preferred sectors:</strong> ${preferredSectors.join(', ') || 'None specified'}</p>
+      <p><strong>Latest adherence:</strong> ${Number(adherence.score || 0)}/100 • ${adherence.note || 'No cycle run yet.'}</p>
+      <ul class="detail-list">${(guidance.length ? guidance : ['No guidance parsed from prompt yet.']).map((item) => `<li>${item}</li>`).join('')}</ul>
+    </article>
+    <article class="bot-position-card">
+      <h4>How to prompt better</h4>
+      <ul class="detail-list">
+        <li>Say direction clearly: "long only" or "short bias".</li>
+        <li>Name sectors and tickers: "Technology, NVDA, MSFT".</li>
+        <li>Add exclusions: "avoid TSLA, avoid earnings this week".</li>
+        <li>Add constraints: "max 3 positions, keep risk 1% per trade".</li>
+      </ul>
+    </article>
+    <article class="bot-position-card">
+      <h4>Recent AI prompt activity</h4>
+      <ul class="detail-list">
+        ${recent.length ? recent.map((row) => `<li>${row.at || 'N/A'} • ${row.action || 'event'} • ${row.prompt || '-'}</li>`).join('') : '<li>No prompt activity yet.</li>'}
+      </ul>
     </article>
   `;
 }
@@ -176,19 +313,23 @@ function renderState(payload) {
     renderPlan(null);
     renderOrders(null);
     renderLogs(null);
+    renderControlCenter(null);
     return;
   }
   renderBotSummary(payload);
   renderPlan(payload);
   renderOrders(payload.lastCycle || null);
   renderLogs(payload.lastCycle || null);
+  renderControlCenter(payload);
+  applyConfigToForm(payload.config || {});
 }
 
 async function loadBotState() {
-  const payload = await fetchJson('/api/market/auto-trader/bot', {
-    headers: getAuthHeaders()
+  const payload = await requestWithAuthRetry('/api/market/auto-trader/bot', {
+    method: 'GET'
   });
   renderState(payload);
+  return payload;
 }
 
 async function saveBotConfig() {
@@ -197,33 +338,30 @@ async function saveBotConfig() {
   const prompt = promptNode instanceof HTMLTextAreaElement ? promptNode.value.trim() : '';
   const timeframe = timeframeNode instanceof HTMLSelectElement ? timeframeNode.value : 'intraday';
   const selectedMode = getSelectedTradingMode();
-  const targetReturnPct = getNumberInputValue('ai-bot-target-return-pct', 8);
-  const testAreaCapitalUsd = getNumberInputValue('ai-bot-test-capital', 10000);
-  const testAreaRiskPct = getNumberInputValue('ai-bot-test-risk-pct', getNumberInputValue('ai-bot-risk-pct', 1.5));
+  const riskPerTradePct = getNumberInputValue('ai-bot-risk-pct', 1.5);
+  const targetHoldings = getNumberInputValue('ai-bot-target-holdings', 6);
+
   const payload = {
     prompt,
-    capitalUsd: testAreaCapitalUsd,
-    riskPct: getNumberInputValue('ai-bot-risk-pct', 1.5),
+    capitalUsd: getNumberInputValue('ai-bot-capital', 10000),
+    riskPct: riskPerTradePct,
     chasePct: 0.8,
-    allocationPerTradePct: Math.max(4, Math.min(60, Math.round(100 / Math.max(1, getNumberInputValue('ai-bot-target-holdings', 6))))),
+    allocationPerTradePct: Math.max(4, Math.min(60, Math.round(100 / Math.max(1, targetHoldings)))),
     maxSectorExposurePct: getNumberInputValue('ai-bot-max-sector-exposure-pct', 35),
-    maxPositions: getNumberInputValue('ai-bot-target-holdings', 6),
-    stopLossPct: Math.max(0.5, getNumberInputValue('ai-bot-risk-pct', 1.5) * 1.5),
-    takeProfitPct: Math.max(1.2, getNumberInputValue('ai-bot-risk-pct', 1.5) * 3),
-    targetReturnPct,
-    testAreaCapitalUsd,
-    testAreaRiskPct,
+    maxPositions: targetHoldings,
+    stopLossPct: Math.max(0.5, riskPerTradePct * 1.5),
+    takeProfitPct: Math.max(1.2, riskPerTradePct * 3),
+    targetReturnPct: getNumberInputValue('ai-bot-target-return-pct', 8),
+    testAreaCapitalUsd: getNumberInputValue('ai-bot-test-capital', 10000),
+    testAreaRiskPct: getNumberInputValue('ai-bot-test-risk-pct', riskPerTradePct),
     maxGrossExposurePct: getNumberInputValue('ai-bot-max-gross-exposure-pct', 100),
     tradingMode: selectedMode,
     timeframe,
     sectors: collectSelectedSectors()
   };
-  const saved = await fetchJson('/api/market/auto-trader/bot', {
+  const saved = await requestWithAuthRetry('/api/market/auto-trader/bot', {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      ...getAuthHeaders()
-    },
+    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload)
   });
   renderState(saved);
@@ -231,25 +369,41 @@ async function saveBotConfig() {
 }
 
 async function runCycle() {
-  const payload = await fetchJson('/api/market/auto-trader/run', {
+  const payload = await requestWithAuthRetry('/api/market/auto-trader/run', {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      ...getAuthHeaders()
-    },
+    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({})
   });
   renderState(payload.bot || payload);
 }
 
+async function sendPromptControlUpdate() {
+  const promptNode = document.getElementById('ai-control-prompt-input');
+  if (!(promptNode instanceof HTMLTextAreaElement)) {
+    throw new Error('Prompt input is not available.');
+  }
+  const prompt = String(promptNode.value || '').trim();
+  if (!prompt) {
+    throw new Error('Enter a prompt before sending to AI.');
+  }
+  const payload = await requestWithAuthRetry('/api/market/auto-trader/prompt-control', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      prompt,
+      source: 'control_center',
+      runNow: false
+    })
+  });
+  promptNode.value = '';
+  return payload;
+}
+
 async function setBotActive(active) {
   const path = active ? '/api/market/auto-trader/bot/resume' : '/api/market/auto-trader/bot/pause';
-  const payload = await fetchJson(path, {
+  const payload = await requestWithAuthRetry(path, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      ...getAuthHeaders()
-    },
+    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({})
   });
   renderState(payload);
@@ -264,53 +418,115 @@ function setupForm() {
   const fundingButton = document.getElementById('open-ai-bot-funding');
   const accountButton = document.getElementById('open-ai-bot-account');
   const brokerageButton = document.getElementById('open-live-brokerage-account');
+  const refreshControlLinkButton = document.getElementById('ai-control-refresh-link');
+  const copyControlLinkButton = document.getElementById('ai-control-copy-link');
+  const openControlLinkButton = document.getElementById('ai-control-open-link');
+  const promptControlForm = document.getElementById('ai-control-prompt-form');
 
-  if (fundingButton) {
+  if (fundingButton instanceof HTMLButtonElement) {
     fundingButton.addEventListener('click', () => {
       window.location.href = '/ai-bot-funding.html';
     });
   }
-
-  if (accountButton) {
+  if (accountButton instanceof HTMLButtonElement) {
     accountButton.addEventListener('click', () => {
       window.location.href = '/ai-bot-account.html';
     });
   }
-
-  if (brokerageButton) {
+  if (brokerageButton instanceof HTMLButtonElement) {
     brokerageButton.addEventListener('click', () => {
       window.location.href = '/brokerage-onboarding.html';
     });
   }
 
-  if (form) {
+  if (refreshControlLinkButton instanceof HTMLButtonElement) {
+    refreshControlLinkButton.addEventListener('click', async () => {
+      try {
+        refreshControlLinkButton.disabled = true;
+        setStatus('Refreshing AI control center...');
+        await loadBotState();
+        setStatus('AI control center refreshed.');
+      } catch (error) {
+        setStatus(error.message || 'Could not refresh AI control center.', true);
+      } finally {
+        refreshControlLinkButton.disabled = false;
+      }
+    });
+  }
+
+  if (copyControlLinkButton instanceof HTMLButtonElement) {
+    copyControlLinkButton.addEventListener('click', async () => {
+      if (!currentControlLink) {
+        setStatus('No AI control link available yet.', true);
+        return;
+      }
+      try {
+        await navigator.clipboard.writeText(currentControlLink);
+        setStatus('AI control link copied.');
+      } catch (_error) {
+        setStatus('Could not copy control link. Copy manually from the control section.', true);
+      }
+    });
+  }
+
+  if (openControlLinkButton instanceof HTMLButtonElement) {
+    openControlLinkButton.addEventListener('click', () => {
+      if (!currentControlLink) {
+        setStatus('No control link available to open.', true);
+        return;
+      }
+      window.location.href = currentControlLink;
+    });
+  }
+
+  if (promptControlForm instanceof HTMLFormElement) {
+    promptControlForm.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      const submit = document.getElementById('ai-control-save-prompt');
+      try {
+        if (submit instanceof HTMLButtonElement) {
+          submit.disabled = true;
+        }
+        setStatus('Saving prompt update to AI...');
+        const payload = await sendPromptControlUpdate();
+        renderState(payload.bot || payload);
+        setStatus('Prompt update saved. AI will follow this on next cycle.');
+      } catch (error) {
+        setStatus(error.message || 'Could not save prompt update.', true);
+      } finally {
+        if (submit instanceof HTMLButtonElement) {
+          submit.disabled = false;
+        }
+      }
+    });
+  }
+
+  if (form instanceof HTMLFormElement) {
     form.addEventListener('submit', async (event) => {
       event.preventDefault();
       const saveButton = document.getElementById('ai-bot-save');
       try {
-        if (saveButton) {
+        if (saveButton instanceof HTMLButtonElement) {
           saveButton.disabled = true;
         }
         setStatus('Saving bot configuration...');
         const saved = await saveBotConfig();
         const mode = String(saved?.tradingMode || getSelectedTradingMode() || 'paper').toLowerCase();
-        if (mode === 'live') {
-          setStatus('Configuration saved. Redirecting to live funding setup...');
-        } else {
-          setStatus('Configuration saved. Redirecting to Test Area...');
-        }
+        setStatus(mode === 'live'
+          ? 'Configuration saved. Redirecting to live funding setup...'
+          : 'Configuration saved. Redirecting to Test Area...');
         window.location.href = '/ai-bot-funding.html';
       } catch (error) {
         setStatus(error.message || 'Could not save bot configuration.', true);
       } finally {
-        if (saveButton) {
+        if (saveButton instanceof HTMLButtonElement) {
           saveButton.disabled = false;
         }
       }
     });
   }
 
-  if (runButton) {
+  if (runButton instanceof HTMLButtonElement) {
     runButton.addEventListener('click', async () => {
       try {
         runButton.disabled = true;
@@ -325,7 +541,7 @@ function setupForm() {
     });
   }
 
-  if (refreshButton) {
+  if (refreshButton instanceof HTMLButtonElement) {
     refreshButton.addEventListener('click', async () => {
       try {
         refreshButton.disabled = true;
@@ -340,7 +556,7 @@ function setupForm() {
     });
   }
 
-  if (pauseButton) {
+  if (pauseButton instanceof HTMLButtonElement) {
     pauseButton.addEventListener('click', async () => {
       try {
         pauseButton.disabled = true;
@@ -355,7 +571,7 @@ function setupForm() {
     });
   }
 
-  if (resumeButton) {
+  if (resumeButton instanceof HTMLButtonElement) {
     resumeButton.addEventListener('click', async () => {
       try {
         resumeButton.disabled = true;
@@ -372,8 +588,11 @@ function setupForm() {
 }
 
 async function init() {
-  const token = localStorage.getItem('dumbdollars_token') || '';
-  if (!token) {
+  const existingToken = getStoredToken();
+  if (!existingToken) {
+    await tryRestoreSession();
+  }
+  if (!getStoredToken()) {
     setStatus('Please log in to use AI Bot Trader.', true);
     return;
   }

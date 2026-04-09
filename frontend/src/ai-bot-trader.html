@@ -86,6 +86,27 @@
 
         <p id="ai-bot-status" class="small-note"></p>
 
+        <section class="ai-trade-consensus">
+          <h3>AI Control Center</h3>
+          <p class="small-note">Use one link to reopen this AI, send prompts, and review exactly what the AI followed in the latest cycle.</p>
+          <div class="ai-bot-actions">
+            <button id="ai-control-refresh-link" class="btn-secondary" type="button">Refresh Control Link</button>
+            <button id="ai-control-copy-link" class="btn-secondary" type="button">Copy Control Link</button>
+            <button id="ai-control-open-link" class="btn-secondary" type="button">Open Control Link</button>
+          </div>
+          <p id="ai-control-link-value" class="small-note">Control link: loading...</p>
+          <form id="ai-control-prompt-form" class="pro-plan-box ai-bot-form" novalidate>
+            <label>
+              Prompt update for AI
+              <textarea id="ai-control-prompt-input" rows="3" placeholder="Example: Focus only on long momentum names in Technology, avoid earnings this week, max 3 positions." required></textarea>
+            </label>
+            <div class="ai-bot-actions">
+              <button id="ai-control-save-prompt" type="submit">Save Prompt to AI</button>
+            </div>
+          </form>
+          <div id="ai-control-following" class="stack"></div>
+        </section>
+
         <section class="ai-bot-actions">
           <button id="open-ai-bot-funding" type="button">Open Test Area / Funding</button>
           <button id="open-ai-bot-account" class="btn-secondary" type="button">Open AI Brokerage Account</button>
@@ -123,6 +144,7 @@
         <p class="small-note">Use Test Area for paper trading and strategy tuning. Live funding mode uses funded sizing and keeps manual execution safeguards unless broker APIs are connected.</p>
       </article>
     </main>
+    <script src="./session-helper.js"></script>
     <script src="./ai-bot-trader.js"></script>
   </body>
 </html>

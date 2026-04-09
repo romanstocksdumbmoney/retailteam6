@@ -25,6 +25,22 @@ const ALLOWED_BROKERS = new Set(['manual', 'robinhood', 'webull', 'interactive-b
 const ALLOWED_EXECUTION_MODES = new Set(['manual_confirmed', 'broker_linked']);
 const ALLOWED_CONNECTION_METHODS = new Set(['api_keys', 'existing_account']);
 const ALLOWED_TWO_FACTOR_MODES = new Set(['none', 'sms', 'totp']);
+const ALLOWED_PROMPT_MODES = new Set(['strict', 'balanced', 'exploratory']);
+const PROMPT_TICKER_STOPWORDS = new Set([
+  'AI',
+  'USD',
+  'TOTP',
+  'SMS',
+  'ETF',
+  'OTC',
+  'LONG',
+  'SHORT',
+  'BULL',
+  'BEAR',
+  'SWING',
+  'DAY',
+  'RISK'
+]);
 const BROKER_SETUP_DOCS = Object.freeze({
   robinhood: 'https://robinhood.com/signup',
   webull: 'https://www.webull.com/help',
@@ -144,6 +160,7 @@ function defaultState() {
       },
       queuedAiTrades: [],
       brokerOrderHistory: [],
+      promptActivity: [],
       lastBrokerExecution: null,
       lastWebsiteSignalSnapshot: null,
       lastPlan: null
@@ -180,6 +197,9 @@ function ensureLiveExecutionState(state) {
   }
   if (!Array.isArray(state.liveExecution.brokerOrderHistory)) {
     state.liveExecution.brokerOrderHistory = [];
+  }
+  if (!Array.isArray(state.liveExecution.promptActivity)) {
+    state.liveExecution.promptActivity = [];
   }
   if (!state.liveExecution.lastBrokerExecution || typeof state.liveExecution.lastBrokerExecution !== 'object') {
     state.liveExecution.lastBrokerExecution = null;
@@ -376,6 +396,94 @@ function parseExecutionMode(rawExecutionMode) {
     return mode;
   }
   return 'manual_confirmed';
+}
+
+function parsePromptControl(prompt) {
+  const rawPrompt = String(prompt || '').trim();
+  const text = rawPrompt.toLowerCase();
+  const isLong = /\b(long|bull|bullish|uptrend|only long|buy dips)\b/.test(text);
+  const isShort = /\b(short|bear|bearish|downtrend|only short)\b/.test(text);
+  const directionPreference = isLong && !isShort
+    ? 'long'
+    : isShort && !isLong
+      ? 'short'
+      : 'neutral';
+  const uppercaseHints = (rawPrompt.match(/\b[A-Z]{2,5}\b/g) || [])
+    .map((entry) => normalizeSymbol(entry))
+    .filter((entry) => entry && !PROMPT_TICKER_STOPWORDS.has(entry));
+  const prefixedHints = [...rawPrompt.matchAll(/\$([A-Za-z]{1,5})\b/g)]
+    .map((entry) => normalizeSymbol(entry[1]))
+    .filter(Boolean);
+  const preferredTickers = [...new Set([...prefixedHints, ...uppercaseHints])].slice(0, 12);
+  const avoidTickers = [...text.matchAll(/\b(?:avoid|skip|exclude)\s+\$?([a-z]{1,5})\b/g)]
+    .map((entry) => normalizeSymbol(entry[1]))
+    .filter(Boolean)
+    .slice(0, 12);
+  const preferredSectors = Object.keys(SECTOR_UNIVERSE)
+    .filter((sector) => text.includes(sector.toLowerCase()))
+    .slice(0, 6);
+  const guidance = [];
+  if (directionPreference !== 'neutral') {
+    guidance.push(`Direction preference: ${directionPreference.toUpperCase()}`);
+  }
+  if (preferredTickers.length > 0) {
+    guidance.push(`Preferred symbols: ${preferredTickers.join(', ')}`);
+  }
+  if (avoidTickers.length > 0) {
+    guidance.push(`Avoid symbols: ${avoidTickers.join(', ')}`);
+  }
+  if (preferredSectors.length > 0) {
+    guidance.push(`Preferred sectors: ${preferredSectors.join(', ')}`);
+  }
+  if (guidance.length === 0) {
+    guidance.push('No strict prompt constraints detected. Using market signals + risk controls.');
+  }
+  return {
+    rawPrompt,
+    directionPreference,
+    preferredTickers,
+    avoidTickers,
+    preferredSectors,
+    guidance
+  };
+}
+
+function summarizePromptAdherence(trades, promptControl) {
+  const rows = Array.isArray(trades) ? trades : [];
+  if (rows.length === 0) {
+    return {
+      score: 0,
+      matchedTrades: 0,
+      totalTrades: 0,
+      note: 'No trades placed in this cycle.'
+    };
+  }
+  const matchedTrades = rows.filter((trade) => Number(trade?.promptAlignment?.score || 0) >= 60).length;
+  const avgScore = Math.round(rows.reduce((sum, trade) => sum + Number(trade?.promptAlignment?.score || 0), 0) / rows.length);
+  const strictness = promptControl.preferredTickers.length + promptControl.avoidTickers.length + (promptControl.directionPreference !== 'neutral' ? 1 : 0);
+  return {
+    score: avgScore,
+    matchedTrades,
+    totalTrades: rows.length,
+    strictness,
+    note: `${matchedTrades}/${rows.length} trade(s) met prompt alignment threshold.`
+  };
+}
+
+function buildControlCenterPayload(state, liveExecution) {
+  const promptControl = parsePromptControl(state.config?.prompt || '');
+  const promptActivity = (liveExecution.promptActivity || []).slice(0, 20);
+  return {
+    directControlLink: '/ai-bot-trader.html',
+    currentPrompt: state.config?.prompt || '',
+    promptControl,
+    promptActivity,
+    promptTips: [
+      'Be explicit: include long/short bias, sectors, and max position ideas.',
+      'Use ticker symbols (for example: NVDA, AAPL) to prioritize names.',
+      'If you want exclusions, write "avoid TSLA" or "skip GME".'
+    ]
+  };
 }
 
 function getDirectionFromPrompt(prompt, seed) {
@@ -740,6 +848,7 @@ function runAutoTraderCycle(user) {
 
   const seed = hashString(`${userId}:${minuteSeed()}:${state.config.prompt}`);
   const websiteSignals = buildWebsiteSignalSnapshot(state, userId);
+  const promptControl = parsePromptControl(state.config.prompt);
   const pendingQueue = (ensureLiveExecutionState(state).queuedAiTrades || [])
     .filter((row) => row.status === 'pending')
     .slice(0, 30);
@@ -755,14 +864,23 @@ function runAutoTraderCycle(user) {
     if (state.cashUsd < 100) {
       break;
     }
-    const sector = state.config.sectors[i % state.config.sectors.length];
+    const promptSectors = promptControl.preferredSectors
+      .filter((sectorName) => state.config.sectors.includes(sectorName));
+    const sector = promptSectors.length > 0
+      ? promptSectors[i % promptSectors.length]
+      : state.config.sectors[i % state.config.sectors.length];
     const sectorNames = Object.keys(SECTOR_UNIVERSE);
     const pickedSector = sector || sectorNames[Math.floor(pseudoRandom(seed + i * 3) * sectorNames.length)];
     const sectorTickers = SECTOR_UNIVERSE[pickedSector] || SECTOR_UNIVERSE.Technology;
     const preferredBySector = websiteSignals.rankedSymbols.filter((symbol) => sectorTickers.includes(symbol));
     const fallbackPreferred = websiteSignals.rankedSymbols.filter((symbol) => !candidateTrades.some((trade) => trade.ticker === symbol));
-    const pickedPreferred = preferredBySector[0] || fallbackPreferred[0];
+    const promptPreferredTicker = promptControl.preferredTickers
+      .find((symbol) => !candidateTrades.some((trade) => trade.ticker === symbol));
+    const pickedPreferred = promptPreferredTicker || preferredBySector[0] || fallbackPreferred[0];
     const ticker = normalizeSymbol(pickedPreferred || sectorTickers[Math.floor(pseudoRandom(seed + i * 5 + 1) * sectorTickers.length)]);
+    if (promptControl.avoidTickers.includes(ticker)) {
+      continue;
+    }
     const queuedSignal = pendingQueue.find((signal) => normalizeSymbol(signal.symbol) === ticker);
     const trendSignal = websiteSignals.trendBySymbol?.[ticker];
     const outlook = buildStockOutlook(ticker);
@@ -775,7 +893,14 @@ function runAutoTraderCycle(user) {
     const trendDirection = trendSignal
       ? (String(trendSignal.momentum || '').toLowerCase() === 'down' ? 'short' : 'long')
       : null;
-    const direction = queueDirection || trendDirection || outlookDirection || getDirectionFromPrompt(state.config.prompt, seed + i * 13);
+    const promptDirection = promptControl.directionPreference !== 'neutral'
+      ? promptControl.directionPreference
+      : null;
+    const direction = queueDirection
+      || trendDirection
+      || promptDirection
+      || outlookDirection
+      || getDirectionFromPrompt(state.config.prompt, seed + i * 13);
     const entry = Number.isFinite(Number(queuedSignal?.entryPrice))
       ? roundUsd(Number(queuedSignal.entryPrice))
       : estimateEntryPrice(ticker, seed + i * 29);
@@ -855,6 +980,20 @@ function runAutoTraderCycle(user) {
       links: buildExecutionLinks(ticker),
       createdAt: nowIso()
     };
+    const promptReasons = [
+      promptControl.preferredTickers.includes(ticker) ? 'prompt_ticker' : null,
+      promptDirection && direction === promptDirection ? 'prompt_direction' : null,
+      promptControl.preferredSectors.includes(pickedSector) ? 'prompt_sector' : null,
+      queueDirection ? 'ai_trade_queue' : null,
+      trendDirection ? 'trend_signal' : null
+    ].filter(Boolean);
+    trade.promptAlignment = {
+      score: Math.max(0, Math.min(100, 45 + promptReasons.length * 12)),
+      reasons: promptReasons,
+      explanation: promptReasons.length
+        ? `Aligned via: ${promptReasons.join(', ')}`
+        : 'No direct prompt alignment factors matched; market signals used.'
+    };
     trade.executionTicket = buildExecutionTicket(state, trade);
     candidateTrades.push(trade);
     state.cashUsd = roundUsd(state.cashUsd - notionalUsd);
@@ -880,6 +1019,7 @@ function runAutoTraderCycle(user) {
     openedAt: trade.createdAt
   }));
   state.openPositions = state.openPositions.concat(placedPositions).slice(-30);
+  const promptAdherence = summarizePromptAdherence(candidateTrades, promptControl);
   const cycle = {
     executedAt: nowIso(),
     prompt: state.config.prompt,
@@ -893,6 +1033,8 @@ function runAutoTraderCycle(user) {
       rankedSymbols: websiteSignals.rankedSymbols.slice(0, 12),
       notes: websiteSignals.notes
     },
+    promptControl,
+    promptAdherence,
     note: state.tradingMode === 'live'
       ? 'Live mode uses funded capital sizing and website signal routing. Broker-linked tickets are execution-ready only when API bridge is connected.'
       : 'Paper-trading simulation uses website signals; no real brokerage orders are sent.'
@@ -910,16 +1052,104 @@ function runAutoTraderCycle(user) {
   };
   state.cycleHistory = [cycleSummary, ...(state.cycleHistory || [])].slice(0, 60);
   state.lastCycle = cycle;
-  ensureLiveExecutionState(state).lastPlan = {
+  const liveExecution = ensureLiveExecutionState(state);
+  liveExecution.lastPlan = {
     generatedAt: cycle.executedAt,
     tradingMode: state.tradingMode,
     executionMode: state.liveFunding?.executionMode || 'manual_confirmed',
     broker: state.liveFunding?.broker || 'manual',
+    promptControl,
+    promptAdherence,
     orderTickets: candidateTrades.map((trade) => trade.executionTicket),
     manualActionRequired: candidateTrades.some((trade) => !Boolean(trade.executionTicket?.readyForBrokerApi))
   };
+  liveExecution.promptActivity = [
+    {
+      at: cycle.executedAt,
+      action: 'cycle_run',
+      prompt: String(state.config.prompt || '').slice(0, 220),
+      openedTrades: candidateTrades.length,
+      promptAdherenceScore: promptAdherence.score
+    },
+    ...(liveExecution.promptActivity || [])
+  ].slice(0, 80);
   state.updatedAt = nowIso();
   return cycle;
+}
+
+function setAutoTraderPrompt(user, input = {}) {
+  const userId = user?.id;
+  if (!userId) {
+    throw new Error('missing_user');
+  }
+  const state = getState(userId);
+  if (!state.configured) {
+    throw new Error('bot_not_configured');
+  }
+  const prompt = String(input.prompt || '').trim().slice(0, 500);
+  if (!prompt) {
+    throw new Error('invalid_prompt');
+  }
+  state.config = {
+    ...(state.config || defaultConfig()),
+    prompt
+  };
+  state.updatedAt = nowIso();
+  const promptControl = parsePromptControl(prompt);
+  const liveExecution = ensureLiveExecutionState(state);
+  liveExecution.promptActivity = [
+    {
+      at: state.updatedAt,
+      action: 'prompt_update',
+      prompt: prompt.slice(0, 220),
+      promptGuidance: promptControl.guidance.slice(0, 4)
+    },
+    ...(liveExecution.promptActivity || [])
+  ].slice(0, 80);
+  let cycle = null;
+  if (Boolean(input.runNow)) {
+    if (!state.isActive) {
+      state.isActive = true;
+    }
+    cycle = runAutoTraderCycle(user);
+  }
+  return {
+    prompt: state.config.prompt,
+    promptControl,
+    cycle,
+    bot: getAutoTraderStatus(user)
+  };
+}
+
+function updateAutoTraderPromptControl(user, input = {}) {
+  const promptMode = String(input.promptMode || 'balanced').trim().toLowerCase();
+  if (!ALLOWED_PROMPT_MODES.has(promptMode)) {
+    throw new Error('invalid_prompt_mode');
+  }
+  const source = String(input.source || 'control_center').trim().slice(0, 60) || 'control_center';
+  const note = String(input.note || '').trim().slice(0, 200);
+  const result = setAutoTraderPrompt(user, {
+    prompt: input.prompt,
+    runNow: Boolean(input.runNow)
+  });
+  const state = getState(user?.id);
+  const liveExecution = ensureLiveExecutionState(state);
+  if (liveExecution.promptActivity.length > 0) {
+    liveExecution.promptActivity[0] = {
+      ...liveExecution.promptActivity[0],
+      promptMode,
+      source,
+      note: note || null
+    };
+  }
+  return {
+    promptMode,
+    source,
+    note: note || null,
+    promptControl: result.promptControl,
+    cycle: result.cycle,
+    bot: result.bot
+  };
 }
 
 function configureAutoTrader(user, inputConfig = {}) {
@@ -1556,6 +1786,9 @@ function getAutoTraderAccountView(user) {
       lastBrokerExecution: liveExecution.lastBrokerExecution || null,
       lastPlan: liveExecution.lastPlan || null,
       lastWebsiteSignalSnapshot: liveExecution.lastWebsiteSignalSnapshot || null,
+      promptControl: parsePromptControl(state.config?.prompt || ''),
+      promptActivity: (liveExecution.promptActivity || []).slice(0, 20),
+      controlCenter: buildControlCenterPayload(state, liveExecution),
       setup: {
         docsUrl: BROKER_SETUP_DOCS[setupBroker] || BROKER_SETUP_DOCS.manual,
         steps: getBrokerSetupSteps(state, setupBroker)
@@ -1601,6 +1834,9 @@ function getAutoTraderStatus(user) {
       lastBrokerExecution: liveExecution.lastBrokerExecution || null,
       lastPlan: liveExecution.lastPlan || null,
       lastWebsiteSignalSnapshot: liveExecution.lastWebsiteSignalSnapshot || null,
+      promptControl: parsePromptControl(state.config?.prompt || ''),
+      promptActivity: (liveExecution.promptActivity || []).slice(0, 20),
+      controlCenter: buildControlCenterPayload(state, liveExecution),
       setup: {
         docsUrl: BROKER_SETUP_DOCS[parseBrokerOrThrow(state.liveFunding?.broker || liveExecution.brokerConnection?.broker || 'manual')] || BROKER_SETUP_DOCS.manual,
         steps: getBrokerSetupSteps(state, parseBrokerOrThrow(state.liveFunding?.broker || liveExecution.brokerConnection?.broker || 'manual'))
@@ -1640,6 +1876,8 @@ module.exports = {
   testAutoTraderBrokerBridge,
   disconnectAutoTraderBrokerBridge,
   queueAiTradeForExecution,
+  updateAutoTraderPromptControl,
+  setAutoTraderPrompt,
   executeAutoTraderBrokerOrders,
   getAutoTraderAccountView,
   runAutoTraderCycle,

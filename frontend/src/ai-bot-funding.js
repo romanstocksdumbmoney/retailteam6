@@ -14,14 +14,54 @@ async function fetchJson(url, options = {}) {
   return response.json();
 }
 
-function getAuthHeaders() {
-  const token = localStorage.getItem('dumbdollars_token') || '';
-  if (!token) {
-    return {};
+function getStoredToken() {
+  return String(localStorage.getItem('dumbdollars_token') || '').trim();
+}
+
+function getAuthHeadersSafe() {
+  if (typeof window.getAuthHeaders === 'function') {
+    return window.getAuthHeaders();
   }
-  return {
-    authorization: `Bearer ${token}`
-  };
+  const token = getStoredToken();
+  return token ? { authorization: `Bearer ${token}` } : {};
+}
+
+async function tryRestoreSession() {
+  if (typeof window.restoreSessionIfNeeded === 'function') {
+    const restored = await window.restoreSessionIfNeeded();
+    if (typeof restored === 'string') {
+      return restored;
+    }
+    return String(restored?.token || '').trim();
+  }
+  return '';
+}
+
+async function requestWithAuthRetry(url, options = {}) {
+  try {
+    return await fetchJson(url, {
+      ...options,
+      headers: {
+        ...(options.headers || {}),
+        ...getAuthHeadersSafe()
+      }
+    });
+  } catch (error) {
+    if (error?.status !== 401) {
+      throw error;
+    }
+    const restored = await tryRestoreSession();
+    if (!restored) {
+      throw error;
+    }
+    return fetchJson(url, {
+      ...options,
+      headers: {
+        ...(options.headers || {}),
+        ...getAuthHeadersSafe()
+      }
+    });
+  }
 }
 
 function setStatus(text, isError = false) {
@@ -174,8 +214,8 @@ function applyFundingPaymentQueryState() {
 }
 
 async function loadFundingProfile() {
-  const payload = await fetchJson('/api/market/auto-trader/funding-profile', {
-    headers: getAuthHeaders()
+  const payload = await requestWithAuthRetry('/api/market/auto-trader/funding-profile', {
+    method: 'GET'
   });
   renderFundingSummary(payload);
   updateLivePurchaseUI(payload);
@@ -183,15 +223,14 @@ async function loadFundingProfile() {
 }
 
 async function buyLiveFundingAccess() {
-  const token = localStorage.getItem('dumbdollars_token') || '';
+  const token = getStoredToken();
   if (!token) {
     throw new Error('Please log in first.');
   }
-  const session = await fetchJson('/api/auth/stripe/create-checkout-session', {
+  const session = await requestWithAuthRetry('/api/auth/stripe/create-checkout-session', {
     method: 'POST',
     headers: {
-      'Content-Type': 'application/json',
-      ...getAuthHeaders()
+      'Content-Type': 'application/json'
     },
     body: JSON.stringify({
       paymentMethodTypes: ['card', 'link', 'paypal']
@@ -224,11 +263,10 @@ async function saveLiveProfile() {
   const executionMode = String(document.getElementById('ai-funding-mode')?.value || 'manual_confirmed').trim().toLowerCase();
   const targetReturnPct = parseNumberInput('ai-funding-target-return-pct', 12);
   const riskPerTradePct = parseNumberInput('ai-funding-risk-pct', 1.5);
-  return fetchJson('/api/market/auto-trader/live-profile', {
+  return requestWithAuthRetry('/api/market/auto-trader/live-profile', {
     method: 'POST',
     headers: {
-      'Content-Type': 'application/json',
-      ...getAuthHeaders()
+      'Content-Type': 'application/json'
     },
     body: JSON.stringify({
       broker,
@@ -245,19 +283,17 @@ async function enableLiveModeAndFund() {
   const amount = parseNumberInput('ai-funding-amount', 0);
   const targetReturnPct = parseNumberInput('ai-funding-target-return-pct', 12);
   const riskPerTradePct = parseNumberInput('ai-funding-risk-pct', 1.5);
-  await fetchJson('/api/market/auto-trader/funding-mode', {
+  await requestWithAuthRetry('/api/market/auto-trader/funding-mode', {
     method: 'POST',
     headers: {
-      'Content-Type': 'application/json',
-      ...getAuthHeaders()
+      'Content-Type': 'application/json'
     },
     body: JSON.stringify({ mode: 'live' })
   });
-  await fetchJson('/api/market/auto-trader/fund', {
+  await requestWithAuthRetry('/api/market/auto-trader/fund', {
     method: 'POST',
     headers: {
-      'Content-Type': 'application/json',
-      ...getAuthHeaders()
+      'Content-Type': 'application/json'
     },
     body: JSON.stringify({
       amountUsd: amount,
@@ -279,19 +315,17 @@ async function saveTestAreaSettings() {
   const stopLossPct = parseNumberInput('ai-test-stop-loss', Math.max(0.5, riskPerTradePct * 1.5));
   const takeProfitPct = parseNumberInput('ai-test-take-profit', Math.max(1.2, riskPerTradePct * 3));
   const allocationPerTradePct = parseNumberInput('ai-test-allocation', 20);
-  await fetchJson('/api/market/auto-trader/funding-mode', {
+  await requestWithAuthRetry('/api/market/auto-trader/funding-mode', {
     method: 'POST',
     headers: {
-      'Content-Type': 'application/json',
-      ...getAuthHeaders()
+      'Content-Type': 'application/json'
     },
     body: JSON.stringify({ mode: 'paper' })
   });
-  await fetchJson('/api/market/auto-trader/bot', {
+  await requestWithAuthRetry('/api/market/auto-trader/bot', {
     method: 'POST',
     headers: {
-      'Content-Type': 'application/json',
-      ...getAuthHeaders()
+      'Content-Type': 'application/json'
     },
     body: JSON.stringify({
       capitalUsd: amount,
@@ -418,8 +452,10 @@ function setupForm() {
 }
 
 async function init() {
-  const token = localStorage.getItem('dumbdollars_token') || '';
-  if (!token) {
+  if (!getStoredToken()) {
+    await tryRestoreSession();
+  }
+  if (!getStoredToken()) {
     setStatus('Please log in to configure funding.', true);
     return;
   }

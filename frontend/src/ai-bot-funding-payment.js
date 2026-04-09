@@ -14,14 +14,54 @@ async function fetchJson(url, options = {}) {
   return response.json();
 }
 
-function getAuthHeaders() {
-  const token = localStorage.getItem('dumbdollars_token') || '';
-  if (!token) {
-    return {};
+function getStoredToken() {
+  return String(localStorage.getItem('dumbdollars_token') || '').trim();
+}
+
+function getAuthHeadersSafe() {
+  if (typeof window.getAuthHeaders === 'function') {
+    return window.getAuthHeaders();
   }
-  return {
-    authorization: `Bearer ${token}`
-  };
+  const token = getStoredToken();
+  return token ? { authorization: `Bearer ${token}` } : {};
+}
+
+async function tryRestoreSession() {
+  if (typeof window.restoreSessionIfNeeded === 'function') {
+    const restored = await window.restoreSessionIfNeeded();
+    if (typeof restored === 'string') {
+      return restored;
+    }
+    return String(restored?.token || '').trim();
+  }
+  return '';
+}
+
+async function requestWithAuthRetry(url, options = {}) {
+  try {
+    return await fetchJson(url, {
+      ...options,
+      headers: {
+        ...(options.headers || {}),
+        ...getAuthHeadersSafe()
+      }
+    });
+  } catch (error) {
+    if (error?.status !== 401) {
+      throw error;
+    }
+    const restoredToken = await tryRestoreSession();
+    if (!restoredToken) {
+      throw error;
+    }
+    return fetchJson(url, {
+      ...options,
+      headers: {
+        ...(options.headers || {}),
+        ...getAuthHeadersSafe()
+      }
+    });
+  }
 }
 
 function fmtUsd(value) {
@@ -83,11 +123,10 @@ async function startFundingPaymentCheckout() {
   setAmountHint(amountUsd);
 
   const paymentReference = buildPaymentReference();
-  const session = await fetchJson('/api/market/auto-trader/funding-payment-session', {
+  const session = await requestWithAuthRetry('/api/market/auto-trader/funding-payment-session', {
     method: 'POST',
     headers: {
-      'Content-Type': 'application/json',
-      ...getAuthHeaders()
+      'Content-Type': 'application/json'
     },
     body: JSON.stringify({
       amountUsd,
@@ -111,19 +150,17 @@ async function applyDepositToLiveAccount() {
   const accountLabel = String(document.getElementById('ai-funding-payment-account')?.value || '').trim() || 'live-account';
   const targetReturnPct = 12;
   const riskPerTradePct = 1.5;
-  await fetchJson('/api/market/auto-trader/funding-mode', {
+  await requestWithAuthRetry('/api/market/auto-trader/funding-mode', {
     method: 'POST',
     headers: {
-      'Content-Type': 'application/json',
-      ...getAuthHeaders()
+      'Content-Type': 'application/json'
     },
     body: JSON.stringify({ mode: 'live' })
   });
-  await fetchJson('/api/market/auto-trader/live-profile', {
+  await requestWithAuthRetry('/api/market/auto-trader/live-profile', {
     method: 'POST',
     headers: {
-      'Content-Type': 'application/json',
-      ...getAuthHeaders()
+      'Content-Type': 'application/json'
     },
     body: JSON.stringify({
       broker: 'manual',
@@ -135,11 +172,10 @@ async function applyDepositToLiveAccount() {
       riskPerTradePct
     })
   });
-  await fetchJson('/api/market/auto-trader/fund', {
+  await requestWithAuthRetry('/api/market/auto-trader/fund', {
     method: 'POST',
     headers: {
-      'Content-Type': 'application/json',
-      ...getAuthHeaders()
+      'Content-Type': 'application/json'
     },
     body: JSON.stringify({
       amountUsd,
@@ -214,14 +250,18 @@ function setupQuickActions() {
 }
 
 async function init() {
-  const token = localStorage.getItem('dumbdollars_token') || '';
-  if (!token) {
+  if (!getStoredToken()) {
+    await tryRestoreSession();
+  }
+  if (!getStoredToken()) {
     setStatus('Please log in to continue with funding payment.', true);
     return;
   }
 
   try {
-    await fetchJson('/api/auth/me', { headers: getAuthHeaders() });
+    await requestWithAuthRetry('/api/auth/me', {
+      method: 'GET'
+    });
   } catch (_error) {
     setStatus('Please log in to continue with funding payment.', true);
     return;
