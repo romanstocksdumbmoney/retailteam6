@@ -5,12 +5,27 @@ const BROKER_OPENING_LINKS = {
   tradestation: 'https://www.tradestation.com/'
 };
 
-function getAuthHeaders() {
-  const token = localStorage.getItem('dumbdollars_token') || '';
-  if (!token) {
-    return {};
+function getStoredToken() {
+  return String(localStorage.getItem('dumbdollars_token') || '').trim();
+}
+
+function getAuthHeadersSafe() {
+  if (typeof window.getAuthHeaders === 'function') {
+    return window.getAuthHeaders();
   }
-  return { authorization: `Bearer ${token}` };
+  const token = getStoredToken();
+  return token ? { authorization: `Bearer ${token}` } : {};
+}
+
+async function tryRestoreSession() {
+  if (typeof window.restoreSessionIfNeeded === 'function') {
+    const restored = await window.restoreSessionIfNeeded();
+    if (typeof restored === 'string') {
+      return restored;
+    }
+    return String(restored?.token || '').trim();
+  }
+  return '';
 }
 
 async function fetchJson(url, options = {}) {
@@ -30,6 +45,42 @@ async function fetchJson(url, options = {}) {
   return response.json();
 }
 
+async function requestWithAuthRetry(url, options = {}) {
+  try {
+    return await fetchJson(url, {
+      ...options,
+      headers: {
+        ...(options.headers || {}),
+        ...getAuthHeadersSafe()
+      }
+    });
+  } catch (error) {
+    if (error?.status !== 401) {
+      throw error;
+    }
+    const restoredToken = await tryRestoreSession();
+    if (!restoredToken) {
+      throw error;
+    }
+    return fetchJson(url, {
+      ...options,
+      headers: {
+        ...(options.headers || {}),
+        ...getAuthHeadersSafe()
+      }
+    });
+  }
+}
+
+function formatApiError(error, fallback) {
+  const code = String(error?.body?.error || '').trim();
+  const message = String(error?.message || '').trim();
+  if (code && message) {
+    return `${message} (${code})`;
+  }
+  return message || fallback;
+}
+
 function setStatus(text, isError = false) {
   const nodes = [
     document.getElementById('brokerage-onboarding-status-top'),
@@ -40,6 +91,10 @@ function setStatus(text, isError = false) {
   }
   nodes.forEach((node) => {
     node.textContent = text;
+    if (node.id === 'brokerage-onboarding-status-top') {
+      node.className = isError ? 'small-note auth-error status-bar' : 'small-note status-bar';
+      return;
+    }
     node.className = isError ? 'small-note auth-error' : 'small-note';
   });
 }
@@ -65,7 +120,7 @@ function activateRobinhoodExistingAccountShortcut() {
   }
   renderConnectionMethodFields();
   loadBrokerGuide().catch((error) => {
-    setStatus(error.message || 'Could not load Robinhood setup guide.', true);
+    setStatus(formatApiError(error, 'Could not load Robinhood setup guide.'), true);
   });
   const loginField = document.getElementById('broker-connect-login-username');
   if (loginField instanceof HTMLInputElement) {
@@ -75,9 +130,22 @@ function activateRobinhoodExistingAccountShortcut() {
 }
 
 async function runOneClickRobinhoodAiConnect() {
-  const token = localStorage.getItem('dumbdollars_token') || '';
-  if (!token) {
+  if (!getStoredToken()) {
+    await tryRestoreSession();
+  }
+  if (!getStoredToken()) {
     setStatus('Please log in first, then use One-Click Robinhood AI Connect.', true);
+    return;
+  }
+  try {
+    const me = await requestWithAuthRetry('/api/auth/me', { method: 'GET' });
+    const plan = String(me?.user?.plan || '').toLowerCase();
+    if (plan !== 'pro') {
+      setStatus('Live broker connect requires Pro. Upgrade to Pro / Live Funding first.', true);
+      return;
+    }
+  } catch (error) {
+    setStatus(formatApiError(error, 'Could not verify your login session.'), true);
     return;
   }
   const accountIdInput = document.getElementById('broker-connect-account-id');
@@ -115,7 +183,7 @@ async function runOneClickRobinhoodAiConnect() {
       !testResult.readyForTrading
     );
   } catch (error) {
-    setStatus(error.message || 'One-click Robinhood AI connect failed.', true);
+    setStatus(formatApiError(error, 'One-click Robinhood AI connect failed.'), true);
   }
 }
 
@@ -316,8 +384,10 @@ function applyGuideToForm(guide) {
 }
 
 async function loadBrokerGuide() {
-  const token = localStorage.getItem('dumbdollars_token') || '';
-  if (!token) {
+  if (!getStoredToken()) {
+    await tryRestoreSession();
+  }
+  if (!getStoredToken()) {
     setStatus('Please log in first to connect AI broker bridge.', true);
     renderSelectedBrokerSummary(null);
     renderSetupSteps([]);
@@ -326,8 +396,8 @@ async function loadBrokerGuide() {
     return null;
   }
   const broker = getSelectedBroker();
-  const guide = await fetchJson(`/api/market/auto-trader/broker-connect/steps?broker=${encodeURIComponent(broker)}`, {
-    headers: getAuthHeaders()
+  const guide = await requestWithAuthRetry(`/api/market/auto-trader/broker-connect/steps?broker=${encodeURIComponent(broker)}`, {
+    method: 'GET'
   });
   renderSelectedBrokerSummary(guide);
   renderSetupSteps(guide.steps || []);
@@ -355,11 +425,10 @@ function openBrokerSignup() {
 
 async function connectBrokerBridge() {
   const payload = getConnectFormPayload();
-  const response = await fetchJson('/api/market/auto-trader/broker-connect', {
+  const response = await requestWithAuthRetry('/api/market/auto-trader/broker-connect', {
     method: 'POST',
     headers: {
-      'Content-Type': 'application/json',
-      ...getAuthHeaders()
+      'Content-Type': 'application/json'
     },
     body: JSON.stringify(payload)
   });
@@ -383,11 +452,10 @@ async function connectBrokerBridge() {
 }
 
 async function runConnectionTest() {
-  const response = await fetchJson('/api/market/auto-trader/broker-connect/test', {
+  const response = await requestWithAuthRetry('/api/market/auto-trader/broker-connect/test', {
     method: 'POST',
     headers: {
-      'Content-Type': 'application/json',
-      ...getAuthHeaders()
+      'Content-Type': 'application/json'
     },
     body: JSON.stringify({
       broker: getSelectedBroker()
@@ -398,11 +466,10 @@ async function runConnectionTest() {
 }
 
 async function disconnectBrokerBridge() {
-  const response = await fetchJson('/api/market/auto-trader/broker-connect/disconnect', {
+  const response = await requestWithAuthRetry('/api/market/auto-trader/broker-connect/disconnect', {
     method: 'POST',
     headers: {
-      'Content-Type': 'application/json',
-      ...getAuthHeaders()
+      'Content-Type': 'application/json'
     },
     body: JSON.stringify({})
   });
@@ -441,7 +508,7 @@ function setupForm() {
       setStatus('Broker setup guide loaded. Use One-Click Connect or Save + Test.');
     })
     .catch((error) => {
-      setStatus(error.message || 'Could not load broker setup guide.', true);
+      setStatus(formatApiError(error, 'Could not load broker setup guide.'), true);
     });
 
   select.addEventListener('change', () => {
@@ -449,7 +516,7 @@ function setupForm() {
     renderSelectedBrokerSummary(null);
     setStatus('Loading selected broker guide...');
     loadBrokerGuide().catch((error) => {
-      setStatus(error.message || 'Could not load broker setup guide.', true);
+      setStatus(formatApiError(error, 'Could not load broker setup guide.'), true);
     });
   });
 
@@ -527,7 +594,7 @@ function setupForm() {
         await loadBrokerGuide();
         setStatus('Broker bridge saved. Run connection test next.');
       } catch (error) {
-        setStatus(error.message || 'Could not save broker bridge connection.', true);
+        setStatus(formatApiError(error, 'Could not save broker bridge connection.'), true);
       } finally {
         if (submit instanceof HTMLButtonElement) {
           submit.disabled = false;
@@ -545,7 +612,7 @@ function setupForm() {
         await loadBrokerGuide();
         setStatus(testResult.readyForTrading ? 'Broker bridge is ready for AI live execution.' : 'Broker bridge test failed. Follow next actions below.', !testResult.readyForTrading);
       } catch (error) {
-        setStatus(error.message || 'Could not run broker bridge test.', true);
+        setStatus(formatApiError(error, 'Could not run broker bridge test.'), true);
       } finally {
         testButton.disabled = false;
       }
@@ -561,7 +628,7 @@ function setupForm() {
         await loadBrokerGuide();
         setStatus('Broker bridge disconnected. Execution mode reverted to manual confirm.');
       } catch (error) {
-        setStatus(error.message || 'Could not disconnect broker bridge.', true);
+        setStatus(formatApiError(error, 'Could not disconnect broker bridge.'), true);
       } finally {
         disconnectButton.disabled = false;
       }
@@ -570,6 +637,9 @@ function setupForm() {
 }
 
 function init() {
+  if (!getStoredToken()) {
+    tryRestoreSession().catch(() => {});
+  }
   setStatus('Broker connection page ready.');
   setupForm();
   renderConnectionMethodFields();
