@@ -15,6 +15,7 @@ async function fetchJson(url, options = {}) {
 }
 
 const REMEMBER_TOKEN_STORAGE_KEY = 'dumbdollars_remember_token';
+const DEFAULT_NEXT_PATH = '/ai-trade.html';
 
 function setStatus(text, isError = false) {
   const node = document.getElementById('ai-trade-access-status');
@@ -26,7 +27,12 @@ function setStatus(text, isError = false) {
 }
 
 function saveAuthToken(token) {
-  localStorage.setItem('dumbdollars_token', String(token || ''));
+  const value = String(token || '').trim();
+  if (!value) {
+    localStorage.removeItem('dumbdollars_token');
+    return;
+  }
+  localStorage.setItem('dumbdollars_token', value);
 }
 
 function getRememberToken() {
@@ -128,23 +134,33 @@ function goToSocialAuthPage(provider, email, remember = true) {
     setStatus('Enter a valid email first, then continue with social sign in.', true);
     return;
   }
-  const next = encodeURIComponent('/ai-trade.html');
+  const next = encodeURIComponent(getSafeNextPath());
   const providerParam = encodeURIComponent(normalizedProvider);
   const emailParam = encodeURIComponent(normalizedEmail);
   const rememberParam = remember ? '1' : '0';
   window.location.href = `/social-auth.html?provider=${providerParam}&email=${emailParam}&next=${next}&remember=${rememberParam}`;
 }
 
-function goToAiTrade() {
-  window.location.href = '/ai-trade.html';
+function getSafeNextPath() {
+  const raw = String(new URLSearchParams(window.location.search).get('next') || '').trim();
+  if (!raw) {
+    return DEFAULT_NEXT_PATH;
+  }
+  if (raw.startsWith('/') && !raw.startsWith('//')) {
+    return raw;
+  }
+  return DEFAULT_NEXT_PATH;
+}
+
+function goToNextPath() {
+  window.location.href = getSafeNextPath();
 }
 
 async function verifySessionAndRedirectIfSignedIn() {
-  let token = localStorage.getItem('dumbdollars_token') || '';
-  if (!token) {
+  async function restoreFromRemember() {
     const rememberToken = getRememberToken();
     if (!rememberToken) {
-      return;
+      return '';
     }
     try {
       const restorePayload = await fetchJson('/api/auth/session/restore', {
@@ -153,21 +169,42 @@ async function verifySessionAndRedirectIfSignedIn() {
         body: JSON.stringify({ rememberToken })
       });
       applyAuthPayload(restorePayload, restorePayload?.user?.email || '');
-      token = String(restorePayload?.token || '').trim();
+      return String(restorePayload?.token || '').trim();
     } catch (_restoreError) {
       clearRememberToken();
+      return '';
+    }
+  }
+
+  let token = String(localStorage.getItem('dumbdollars_token') || '').trim();
+  if (!token) {
+    token = await restoreFromRemember();
+    if (!token) {
       return;
     }
   }
   try {
     await fetchJson('/api/auth/me', {
-      headers: {
-        authorization: `Bearer ${token}`
-      }
+      headers: { authorization: `Bearer ${token}` }
     });
-    goToAiTrade();
+    goToNextPath();
+    return;
   } catch (_error) {
-    localStorage.removeItem('dumbdollars_token');
+    saveAuthToken('');
+  }
+
+  token = await restoreFromRemember();
+  if (!token) {
+    return;
+  }
+  try {
+    await fetchJson('/api/auth/me', {
+      headers: { authorization: `Bearer ${token}` }
+    });
+    goToNextPath();
+  } catch (_retryError) {
+    saveAuthToken('');
+    clearRememberToken();
   }
 }
 
@@ -278,8 +315,8 @@ function setupForms() {
       setButtonBusy(submitButton, true, idleLabel, 'Creating...');
       const remember = !(signupRememberInput instanceof HTMLInputElement) || signupRememberInput.checked;
       await signUp(email, password, { remember });
-      setStatus('Account created. Opening AI Trade...');
-      goToAiTrade();
+      setStatus('Account created. Redirecting...');
+      goToNextPath();
     } catch (error) {
       setStatus(error.message || 'Could not create account.', true);
     } finally {
@@ -300,8 +337,8 @@ function setupForms() {
       setButtonBusy(submitButton, true, idleLabel, 'Signing in...');
       const remember = !(loginRememberInput instanceof HTMLInputElement) || loginRememberInput.checked;
       await logIn(email, password, { remember });
-      setStatus('Login successful. Opening AI Trade...');
-      goToAiTrade();
+      setStatus('Login successful. Redirecting...');
+      goToNextPath();
     } catch (error) {
       setStatus(error.message || 'Could not log in.', true);
     } finally {
