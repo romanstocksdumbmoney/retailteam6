@@ -1340,6 +1340,16 @@ label {
   color: #dbeafe;
 }
 
+.ai-copilot-msg a {
+  color: #fde047;
+  font-weight: 700;
+  text-decoration: underline;
+}
+
+.ai-copilot-msg a:hover {
+  color: #fef08a;
+}
+
 .ai-copilot-form {
   display: grid;
   gap: 0.4rem;

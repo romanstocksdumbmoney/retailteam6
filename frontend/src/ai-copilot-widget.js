@@ -89,6 +89,142 @@ function statusLabel(status) {
   return key.charAt(0).toUpperCase() + key.slice(1);
 }
 
+function includesAny(text, tokens) {
+  return tokens.some((token) => text.includes(token));
+}
+
+function buildRouteSuggestion(input, pathname) {
+  const text = String(input || '').trim().toLowerCase();
+  if (!text) {
+    return null;
+  }
+
+  const routes = [
+    {
+      href: '/brokerage-onboarding.html',
+      label: 'Broker Connection',
+      keywords: ['broker', 'robinhood', 'connect account', 'connection test', 'bridge']
+    },
+    {
+      href: '/ai-bot-account.html',
+      label: 'AI Account View',
+      keywords: ['account view', 'approval inbox', 'take selected', 'execute order', 'submit trade']
+    },
+    {
+      href: '/ai-bot-trader.html',
+      label: 'AI Bot Setup',
+      keywords: ['ai bot', 'auto trader', 'setup ai', 'hands-free', 'risk reward', 'prompt control']
+    },
+    {
+      href: '/ai-bot-funding.html',
+      label: 'Funding + Test Area',
+      keywords: ['funding', 'deposit', 'paper trade', 'test area', 'live funding']
+    },
+    {
+      href: '/ai-bot-paper-connect.html',
+      label: 'TradingView Paper Connect',
+      keywords: ['tradingview', 'paper connect']
+    },
+    {
+      href: '/ai-trade.html',
+      label: 'AI Trade',
+      keywords: ['ai trade', 'chart upload', 'trade setup', 'analyze chart']
+    },
+    {
+      href: '/ai-analyzer.html',
+      label: 'AI Screenshot Analyzer',
+      keywords: ['screenshot', 'pattern', 'analyzer', 'good trade']
+    },
+    {
+      href: '/payment.html',
+      label: 'Payment',
+      keywords: ['pay', 'payment', 'billing', 'subscribe', 'upgrade']
+    },
+    {
+      href: '/checkout.html',
+      label: 'Checkout',
+      keywords: ['checkout', 'card', 'stripe']
+    },
+    {
+      href: '/pro.html',
+      label: 'Pro Plan',
+      keywords: ['pro', 'plan', 'membership']
+    },
+    {
+      href: '/insider-trades.html',
+      label: 'Insider Trades',
+      keywords: ['insider', 'insider trades']
+    },
+    {
+      href: '/portfolios.html',
+      label: 'Portfolios',
+      keywords: ['portfolio', 'portfolios']
+    },
+    {
+      href: '/',
+      label: 'Dashboard',
+      keywords: ['dashboard', 'home', 'stocks', 'stock', 'scanner', 'earnings', 'outlook']
+    }
+  ];
+
+  const match = routes.find((route) => includesAny(text, route.keywords));
+  if (!match) {
+    return null;
+  }
+  if (normalizePathname(pathname) === normalizePathname(match.href)) {
+    return null;
+  }
+  const wantsRedirect = /(go to|open|take me|send me|redirect|navigate|bring me)/i.test(text);
+  return {
+    ...match,
+    wantsRedirect
+  };
+}
+
+function buildCopilotReply(input, context, pathname) {
+  const text = String(input || '').trim().toLowerCase();
+  const route = buildRouteSuggestion(text, pathname);
+  let message = '';
+
+  if (!text) {
+    message = 'Ask me what to do on this page, and I will guide you step-by-step.';
+  } else if (text.includes('next') || text.includes('what now') || text.includes('step')) {
+    message = `Next step: ${context.nextLabel}.`;
+  } else if (text.includes('sign up') || text.includes('signup') || text.includes('open account')) {
+    message = 'Account sign-up must be done by the user (identity/KYC). After sign-up, return here to connect broker permissions for AI execution.';
+  } else if (text.includes('risk') || text.includes('reward')) {
+    message = 'Use max risk per trade and min reward/risk ratio to filter weaker setups. Higher minimum reward/risk means fewer but cleaner proposals.';
+  } else if (text.includes('broker') || text.includes('connect')) {
+    message = 'For broker mode: save credentials, run bridge test, and clear pending setup steps. AI live automation should only be enabled after those checks pass.';
+  } else if (text.includes('paper') || text.includes('test')) {
+    message = 'Paper/Test mode is the safest first run. Tune risk and prompt quality there before enabling live execution.';
+  } else if (text.includes('pay') || text.includes('checkout') || text.includes('billing')) {
+    message = 'For billing: review payment details, continue to checkout, then return to dashboard after success. Use Manage Billing for subscription changes.';
+  } else if (text.includes('login') || text.includes('sign in') || text.includes('auth')) {
+    message = 'If sign-in fails, retry once, confirm email/password, or use social provider. Keep remember-login enabled for a smoother experience.';
+  } else if (text.includes('complaint') || text.includes('report issue') || text.includes('bug report') || text.includes('not working')) {
+    message = 'Use "Report an issue" in this Copilot panel. Include what page you are on and what button failed. You will get a ticket ID we can track and fix.';
+  } else if (text.includes('trade') || text.includes('execute') || text.includes('submit') || text.includes('auto')) {
+    message = 'In account view, run a cycle, review proposals, select trades, and submit. If hands-free mode is enabled, auto-submit can run after readiness checks.';
+  } else if (text.includes('stock') || text.includes('scanner') || text.includes('earnings') || text.includes('options')) {
+    message = 'I can help with stocks by guiding you to scanner, outlook, earnings, and AI modules, then routing you to the right page.';
+  } else {
+    message = 'I can help with setup, stocks, risk settings, broker connection, and next steps. Try asking: "take me to AI setup" or "open checkout".';
+  }
+
+  if (route && !route.wantsRedirect) {
+    message = `${message} I can route you to ${route.label}.`;
+  }
+  if (route && route.wantsRedirect) {
+    message = `${message} Redirecting you now to ${route.label}.`;
+  }
+
+  return {
+    message,
+    route
+  };
+}
+
 function getAiCopilotContext(pathname) {
   const page = normalizePathname(pathname);
   const baseContext = {
@@ -281,42 +417,6 @@ function getAiCopilotContext(pathname) {
   };
 }
 
-function getCopilotResponse(input, context) {
-  const text = String(input || '').trim().toLowerCase();
-  if (!text) {
-    return 'Ask me what to do on this page, and I will guide you step-by-step.';
-  }
-
-  if (text.includes('next') || text.includes('what now') || text.includes('step')) {
-    return `Next step: ${context.nextLabel}.`;
-  }
-  if (text.includes('sign up') || text.includes('signup') || text.includes('open account')) {
-    return 'Account sign-up must be done by the user (identity/KYC). After sign-up, return here to connect broker permissions for AI execution.';
-  }
-  if (text.includes('risk') || text.includes('reward')) {
-    return 'Use max risk per trade and min reward/risk ratio to filter weaker setups. Higher minimum reward/risk means fewer but cleaner proposals.';
-  }
-  if (text.includes('broker') || text.includes('connect')) {
-    return 'For broker mode: save credentials, run bridge test, and clear pending setup steps. AI live automation should only be enabled after those checks pass.';
-  }
-  if (text.includes('paper') || text.includes('test')) {
-    return 'Paper/Test mode is the safest first run. Tune risk and prompt quality there before enabling live execution.';
-  }
-  if (text.includes('pay') || text.includes('checkout') || text.includes('billing')) {
-    return 'For billing: review payment details, continue to checkout, then return to dashboard after success. Use Manage Billing for subscription changes.';
-  }
-  if (text.includes('login') || text.includes('sign in') || text.includes('auth')) {
-    return 'If sign-in fails, retry once, confirm email/password, or use social provider. Keep remember-login enabled for a smoother experience.';
-  }
-  if (text.includes('complaint') || text.includes('report issue') || text.includes('bug report') || text.includes('not working')) {
-    return 'Use "Report an issue" in this Copilot panel. Include what page you are on and what button failed. You will get a ticket ID we can track and fix.';
-  }
-  if (text.includes('trade') || text.includes('execute') || text.includes('submit') || text.includes('auto')) {
-    return 'In account view, run a cycle, review proposals, select trades, and submit. If hands-free mode is enabled, auto-submit can run after readiness checks.';
-  }
-  return 'I can help with setup, risk settings, broker connection, and next steps. Try asking: "what should I do next?"';
-}
-
 function buildQuickNav(pathname) {
   const page = normalizePathname(pathname);
   const tradeFlow = [
@@ -460,6 +560,21 @@ function mountAiCopilotWidget() {
     feed.scrollTop = feed.scrollHeight;
   };
 
+  const appendRouteLink = (route) => {
+    if (!route || !route.href || !route.label) {
+      return;
+    }
+    const row = document.createElement('div');
+    row.className = 'ai-copilot-msg ai-copilot-msg--assistant ai-copilot-msg--action';
+    const link = document.createElement('a');
+    link.className = 'open-link ai-copilot-action-link';
+    link.href = route.href;
+    link.textContent = `Go to ${route.label}`;
+    row.appendChild(link);
+    feed.appendChild(row);
+    feed.scrollTop = feed.scrollHeight;
+  };
+
   context.starterTips.forEach((tip, index) => {
     appendMessage('assistant', index === 0 ? `Hi, I can help here. ${tip}` : tip);
   });
@@ -513,6 +628,23 @@ function mountAiCopilotWidget() {
   });
   closeButton.addEventListener('click', closePanel);
 
+  document.addEventListener('pointerdown', (event) => {
+    if (panel.hidden) {
+      return;
+    }
+    const target = event.target;
+    if (target instanceof Node && shell.contains(target)) {
+      return;
+    }
+    closePanel();
+  });
+
+  document.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape' && !panel.hidden) {
+      closePanel();
+    }
+  });
+
   form.addEventListener('submit', (event) => {
     event.preventDefault();
     const question = String(input.value || '').trim();
@@ -541,7 +673,16 @@ function mountAiCopilotWidget() {
       return;
     }
     appendMessage('user', question);
-    appendMessage('assistant', getCopilotResponse(question, context));
+    const reply = buildCopilotReply(question, context, pathname);
+    appendMessage('assistant', reply.message);
+    if (reply.route) {
+      appendRouteLink(reply.route);
+      if (reply.route.wantsRedirect) {
+        setTimeout(() => {
+          window.location.assign(reply.route.href);
+        }, 250);
+      }
+    }
     input.value = '';
   });
 
