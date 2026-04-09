@@ -413,8 +413,13 @@ async function restoreAuthSessionFromRememberToken() {
     });
     applyAuthPayload(payload, payload?.user?.email || '');
     return true;
-  } catch (_error) {
-    clearRememberToken();
+  } catch (error) {
+    const status = Number(error?.status || 0);
+    const code = String(error?.body?.error || '').trim().toLowerCase();
+    // Only purge remember token when server confirms it is invalid/expired.
+    if (status === 401 || code === 'invalid_remember_token' || code === 'missing_remember_token') {
+      clearRememberToken();
+    }
     return false;
   } finally {
     restoreSessionInFlight = false;

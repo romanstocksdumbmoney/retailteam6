@@ -76,8 +76,13 @@ async function restoreSessionIfNeeded() {
       saveRememberToken(payload.rememberToken);
     }
     return { restored: true, token: nextToken };
-  } catch (_error) {
-    clearRememberToken();
+  } catch (error) {
+    const status = Number(error?.status || 0);
+    const code = String(error?.body?.error || '').trim().toLowerCase();
+    // Avoid deleting valid remember tokens on transient network/API failures.
+    if (status === 401 || code === 'invalid_remember_token' || code === 'missing_remember_token') {
+      clearRememberToken();
+    }
     return { restored: false, token: '' };
   }
 }

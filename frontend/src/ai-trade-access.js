@@ -130,15 +130,13 @@ function goToSocialAuthPage(provider, email, remember = true) {
     setStatus('Choose a provider first.', true);
     return;
   }
-  if (!isLikelyValidEmail(normalizedEmail)) {
-    setStatus('Enter a valid email first, then continue with social sign in.', true);
-    return;
-  }
   const next = encodeURIComponent(getSafeNextPath());
   const providerParam = encodeURIComponent(normalizedProvider);
-  const emailParam = encodeURIComponent(normalizedEmail);
   const rememberParam = remember ? '1' : '0';
-  window.location.href = `/social-auth.html?provider=${providerParam}&email=${emailParam}&next=${next}&remember=${rememberParam}`;
+  const emailSegment = isLikelyValidEmail(normalizedEmail)
+    ? `&email=${encodeURIComponent(normalizedEmail)}`
+    : '';
+  window.location.href = `/social-auth.html?provider=${providerParam}${emailSegment}&next=${next}&remember=${rememberParam}`;
 }
 
 function getSafeNextPath() {
@@ -170,8 +168,12 @@ async function verifySessionAndRedirectIfSignedIn() {
       });
       applyAuthPayload(restorePayload, restorePayload?.user?.email || '');
       return String(restorePayload?.token || '').trim();
-    } catch (_restoreError) {
-      clearRememberToken();
+    } catch (restoreError) {
+      const status = Number(restoreError?.status || 0);
+      const code = String(restoreError?.body?.error || '').trim().toLowerCase();
+      if (status === 401 || code === 'invalid_remember_token' || code === 'missing_remember_token') {
+        clearRememberToken();
+      }
       return '';
     }
   }
@@ -353,14 +355,11 @@ function setupForms() {
       const signupEmail = normalizeEmailInput(document.getElementById('ai-access-signup-email')?.value || '');
       const savedEmail = normalizeEmailInput(localStorage.getItem('dumbdollars_saved_email') || '');
       const email = loginEmail || signupEmail || savedEmail;
-      if (!email || !isLikelyValidEmail(email)) {
-        setStatus('Enter a valid email first, then choose Google/Apple/etc.', true);
-        return;
-      }
       const remember = (loginRememberInput instanceof HTMLInputElement && loginRememberInput.checked)
         || (signupRememberInput instanceof HTMLInputElement && signupRememberInput.checked)
         || (!(loginRememberInput instanceof HTMLInputElement) && !(signupRememberInput instanceof HTMLInputElement));
       button.disabled = true;
+      setStatus('Opening social sign-in...');
       goToSocialAuthPage(provider, email, remember);
       window.setTimeout(() => {
         button.disabled = false;
