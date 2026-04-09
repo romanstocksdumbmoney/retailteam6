@@ -49,10 +49,15 @@ function getSelectedBroker() {
 }
 
 function getConnectFormPayload() {
+  const connectionMethod = String(document.getElementById('broker-connect-method')?.value || 'api_keys').trim().toLowerCase();
   const accountId = String(document.getElementById('broker-connect-account-id')?.value || '').trim();
   const apiKey = String(document.getElementById('broker-connect-api-key')?.value || '').trim();
   const apiSecret = String(document.getElementById('broker-connect-api-secret')?.value || '').trim();
   const passphrase = String(document.getElementById('broker-connect-passphrase')?.value || '').trim();
+  const loginUsername = String(document.getElementById('broker-connect-login-username')?.value || '').trim();
+  const loginPassword = String(document.getElementById('broker-connect-login-password')?.value || '').trim();
+  const twoFactorMode = String(document.getElementById('broker-connect-two-factor')?.value || 'none').trim().toLowerCase();
+  const otpCode = String(document.getElementById('broker-connect-otp-code')?.value || '').trim();
   const bridgeMode = String(document.getElementById('broker-connect-bridge-mode')?.value || 'broker_linked').trim().toLowerCase();
   const canRead = Boolean(document.getElementById('broker-connect-perm-read')?.checked);
   const canTrade = Boolean(document.getElementById('broker-connect-perm-trade')?.checked);
@@ -60,16 +65,56 @@ function getConnectFormPayload() {
   const riskAcknowledged = Boolean(document.getElementById('broker-connect-risk-ack')?.checked);
   return {
     broker: getSelectedBroker(),
+    connectionMethod,
     accountId,
     apiKey,
     apiSecret,
     passphrase,
+    loginUsername,
+    loginPassword,
+    twoFactorMode,
+    otpCode,
     bridgeMode,
     canRead,
     canTrade,
     canViewAccount,
     riskAcknowledged
   };
+}
+
+function renderConnectionMethodFields() {
+  const methodSelect = document.getElementById('broker-connect-method');
+  if (!(methodSelect instanceof HTMLSelectElement)) {
+    return;
+  }
+  const method = String(methodSelect.value || 'api_keys').trim().toLowerCase();
+  const useExisting = method === 'existing_account';
+
+  const apiFields = document.querySelectorAll('[data-connect-method="api_keys"]');
+  const existingFields = document.querySelectorAll('[data-connect-method="existing_account"]');
+  apiFields.forEach((node) => {
+    node.hidden = useExisting;
+  });
+  existingFields.forEach((node) => {
+    node.hidden = !useExisting;
+  });
+
+  const apiKeyInput = document.getElementById('broker-connect-api-key');
+  const apiSecretInput = document.getElementById('broker-connect-api-secret');
+  const loginInput = document.getElementById('broker-connect-login-username');
+  const loginPasswordInput = document.getElementById('broker-connect-login-password');
+  if (apiKeyInput instanceof HTMLInputElement) {
+    apiKeyInput.required = !useExisting;
+  }
+  if (apiSecretInput instanceof HTMLInputElement) {
+    apiSecretInput.required = !useExisting;
+  }
+  if (loginInput instanceof HTMLInputElement) {
+    loginInput.required = useExisting;
+  }
+  if (loginPasswordInput instanceof HTMLInputElement) {
+    loginPasswordInput.required = useExisting;
+  }
 }
 
 function renderSelectedBrokerSummary(guide) {
@@ -124,6 +169,7 @@ function renderConnectionStatus(guide) {
       <p><strong>Connection Status:</strong> ${String(current.connectionStatus || 'not_connected').replace(/_/g, ' ')}</p>
       <p><strong>Account ID:</strong> ${current.accountId || 'N/A'}</p>
       <p><strong>Bridge Mode:</strong> ${String(current.bridgeMode || 'manual_confirmed').replace(/_/g, ' ')}</p>
+      <p><strong>Auth Method:</strong> ${String(auth.connectionMethod || 'api_keys').replace(/_/g, ' ')}${auth.loginUsernameMasked ? ` • <strong>Login:</strong> ${auth.loginUsernameMasked}` : ''}</p>
       <p><strong>Permissions:</strong> Read=${Boolean(permissions.canRead)} • Trade=${Boolean(permissions.canTrade)} • Account=${Boolean(permissions.canViewAccount)}</p>
       <p><strong>API Key:</strong> ${auth.apiKeyLast4 ? `****${auth.apiKeyLast4}` : 'not saved'} • <strong>Secret Saved:</strong> ${Boolean(auth.secretSaved)}</p>
       <p><strong>Trading Mode:</strong> ${String(funding.tradingMode || 'paper').toUpperCase()} • <strong>Funded:</strong> ${Boolean(funding.isFunded)} (${Number(funding.fundedUsd || 0).toLocaleString()} USD)</p>
@@ -173,6 +219,10 @@ function renderTestResults(testResult) {
 function applyGuideToForm(guide) {
   const current = guide?.current || {};
   const permissions = current.permissions || {};
+  const auth = current.auth || {};
+  if (document.getElementById('broker-connect-method') instanceof HTMLSelectElement) {
+    document.getElementById('broker-connect-method').value = String(auth.connectionMethod || 'api_keys');
+  }
   if (document.getElementById('broker-connect-account-id') instanceof HTMLInputElement) {
     document.getElementById('broker-connect-account-id').value = current.accountId || '';
   }
@@ -188,6 +238,10 @@ function applyGuideToForm(guide) {
   if (document.getElementById('broker-connect-perm-account') instanceof HTMLInputElement) {
     document.getElementById('broker-connect-perm-account').checked = Boolean(permissions.canViewAccount);
   }
+  if (document.getElementById('broker-connect-two-factor') instanceof HTMLSelectElement) {
+    document.getElementById('broker-connect-two-factor').value = String(auth.twoFactorMode || 'none');
+  }
+  renderConnectionMethodFields();
 }
 
 async function loadBrokerGuide() {
@@ -246,6 +300,14 @@ async function connectBrokerBridge() {
   if (passphraseInput instanceof HTMLInputElement) {
     passphraseInput.value = '';
   }
+  const passwordInput = document.getElementById('broker-connect-login-password');
+  if (passwordInput instanceof HTMLInputElement) {
+    passwordInput.value = '';
+  }
+  const otpInput = document.getElementById('broker-connect-otp-code');
+  if (otpInput instanceof HTMLInputElement) {
+    otpInput.value = '';
+  }
   return response;
 }
 
@@ -284,6 +346,7 @@ function setupForm() {
   const copyButton = document.getElementById('brokerage-copy-link');
   const continueButton = document.getElementById('brokerage-go-funding');
   const connectForm = document.getElementById('broker-connect-form');
+  const connectionMethodSelect = document.getElementById('broker-connect-method');
   const testButton = document.getElementById('brokerage-test-ai');
   const disconnectButton = document.getElementById('brokerage-disconnect-ai');
 
@@ -308,6 +371,12 @@ function setupForm() {
       setStatus(error.message || 'Could not load broker setup guide.', true);
     });
   });
+
+  if (connectionMethodSelect instanceof HTMLSelectElement) {
+    connectionMethodSelect.addEventListener('change', () => {
+      renderConnectionMethodFields();
+    });
+  }
 
   if (pickerForm instanceof HTMLFormElement) {
     pickerForm.addEventListener('submit', (event) => {
@@ -399,6 +468,7 @@ function setupForm() {
 
 function init() {
   setupForm();
+  renderConnectionMethodFields();
 }
 
 init();

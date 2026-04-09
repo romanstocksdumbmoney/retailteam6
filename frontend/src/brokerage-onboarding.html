@@ -50,24 +50,51 @@
         </section>
 
         <form id="broker-connect-form" class="pro-plan-box ai-bot-form" novalidate>
-          <h3>Connect Broker API Bridge</h3>
-          <p class="small-note">This stores connection metadata and credential fingerprints so AI execution tickets can route through your broker setup.</p>
+          <h3>Connect Existing Broker Account to AI</h3>
+          <p class="small-note">Choose how you want to connect your existing broker account. DumbDollars stores metadata/fingerprints for bridge readiness checks and execution routing.</p>
+          <label>
+            Connection method
+            <select id="broker-connect-method">
+              <option value="api_keys" selected>API keys (recommended)</option>
+              <option value="existing_account">Existing account sign-in (email/username + password)</option>
+            </select>
+          </label>
           <div class="ai-bot-grid">
             <label>
               Broker account ID / alias
               <input id="broker-connect-account-id" type="text" maxlength="80" placeholder="DU123456 / account alias" required />
             </label>
-            <label>
+            <label data-connect-method="api_keys">
               API key
               <input id="broker-connect-api-key" type="text" maxlength="120" placeholder="Broker API key" required />
             </label>
-            <label>
+            <label data-connect-method="api_keys">
               API secret
               <input id="broker-connect-api-secret" type="password" maxlength="160" placeholder="Broker API secret" required />
             </label>
-            <label>
+            <label data-connect-method="api_keys">
               Passphrase (optional)
               <input id="broker-connect-passphrase" type="password" maxlength="120" placeholder="Optional broker passphrase" />
+            </label>
+            <label data-connect-method="existing_account">
+              Existing broker login (email or username)
+              <input id="broker-connect-login-username" type="text" maxlength="120" placeholder="you@example.com or username" />
+            </label>
+            <label data-connect-method="existing_account">
+              Existing broker password
+              <input id="broker-connect-login-password" type="password" maxlength="160" placeholder="Broker account password" />
+            </label>
+            <label data-connect-method="existing_account">
+              2FA mode
+              <select id="broker-connect-two-factor">
+                <option value="none" selected>None</option>
+                <option value="sms">SMS</option>
+                <option value="totp">Authenticator app (TOTP)</option>
+              </select>
+            </label>
+            <label data-connect-method="existing_account">
+              One-time code (if required now)
+              <input id="broker-connect-otp-code" type="text" maxlength="12" inputmode="numeric" placeholder="123456" />
             </label>
           </div>
           <fieldset class="ai-bot-sectors">

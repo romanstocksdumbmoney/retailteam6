@@ -999,6 +999,30 @@ router.post('/auto-trader/broker-connect', requireSignedIn, requireLiveFundingAc
         message: 'API key/secret are required and must be valid length.'
       });
     }
+    if (code === 'invalid_existing_login') {
+      return res.status(400).json({
+        error: 'invalid_existing_login',
+        message: 'Broker login email/username and password are required.'
+      });
+    }
+    if (code === 'invalid_connection_method') {
+      return res.status(400).json({
+        error: 'invalid_connection_method',
+        message: 'Select a valid connect method (api_keys or existing_account).'
+      });
+    }
+    if (code === 'invalid_two_factor_mode') {
+      return res.status(400).json({
+        error: 'invalid_two_factor_mode',
+        message: 'Select a valid two-factor mode (none, sms, or totp).'
+      });
+    }
+    if (code === 'invalid_otp_code') {
+      return res.status(400).json({
+        error: 'invalid_otp_code',
+        message: 'If provided, one-time code must be 4 to 12 characters.'
+      });
+    }
     if (code === 'invalid_broker_permissions') {
       return res.status(400).json({
         error: 'invalid_broker_permissions',

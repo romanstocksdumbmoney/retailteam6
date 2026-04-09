@@ -23,6 +23,8 @@ const ALLOWED_TIMEFRAMES = new Set(['intraday', 'swing', 'position']);
 const ALLOWED_TRADING_MODES = new Set(['paper', 'live']);
 const ALLOWED_BROKERS = new Set(['manual', 'robinhood', 'webull', 'interactive-brokers', 'tradestation']);
 const ALLOWED_EXECUTION_MODES = new Set(['manual_confirmed', 'broker_linked']);
+const ALLOWED_CONNECTION_METHODS = new Set(['api_keys', 'existing_account']);
+const ALLOWED_TWO_FACTOR_MODES = new Set(['none', 'sms', 'totp']);
 const BROKER_SETUP_DOCS = Object.freeze({
   robinhood: 'https://robinhood.com/signup',
   webull: 'https://www.webull.com/help',
@@ -127,10 +129,15 @@ function defaultState() {
           canViewAccount: false
         },
         auth: {
+          connectionMethod: 'api_keys',
           apiKeyLast4: '',
           secretSaved: false,
           passphraseSaved: false,
-          credentialFingerprint: ''
+          credentialFingerprint: '',
+          loginUsernameMasked: '',
+          loginSaved: false,
+          twoFactorMode: 'none',
+          otpProvided: false
         },
         lastTestedAt: null,
         lastTestResult: null
@@ -162,6 +169,11 @@ function ensureLiveExecutionState(state) {
   }
   if (!state.liveExecution.brokerConnection.auth || typeof state.liveExecution.brokerConnection.auth !== 'object') {
     state.liveExecution.brokerConnection.auth = defaultState().liveExecution.brokerConnection.auth;
+  } else {
+    state.liveExecution.brokerConnection.auth = {
+      ...defaultState().liveExecution.brokerConnection.auth,
+      ...state.liveExecution.brokerConnection.auth
+    };
   }
   if (!Array.isArray(state.liveExecution.queuedAiTrades)) {
     state.liveExecution.queuedAiTrades = [];
@@ -193,6 +205,40 @@ function toTitle(value) {
     .replace(/\b\w/g, (char) => char.toUpperCase());
 }
 
+function parseConnectionMethod(rawMethod) {
+  const method = String(rawMethod || 'api_keys').trim().toLowerCase();
+  if (!ALLOWED_CONNECTION_METHODS.has(method)) {
+    throw new Error('invalid_connection_method');
+  }
+  return method;
+}
+
+function parseTwoFactorMode(rawMode) {
+  const mode = String(rawMode || 'none').trim().toLowerCase();
+  if (!ALLOWED_TWO_FACTOR_MODES.has(mode)) {
+    throw new Error('invalid_two_factor_mode');
+  }
+  return mode;
+}
+
+function maskLoginIdentifier(rawValue) {
+  const value = String(rawValue || '').trim();
+  if (!value) {
+    return '';
+  }
+  if (value.includes('@')) {
+    const [localPart, domainPart] = value.split('@');
+    const safeLocal = localPart.length > 2
+      ? `${localPart.slice(0, 2)}***`
+      : `${localPart.slice(0, 1)}***`;
+    return `${safeLocal}@${domainPart || 'hidden'}`;
+  }
+  if (value.length <= 2) {
+    return `${value.charAt(0)}***`;
+  }
+  return `${value.slice(0, 2)}***${value.slice(-1)}`;
+}
+
 function getBrokerSetupSteps(state, broker) {
   const liveExecution = ensureLiveExecutionState(state);
   const connection = liveExecution.brokerConnection || {};
@@ -204,7 +250,10 @@ function getBrokerSetupSteps(state, broker) {
 
   const hasAccount = Boolean(String(connection.accountId || '').trim());
   const permissionsReady = Boolean(permissions.canRead && permissions.canTrade && permissions.canViewAccount);
-  const credentialsReady = Boolean(auth.apiKeyLast4 && auth.secretSaved);
+  const authMethod = parseConnectionMethod(auth.connectionMethod || 'api_keys');
+  const credentialsReady = authMethod === 'existing_account'
+    ? Boolean(auth.loginSaved && auth.loginUsernameMasked)
+    : Boolean(auth.apiKeyLast4 && auth.secretSaved);
   const bridgeReady = executionMode === 'broker_linked';
   const testedReady = Boolean(connection.lastTestResult?.readyForTrading);
   const fundedReady = Boolean(liveFunding.isFunded);
@@ -224,8 +273,8 @@ function getBrokerSetupSteps(state, broker) {
     },
     {
       key: 'add-credentials',
-      title: 'Connect broker API credentials to DumbDollars',
-      description: 'Add account ID, API key, and API secret to create the AI execution bridge profile.',
+      title: 'Connect broker credentials to DumbDollars',
+      description: 'Use API keys or existing broker sign-in credentials to create the AI execution bridge profile.',
       completed: credentialsReady
     },
     {
@@ -1061,13 +1110,11 @@ function saveAutoTraderLiveTradingProfile(user, details = {}) {
         canViewAccount: false
       },
     auth: preserveConnection
-      ? existingConnection.auth
-      : {
-        apiKeyLast4: '',
-        secretSaved: false,
-        passphraseSaved: false,
-        credentialFingerprint: ''
-      },
+      ? {
+        ...defaultState().liveExecution.brokerConnection.auth,
+        ...(existingConnection.auth || {})
+      }
+      : { ...defaultState().liveExecution.brokerConnection.auth },
     lastTestedAt: preserveConnection ? existingConnection.lastTestedAt || null : null,
     lastTestResult: preserveConnection ? existingConnection.lastTestResult || null : null
   };
@@ -1121,11 +1168,24 @@ function connectAutoTraderBrokerBridge(user, details = {}) {
   if (!accountId || accountId.length > 80) {
     throw new Error('invalid_account_id');
   }
+  const connectionMethod = parseConnectionMethod(details.connectionMethod || details.authMethod || 'api_keys');
   const apiKey = String(details.apiKey || '').trim();
   const apiSecret = String(details.apiSecret || '').trim();
   const passphrase = String(details.passphrase || '').trim();
-  if (apiKey.length < 8 || apiSecret.length < 8) {
+  const loginUsername = String(details.loginUsername || details.email || '').trim();
+  const loginPassword = String(details.loginPassword || '').trim();
+  const twoFactorMode = parseTwoFactorMode(details.twoFactorMode || details.twoFactor || 'none');
+  const otpCode = String(details.otpCode || '').trim();
+  if (connectionMethod === 'api_keys' && (apiKey.length < 8 || apiSecret.length < 8)) {
     throw new Error('invalid_api_credentials');
+  }
+  if (connectionMethod === 'existing_account') {
+    if (!loginUsername || loginUsername.length > 120 || loginPassword.length < 8 || loginPassword.length > 160) {
+      throw new Error('invalid_existing_login');
+    }
+    if (otpCode && (otpCode.length < 4 || otpCode.length > 12)) {
+      throw new Error('invalid_otp_code');
+    }
   }
   const permissions = {
     canRead: Boolean(details.canRead ?? details.permissionRead),
@@ -1152,7 +1212,9 @@ function connectAutoTraderBrokerBridge(user, details = {}) {
     status: state.liveFunding?.isFunded ? 'funded' : 'profile_saved'
   };
 
-  const credentialFingerprint = hashCredentialFingerprint([broker, accountId, apiKey, apiSecret, passphrase]);
+  const credentialFingerprint = connectionMethod === 'existing_account'
+    ? hashCredentialFingerprint([broker, accountId, loginUsername, loginPassword, twoFactorMode, otpCode])
+    : hashCredentialFingerprint([broker, accountId, apiKey, apiSecret, passphrase]);
   const liveExecution = ensureLiveExecutionState(state);
   liveExecution.brokerConnection = {
     isConnected: bridgeMode === 'broker_linked',
@@ -1163,10 +1225,15 @@ function connectAutoTraderBrokerBridge(user, details = {}) {
     connectedAt: bridgeMode === 'broker_linked' ? nowIso() : null,
     permissions,
     auth: {
-      apiKeyLast4: maskLast4(apiKey),
-      secretSaved: true,
-      passphraseSaved: Boolean(passphrase),
-      credentialFingerprint
+      connectionMethod,
+      apiKeyLast4: connectionMethod === 'api_keys' ? maskLast4(apiKey) : '',
+      secretSaved: connectionMethod === 'api_keys',
+      passphraseSaved: connectionMethod === 'api_keys' && Boolean(passphrase),
+      credentialFingerprint,
+      loginUsernameMasked: connectionMethod === 'existing_account' ? maskLoginIdentifier(loginUsername) : '',
+      loginSaved: connectionMethod === 'existing_account',
+      twoFactorMode,
+      otpProvided: connectionMethod === 'existing_account' && Boolean(otpCode)
     },
     lastTestedAt: null,
     lastTestResult: null
@@ -1189,17 +1256,46 @@ function testAutoTraderBrokerBridge(user, options = {}) {
   }
   const permissions = connection.permissions || {};
   const auth = connection.auth || {};
+  const connectionMethod = parseConnectionMethod(auth.connectionMethod || 'api_keys');
   const bridgeMode = String(state.liveFunding?.executionMode || connection.bridgeMode || 'manual_confirmed').toLowerCase();
   const liveMode = String(state.tradingMode || 'paper').toLowerCase() === 'live';
+  const twoFactorMode = parseTwoFactorMode(auth.twoFactorMode || 'none');
+
+  const credentialsOk = connectionMethod === 'existing_account'
+    ? Boolean(auth.loginSaved && auth.loginUsernameMasked)
+    : Boolean(auth.apiKeyLast4 && auth.secretSaved);
+  const credentialDetail = connectionMethod === 'existing_account'
+    ? (auth.loginUsernameMasked
+      ? `Existing broker login saved for ${auth.loginUsernameMasked}`
+      : 'Missing broker login credentials in connection profile.')
+    : (auth.apiKeyLast4
+      ? `API key ending in ${auth.apiKeyLast4} saved`
+      : 'Missing API key/secret in broker connection profile.');
 
   const checks = [
     {
       key: 'credentials',
       label: 'Credentials saved',
-      ok: Boolean(auth.apiKeyLast4 && auth.secretSaved),
-      detail: auth.apiKeyLast4
-        ? `API key ending in ${auth.apiKeyLast4} saved`
-        : 'Missing API key/secret in broker connection profile.'
+      ok: credentialsOk,
+      detail: credentialDetail
+    },
+    {
+      key: 'auth_method',
+      label: 'Authentication method selected',
+      ok: Boolean(connectionMethod),
+      detail: connectionMethod === 'existing_account'
+        ? `Using existing account sign-in (${twoFactorMode.toUpperCase()} 2FA mode)`
+        : 'Using API key/secret credentials'
+    },
+    {
+      key: 'two_factor',
+      label: '2FA handoff readiness',
+      ok: connectionMethod === 'existing_account' && twoFactorMode !== 'none'
+        ? Boolean(auth.otpProvided)
+        : true,
+      detail: connectionMethod === 'existing_account' && twoFactorMode !== 'none'
+        ? `2FA mode ${twoFactorMode.toUpperCase()} requires a fresh code before running live orders.`
+        : 'No active one-time-code requirement.'
     },
     {
       key: 'permissions',
