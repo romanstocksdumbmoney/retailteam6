@@ -116,6 +116,16 @@ function getSelectedTradingMode() {
   return String(selected.value || 'paper').trim().toLowerCase() === 'live' ? 'live' : 'paper';
 }
 
+function syncAutoExecutionVisibility() {
+  const modeSelect = document.getElementById('ai-bot-trading-mode');
+  const autoWrap = document.getElementById('ai-bot-auto-execute-wrap');
+  if (!(modeSelect instanceof HTMLSelectElement) || !autoWrap) {
+    return;
+  }
+  const live = String(modeSelect.value || 'paper').trim().toLowerCase() === 'live';
+  autoWrap.hidden = !live;
+}
+
 function applyConfigToForm(config = {}) {
   const setInput = (id, value) => {
     const node = document.getElementById(id);
@@ -149,6 +159,7 @@ function applyConfigToForm(config = {}) {
       node.checked = selectedSectors.size ? selectedSectors.has(node.value) : node.checked;
     }
   });
+  syncAutoExecutionVisibility();
 }
 
 function renderBotSummary(payload) {
@@ -441,6 +452,14 @@ function setupForm() {
   const copyControlLinkButton = document.getElementById('ai-control-copy-link');
   const openControlLinkButton = document.getElementById('ai-control-open-link');
   const promptControlForm = document.getElementById('ai-control-prompt-form');
+  const modeSelect = document.getElementById('ai-bot-trading-mode');
+
+  if (modeSelect instanceof HTMLSelectElement) {
+    modeSelect.addEventListener('change', () => {
+      syncAutoExecutionVisibility();
+    });
+    syncAutoExecutionVisibility();
+  }
 
   if (fundingButton instanceof HTMLButtonElement) {
     fundingButton.addEventListener('click', () => {

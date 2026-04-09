@@ -225,7 +225,7 @@ function getCopilotResponse(input, context) {
   if (text.includes('login') || text.includes('sign in') || text.includes('auth')) {
     return 'If sign-in fails, retry once, confirm email/password, or use social provider. Keep remember-login enabled for a smoother experience.';
   }
-  if (text.includes('trade') || text.includes('execute') || text.includes('submit')) {
+  if (text.includes('trade') || text.includes('execute') || text.includes('submit') || text.includes('auto')) {
     return 'In account view, run a cycle, review proposals, select trades, and submit. If hands-free mode is enabled, auto-submit can run after readiness checks.';
   }
   return 'I can help with setup, risk settings, broker connection, and next steps. Try asking: "what should I do next?"';
@@ -338,6 +338,10 @@ function mountAiCopilotWidget() {
   context.starterTips.forEach((tip, index) => {
     appendMessage('assistant', index === 0 ? `Hi, I can help here. ${tip}` : tip);
   });
+  const liveAutoHintPages = new Set(['/ai-bot-trader.html', '/ai-bot-funding.html', '/ai-bot-account.html', '/brokerage-onboarding.html']);
+  if (liveAutoHintPages.has(pathname)) {
+    appendMessage('assistant', 'To make AI trade for you: turn on "hands-free live execution", connect broker bridge, run the bridge test, and keep live funding mode active.');
+  }
 
   const openPanel = () => {
     panel.hidden = false;

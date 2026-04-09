@@ -147,6 +147,7 @@ function renderFundingSummary(payload) {
     <article class="bot-position-card">
       <p><strong>Funding Access:</strong> ${payload.fundingAccessPurchased ? 'Purchased' : 'Not purchased'}</p>
       <p><strong>Mode:</strong> ${(payload.tradingMode || 'paper').toUpperCase()}</p>
+      <p><strong>AI Trades For You (Hands-Free):</strong> ${payload.config?.autoExecuteLive ? 'ENABLED' : 'DISABLED'}</p>
       <p><strong>Cash:</strong> ${fmtUsd(payload.cashUsd)}</p>
       <p><strong>Total Deposited:</strong> ${fmtUsd(payload.totalDepositedUsd)}</p>
       <p><strong>Live Funded:</strong> ${live.isFunded ? 'Yes' : 'No'}</p>

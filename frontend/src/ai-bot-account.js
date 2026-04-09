@@ -256,6 +256,7 @@ function renderExecutionCenter(execution) {
     <article class="bot-position-card">
       <p><strong>Broker Bridge:</strong> ${brokerConnection.isConnected ? 'CONNECTED' : 'MANUAL / NOT CONNECTED'}</p>
       <p><strong>Broker:</strong> ${String(brokerConnection.broker || 'manual').toUpperCase()} • <strong>Mode:</strong> ${String(brokerConnection.bridgeMode || 'manual_confirmed').replace(/_/g, ' ')}</p>
+      <p><strong>Hands-free live mode:</strong> ${lastPlan?.requiresApproval ? 'OFF (approval required)' : 'ON (AI auto-submit enabled)'}</p>
       <p><strong>Last Plan:</strong> ${lastPlan?.generatedAt || 'N/A'}</p>
       <p><strong>Plan Tickets:</strong> ${Number(lastPlan?.orderTickets?.length || 0)} • <strong>Manual Action:</strong> ${lastPlan?.manualActionRequired ? 'Yes' : 'No'}</p>
       <p><strong>Last Broker Submit:</strong> ${lastBrokerExecution?.submittedAt || 'N/A'} • <strong>Submitted:</strong> ${Number(lastBrokerExecution?.submittedCount || 0)} • <strong>Rejected:</strong> ${Number(lastBrokerExecution?.rejectedCount || 0)}</p>

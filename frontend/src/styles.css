@@ -1171,9 +1171,9 @@ label {
 
 .ai-copilot-shell {
   position: fixed;
-  right: 16px;
+  left: 16px;
   bottom: 16px;
-  z-index: 40;
+  z-index: 1200;
   display: grid;
   gap: 0.55rem;
 }
@@ -1249,7 +1249,7 @@ label {
 
 @media (max-width: 680px) {
   .ai-copilot-shell {
-    right: 10px;
+    left: 10px;
     bottom: 10px;
   }
 }
