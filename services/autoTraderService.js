@@ -1553,31 +1553,43 @@ function testAutoTraderBrokerBridge(user, options = {}) {
     }
   ];
 
-  const readyForTrading = checks.every((check) => check.ok);
+  const bridgeCheckKeys = new Set(['credentials', 'auth_method', 'two_factor', 'permissions', 'bridge_mode']);
+  const bridgeReady = checks
+    .filter((check) => bridgeCheckKeys.has(check.key))
+    .every((check) => check.ok);
+  const readyForTrading = bridgeReady && checks
+    .filter((check) => check.key === 'funding' || check.key === 'live_mode')
+    .every((check) => check.ok);
   const testedAt = nowIso();
   liveExecution.brokerConnection = {
     ...connection,
     broker,
     bridgeMode,
-    isConnected: readyForTrading,
-    connectionStatus: readyForTrading ? 'connected' : 'connection_incomplete',
-    connectedAt: readyForTrading ? (connection.connectedAt || testedAt) : null,
+    isConnected: bridgeReady,
+    connectionStatus: bridgeReady
+      ? (readyForTrading ? 'connected' : 'connected_pending_live_requirements')
+      : 'connection_incomplete',
+    connectedAt: bridgeReady ? (connection.connectedAt || testedAt) : null,
     lastTestedAt: testedAt,
     lastTestResult: {
+      bridgeReady,
       readyForTrading,
       checks
     }
   };
   state.updatedAt = nowIso();
 
+  const failedBridgeChecks = checks.filter((check) => bridgeCheckKeys.has(check.key) && !check.ok);
+  const missingLiveChecks = checks.filter((check) => (check.key === 'funding' || check.key === 'live_mode') && !check.ok);
   return {
     broker,
     testedAt,
+    bridgeReady,
     readyForTrading,
     checks,
-    nextActions: checks
-      .filter((check) => !check.ok)
-      .map((check) => `Fix: ${check.label}`),
+    nextActions: failedBridgeChecks.length > 0
+      ? failedBridgeChecks.map((check) => `Fix: ${check.label}`)
+      : missingLiveChecks.map((check) => `For live execution, complete: ${check.label}`),
     guide: getAutoTraderBrokerConnectionGuide(user, { broker })
   };
 }

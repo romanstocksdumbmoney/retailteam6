@@ -169,8 +169,10 @@ async function runOneClickRobinhoodAiConnect() {
     setStatus(
       testResult.readyForTrading
         ? 'Robinhood connected and AI bridge test passed. You can now run AI cycles and execute tickets.'
-        : 'Robinhood saved, but connection test needs fixes. Review the checklist below.',
-      !testResult.readyForTrading
+        : (testResult.bridgeReady
+          ? 'Robinhood bridge connected. Finish live funding + switch to Live mode before executing live tickets.'
+          : 'Robinhood saved, but connection test needs fixes. Review the checklist below.'),
+      !(testResult.readyForTrading || testResult.bridgeReady)
     );
   } catch (error) {
     setStatus(formatApiError(error, 'One-click Robinhood AI connect failed.'), true);
@@ -321,6 +323,7 @@ function renderTestResults(testResult) {
   const summary = document.createElement('article');
   summary.className = 'bot-position-card';
   summary.innerHTML = `
+    <p><strong>Bridge Connected:</strong> ${testResult.bridgeReady ? 'YES' : 'NO'}</p>
     <p><strong>Ready for AI live trading:</strong> ${testResult.readyForTrading ? 'YES' : 'NO'}</p>
     <p><strong>Tested at:</strong> ${testResult.testedAt || 'N/A'}</p>
   `;
@@ -600,7 +603,13 @@ function setupForm() {
         setStatus('Running broker bridge connection test...');
         const testResult = await runConnectionTest();
         await loadBrokerGuide();
-        setStatus(testResult.readyForTrading ? 'Broker bridge is ready for AI live execution.' : 'Broker bridge test failed. Follow next actions below.', !testResult.readyForTrading);
+        if (testResult.readyForTrading) {
+          setStatus('Broker bridge is ready for AI live execution.');
+        } else if (testResult.bridgeReady) {
+          setStatus('Broker bridge is connected. Complete live funding + live mode for execution readiness.');
+        } else {
+          setStatus('Broker bridge test failed. Follow next actions below.', true);
+        }
       } catch (error) {
         setStatus(formatApiError(error, 'Could not run broker bridge test.'), true);
       } finally {
