@@ -42,6 +42,114 @@ const OAUTH_PROVIDER_LABELS = {
 };
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/i;
+const LOGIN_FAILURE_WINDOW_MS = 10 * 60 * 1000;
+const LOGIN_EMAIL_FAILURE_LIMIT = 6;
+const LOGIN_EMAIL_IP_FAILURE_LIMIT = 8;
+const LOGIN_LOCKOUT_MS = 15 * 60 * 1000;
+const loginFailuresByEmail = new Map();
+const loginFailuresByEmailAndIp = new Map();
+
+function nowMs() {
+  return Date.now();
+}
+
+function getClientIp(req) {
+  const forwarded = String(req.get('x-forwarded-for') || '').split(',')[0].trim();
+  if (forwarded) {
+    return forwarded;
+  }
+  return String(req.ip || req.socket?.remoteAddress || 'unknown').trim() || 'unknown';
+}
+
+function normalizeFailureState(entry, atMs) {
+  const state = entry && typeof entry === 'object'
+    ? {
+      failures: Number(entry.failures || 0),
+      firstFailureAtMs: Number(entry.firstFailureAtMs || 0),
+      lockedUntilMs: Number(entry.lockedUntilMs || 0)
+    }
+    : {
+      failures: 0,
+      firstFailureAtMs: 0,
+      lockedUntilMs: 0
+    };
+
+  if (state.lockedUntilMs > 0 && state.lockedUntilMs <= atMs) {
+    state.failures = 0;
+    state.firstFailureAtMs = 0;
+    state.lockedUntilMs = 0;
+  }
+  if (state.firstFailureAtMs > 0 && atMs - state.firstFailureAtMs > LOGIN_FAILURE_WINDOW_MS) {
+    state.failures = 0;
+    state.firstFailureAtMs = 0;
+  }
+  return state;
+}
+
+function readFailureState(map, key, atMs) {
+  const state = normalizeFailureState(map.get(key), atMs);
+  map.set(key, state);
+  return state;
+}
+
+function recordFailure(map, key, atMs, limit) {
+  const state = readFailureState(map, key, atMs);
+  if (!state.firstFailureAtMs) {
+    state.firstFailureAtMs = atMs;
+  }
+  state.failures += 1;
+  if (state.failures >= limit) {
+    state.lockedUntilMs = atMs + LOGIN_LOCKOUT_MS;
+    state.failures = 0;
+    state.firstFailureAtMs = 0;
+  }
+  map.set(key, state);
+  return state;
+}
+
+function clearFailureState(map, key) {
+  if (map.has(key)) {
+    map.delete(key);
+  }
+}
+
+function clearLoginFailureStates(email, clientIp) {
+  clearFailureState(loginFailuresByEmail, email);
+  clearFailureState(loginFailuresByEmailAndIp, `${email}|${clientIp}`);
+}
+
+function lockoutPayload(lockedUntilMs) {
+  const retryAfterMs = Math.max(1000, lockedUntilMs - nowMs());
+  const retryAfterSeconds = Math.max(1, Math.ceil(retryAfterMs / 1000));
+  const retryAfterMinutes = Math.max(1, Math.ceil(retryAfterSeconds / 60));
+  return {
+    retryAfterSeconds,
+    message: `Too many login attempts. Try again in about ${retryAfterMinutes} minute${retryAfterMinutes === 1 ? '' : 's'}.`
+  };
+}
+
+function checkLoginLockout(email, clientIp, atMs) {
+  const emailState = readFailureState(loginFailuresByEmail, email, atMs);
+  const emailIpState = readFailureState(loginFailuresByEmailAndIp, `${email}|${clientIp}`, atMs);
+  const lockedUntilMs = Math.max(Number(emailState.lockedUntilMs || 0), Number(emailIpState.lockedUntilMs || 0));
+  return lockedUntilMs > atMs ? lockedUntilMs : 0;
+}
+
+function registerFailedLoginAttempt(email, clientIp, atMs) {
+  const emailState = recordFailure(loginFailuresByEmail, email, atMs, LOGIN_EMAIL_FAILURE_LIMIT);
+  const emailIpState = recordFailure(
+    loginFailuresByEmailAndIp,
+    `${email}|${clientIp}`,
+    atMs,
+    LOGIN_EMAIL_IP_FAILURE_LIMIT
+  );
+  return Math.max(Number(emailState.lockedUntilMs || 0), Number(emailIpState.lockedUntilMs || 0));
+}
+
+async function delayFailedLoginResponse() {
+  const ms = 200 + Math.floor(Math.random() * 200);
+  await new Promise((resolve) => setTimeout(resolve, ms));
+}
 
 function wantsRememberSession(req) {
   if (!Object.prototype.hasOwnProperty.call(req.body || {}, 'remember')) {
@@ -280,14 +388,38 @@ router.post('/oauth/signin', (req, res) => {
 router.post('/login', async (req, res) => {
   const email = String(req.body?.email || '').trim().toLowerCase();
   const password = String(req.body?.password || '');
+  const clientIp = getClientIp(req);
+  const atMs = nowMs();
   if (!EMAIL_PATTERN.test(email)) {
     return res.status(400).json({
       error: 'invalid_email',
       message: 'Enter a valid email address.'
     });
   }
+  const lockedUntilMs = checkLoginLockout(email, clientIp, atMs);
+  if (lockedUntilMs > atMs) {
+    const payload = lockoutPayload(lockedUntilMs);
+    res.set('Retry-After', String(payload.retryAfterSeconds));
+    return res.status(429).json({
+      error: 'too_many_attempts',
+      retryAfterSeconds: payload.retryAfterSeconds,
+      message: payload.message
+    });
+  }
   const user = findUserByEmail(email);
   if (!user) {
+    const locked = registerFailedLoginAttempt(email, clientIp, atMs);
+    if (locked > atMs) {
+      const payload = lockoutPayload(locked);
+      res.set('Retry-After', String(payload.retryAfterSeconds));
+      await delayFailedLoginResponse();
+      return res.status(429).json({
+        error: 'too_many_attempts',
+        retryAfterSeconds: payload.retryAfterSeconds,
+        message: payload.message
+      });
+    }
+    await delayFailedLoginResponse();
     return res.status(401).json({ error: 'invalid_credentials', message: 'Invalid email or password.' });
   }
 
@@ -300,9 +432,22 @@ router.post('/login', async (req, res) => {
         message: 'This account uses social sign-in. Use Continue with Google/Apple/GitHub/Discord/X.'
       });
     }
+    const locked = registerFailedLoginAttempt(email, clientIp, atMs);
+    if (locked > atMs) {
+      const payload = lockoutPayload(locked);
+      res.set('Retry-After', String(payload.retryAfterSeconds));
+      await delayFailedLoginResponse();
+      return res.status(429).json({
+        error: 'too_many_attempts',
+        retryAfterSeconds: payload.retryAfterSeconds,
+        message: payload.message
+      });
+    }
+    await delayFailedLoginResponse();
     return res.status(401).json({ error: 'invalid_credentials', message: 'Invalid email or password.' });
   }
 
+  clearLoginFailureStates(email, clientIp);
   const token = signAuthToken({ userId: user.id, email: user.email });
   const remember = maybeCreateRememberSession(user, req);
   return res.json({
