@@ -368,7 +368,8 @@ function setupForm() {
   const continueButton = document.getElementById('brokerage-go-funding');
   const connectForm = document.getElementById('broker-connect-form');
   const connectionMethodSelect = document.getElementById('broker-connect-method');
-  const robinhoodShortcutButton = document.getElementById('broker-connect-robinhood-existing');
+  const robinhoodShortcutButton = document.getElementById('brokerage-connect-robinhood-existing')
+    || document.getElementById('broker-connect-robinhood-existing');
   const testButton = document.getElementById('brokerage-test-ai');
   const disconnectButton = document.getElementById('brokerage-disconnect-ai');
 
