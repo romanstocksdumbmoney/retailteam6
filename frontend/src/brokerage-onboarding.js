@@ -273,16 +273,24 @@ function renderSetupSteps(steps = []) {
     target.innerHTML = '<div class="pro-lock">No setup steps returned.</div>';
     return;
   }
+  const fallbackByKey = {
+    'open-account': 'https://robinhood.com/login',
+    'api-access': 'https://robinhood.com/login',
+    'add-credentials': '/brokerage-onboarding.html#broker-connect-form',
+    'bridge-mode': '/ai-bot-funding.html#ai-funding-form',
+    'test-connection': '/brokerage-onboarding.html#broker-connect-form',
+    'activate-ai': '/ai-bot-account.html#ai-account-title'
+  };
   steps.forEach((step, index) => {
     const row = document.createElement('article');
     row.className = `broker-step-item ${step.completed ? 'broker-step-item--done' : 'broker-step-item--todo'}`;
-    const stepLink = String(step.navigateUrl || step.actionHref || step.actionUrl || '').trim();
+    const stepLink = String(step.navigateUrl || step.actionHref || step.actionUrl || fallbackByKey[step.key] || '').trim();
     const linkTarget = step.actionExternal ? ' target="_blank" rel="noopener noreferrer"' : '';
     const stepTitle = stepLink
-      ? `<a class="open-link" href="${stepLink}"${linkTarget}><strong>Step ${index + 1}:</strong> ${step.title}</a>`
+      ? `<a class="broker-step-link" href="${stepLink}"${linkTarget}><strong>Step ${index + 1}:</strong> ${step.title}</a>`
       : `<strong>Step ${index + 1}:</strong> ${step.title}`;
     const actionLine = stepLink
-      ? `<p class="small-note"><a class="open-link" href="${stepLink}"${linkTarget}>${step.actionLabel || 'Open fix location'}</a></p>`
+      ? `<p class="small-note"><a class="broker-step-action" href="${stepLink}"${linkTarget}>${step.actionLabel || 'Open fix'}</a></p>`
       : '';
     row.innerHTML = `
       <p>${stepTitle}</p>

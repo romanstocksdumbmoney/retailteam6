@@ -359,6 +359,23 @@ body {
   color: #fef08a;
 }
 
+.broker-step-action {
+  display: inline-block;
+  margin-top: 0.2rem;
+  padding: 0.25rem 0.6rem;
+  border-radius: 999px;
+  border: 1px solid rgba(234, 179, 8, 0.6);
+  color: #fde047;
+  text-decoration: none;
+  font-weight: 700;
+  background: rgba(17, 24, 39, 0.55);
+}
+
+.broker-step-action:hover {
+  background: rgba(31, 41, 55, 0.8);
+  color: #fef08a;
+}
+
 .broker-step-item--done {
   border-color: rgba(16, 185, 129, 0.55);
   background: rgba(16, 185, 129, 0.12);

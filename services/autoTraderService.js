@@ -48,6 +48,13 @@ const BROKER_SETUP_DOCS = Object.freeze({
   tradestation: 'https://www.tradestation.com/why-tradestation/',
   manual: 'https://dumbdollars.org/ai-implementation-steps.html'
 });
+const BROKER_LOGIN_DOCS = Object.freeze({
+  robinhood: 'https://robinhood.com/login',
+  webull: 'https://www.webull.com/',
+  'interactive-brokers': 'https://www.interactivebrokers.com/sso/Login?RL=1',
+  tradestation: 'https://signin.tradestation.com/',
+  manual: 'https://dumbdollars.org/ai-implementation-steps.html'
+});
 
 const traderStore = new Map();
 
@@ -288,10 +295,10 @@ function getBrokerSetupSteps(state, broker) {
       title: `Open and verify your ${toTitle(broker)} brokerage account`,
       description: 'Complete KYC, enable 2FA, and make sure trading permissions are active on your broker account.',
       completed: hasAccount,
-      actionLabel: 'Open broker signup',
-      actionHref: BROKER_SETUP_DOCS[broker] || BROKER_SETUP_DOCS.manual,
-      navigateUrl: BROKER_SETUP_DOCS[broker] || BROKER_SETUP_DOCS.manual,
-      actionUrl: BROKER_SETUP_DOCS[broker] || BROKER_SETUP_DOCS.manual,
+      actionLabel: 'Open broker login',
+      actionHref: BROKER_LOGIN_DOCS[broker] || BROKER_LOGIN_DOCS.manual,
+      navigateUrl: BROKER_LOGIN_DOCS[broker] || BROKER_LOGIN_DOCS.manual,
+      actionUrl: BROKER_LOGIN_DOCS[broker] || BROKER_LOGIN_DOCS.manual,
       actionExternal: true
     },
     {
