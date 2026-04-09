@@ -47,6 +47,7 @@ async function build() {
   await fs.copyFile(path.join(srcDir, 'insider-trades.js'), path.join(buildDir, 'insider-trades.js'));
   await fs.copyFile(path.join(srcDir, 'portfolios.js'), path.join(buildDir, 'portfolios.js'));
   await fs.copyFile(path.join(srcDir, 'session-helper.js'), path.join(buildDir, 'session-helper.js'));
+  await fs.copyFile(path.join(srcDir, 'ai-copilot-widget.js'), path.join(buildDir, 'ai-copilot-widget.js'));
   await fs.copyFile(path.join(srcDir, 'styles.css'), path.join(buildDir, 'styles.css'));
   console.log('Frontend build complete: frontend/build/index.html');
 }

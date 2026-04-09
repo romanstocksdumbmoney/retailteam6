@@ -100,6 +100,14 @@ function getNumberInputValue(id, fallback = 0) {
   return Number.isFinite(value) ? value : fallback;
 }
 
+function getCheckboxValue(id, fallback = false) {
+  const node = document.getElementById(id);
+  if (!(node instanceof HTMLInputElement)) {
+    return fallback;
+  }
+  return Boolean(node.checked);
+}
+
 function getSelectedTradingMode() {
   const selected = document.getElementById('ai-bot-trading-mode');
   if (!(selected instanceof HTMLSelectElement)) {
@@ -125,6 +133,10 @@ function applyConfigToForm(config = {}) {
   setInput('ai-bot-risk-pct', config.riskPerTradePct ?? 1.5);
   setInput('ai-bot-target-return-pct', config.targetReturnPct ?? 12);
   setInput('ai-bot-min-rr', config.minRewardRiskRatio ?? 2);
+  const autoExecuteNode = document.getElementById('ai-bot-auto-execute-live');
+  if (autoExecuteNode instanceof HTMLInputElement) {
+    autoExecuteNode.checked = Boolean(config.autoExecuteLive);
+  }
   setInput('ai-bot-max-sector-exposure-pct', config.maxSectorExposurePct ?? 35);
   setInput('ai-bot-max-gross-exposure-pct', config.maxGrossExposurePct ?? 100);
   setInput('ai-bot-target-holdings', config.maxPositions ?? 4);
@@ -154,6 +166,7 @@ function renderBotSummary(payload) {
     <article class="bot-position-card">
       <h4>Status: ${(payload.isActive ? 'active' : 'paused').toUpperCase()}</h4>
       <p><strong>Mode:</strong> ${String(payload.tradingMode || 'paper').toUpperCase()}</p>
+      <p><strong>Hands-free live execution:</strong> ${payload?.config?.autoExecuteLive ? 'ENABLED' : 'DISABLED'}</p>
       <p><strong>Cash:</strong> ${fmtUsd(payload.cashUsd)}</p>
       <p><strong>Total Deposited:</strong> ${fmtUsd(payload.totalDepositedUsd)}</p>
       <p><strong>Broker Connection:</strong> ${brokerStatus} (${String(brokerConnection.broker || 'manual').toUpperCase()})</p>
@@ -184,6 +197,7 @@ function renderPlan(payload) {
       <p><strong>Stop Loss %:</strong> ${cfg.stopLossPct || 0}%</p>
       <p><strong>Take Profit %:</strong> ${cfg.takeProfitPct || 0}%</p>
       <p><strong>Min Reward/Risk:</strong> ${Number(cfg.minRewardRiskRatio || 2).toLocaleString(undefined, { maximumFractionDigits: 2 })}x</p>
+      <p><strong>Hands-free live execution:</strong> ${cfg.autoExecuteLive ? 'Enabled' : 'Disabled'}</p>
       <p><strong>Sectors:</strong> ${(cfg.sectors || []).join(', ') || 'N/A'}</p>
     </article>
   `;
@@ -355,6 +369,7 @@ async function saveBotConfig() {
     takeProfitPct: Math.max(1.2, riskPerTradePct * 3),
     targetReturnPct: getNumberInputValue('ai-bot-target-return-pct', 8),
     minRewardRiskRatio: getNumberInputValue('ai-bot-min-rr', 2),
+    autoExecuteLive: getCheckboxValue('ai-bot-auto-execute-live', false),
     testAreaCapitalUsd: getNumberInputValue('ai-bot-test-capital', 10000),
     testAreaRiskPct: getNumberInputValue('ai-bot-test-risk-pct', riskPerTradePct),
     maxGrossExposurePct: getNumberInputValue('ai-bot-max-gross-exposure-pct', 100),
@@ -378,6 +393,7 @@ async function runCycle() {
     body: JSON.stringify({})
   });
   renderState(payload.bot || payload);
+  return payload;
 }
 
 async function sendPromptControlUpdate() {
@@ -534,8 +550,17 @@ function setupForm() {
       try {
         runButton.disabled = true;
         setStatus('Running bot cycle...');
-        await runCycle();
-        setStatus('Bot cycle complete.');
+        const payload = await runCycle();
+        const autoExecution = payload?.autoExecution || null;
+        if (autoExecution?.status === 'submitted') {
+          setStatus(autoExecution.message || 'Bot cycle complete. Auto-execution submitted trades.');
+        } else if (autoExecution?.status === 'failed') {
+          setStatus(`Bot cycle complete, but auto-execution failed: ${autoExecution.message || autoExecution.reason || 'unknown error'}`, true);
+        } else if (autoExecution?.status === 'skipped') {
+          setStatus(`Bot cycle complete. ${autoExecution.message || 'Auto-execution skipped.'}`);
+        } else {
+          setStatus('Bot cycle complete.');
+        }
       } catch (error) {
         setStatus(error.message || 'Could not run bot cycle.', true);
       } finally {

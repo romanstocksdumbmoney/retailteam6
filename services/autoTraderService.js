@@ -99,6 +99,7 @@ function defaultConfig() {
     chasePct: 0.8,
     riskPerTradePct: 1.5,
     minRewardRiskRatio: 1.8,
+    autoExecuteLive: false,
     targetReturnPct: 12,
     allocationPerTradePct: 20,
     maxSectorExposurePct: 35,
@@ -411,6 +412,7 @@ function sanitizeConfig(input = {}) {
     chasePct: roundUsd(clamp(Number(input.chasePct || 0.8), 0, 10)),
     riskPerTradePct: roundUsd(clamp(Number(input.riskPerTradePct || 1.5), 0.1, 10)),
     minRewardRiskRatio: roundUsd(clamp(Number(input.minRewardRiskRatio || 1.8), 0.5, 8)),
+    autoExecuteLive: Boolean(input.autoExecuteLive || input.handsFreeLiveMode),
     targetReturnPct: roundUsd(clamp(Number.isFinite(targetReturnRaw) ? targetReturnRaw : 12, 1, 200)),
     allocationPerTradePct: roundUsd(clamp(Number(input.allocationPerTradePct || 20), 2, 80)),
     maxSectorExposurePct: roundUsd(clamp(Number(input.maxSectorExposurePct || 35), 10, 100)),
@@ -948,7 +950,9 @@ function runAutoTraderCycle(user) {
   }
 
   const liveExecution = ensureLiveExecutionState(state);
-  const requiresApproval = String(state.tradingMode || 'paper').toLowerCase() === 'live';
+  const liveMode = String(state.tradingMode || 'paper').toLowerCase() === 'live';
+  const autoExecuteLive = Boolean(state.config?.autoExecuteLive);
+  const requiresApproval = liveMode && !autoExecuteLive;
   const seed = hashString(`${userId}:${minuteSeed()}:${state.config.prompt}`);
   const websiteSignals = buildWebsiteSignalSnapshot(state, userId);
   const promptControl = parsePromptControl(state.config.prompt);
@@ -1164,7 +1168,9 @@ function runAutoTraderCycle(user) {
     promptControl,
     promptAdherence,
     note: state.tradingMode === 'live'
-      ? 'Live mode proposes trades using funded risk sizing and waits for your approval before broker submission.'
+      ? (requiresApproval
+        ? 'Live mode proposes trades using funded risk sizing and waits for your approval before broker submission.'
+        : 'Live mode is set to auto-execute. Trades are generated with your risk/reward filters and can be auto-submitted when broker bridge checks pass.')
       : 'Paper-trading simulation uses website signals; no real brokerage orders are sent.'
   };
   const cycleSummary = {

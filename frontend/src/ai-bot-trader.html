@@ -66,6 +66,11 @@
               </select>
             </label>
             <label>
+              <input id="ai-bot-auto-execute-live" type="checkbox" />
+              Enable hands-free live execution (AI trades for you after broker setup passes)
+            </label>
+            <p class="small-note field-full">Broker account signup and identity verification (KYC) must be completed by the user before AI can execute live trades.</p>
+            <label>
               Test Area capital ($)
               <input id="ai-bot-test-capital" type="number" min="100" step="100" value="10000" required />
             </label>
@@ -149,6 +154,7 @@
       </article>
     </main>
     <script src="./session-helper.js"></script>
+    <script src="./ai-copilot-widget.js"></script>
     <script src="./ai-bot-trader.js"></script>
   </body>
 </html>

@@ -1125,6 +1125,135 @@ label {
   cursor: default;
 }
 
+.ai-page-quick-nav {
+  border: 1px solid rgba(250, 204, 21, 0.32);
+  background: rgba(15, 23, 42, 0.76);
+  border-radius: 10px;
+  padding: 0.65rem 0.75rem;
+  margin: 0.85rem 0 0.95rem;
+}
+
+.ai-page-quick-nav h3 {
+  margin: 0 0 0.45rem;
+  font-size: 0.95rem;
+  color: #fde68a;
+}
+
+.ai-page-quick-nav-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+}
+
+.ai-page-quick-link {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  border: 1px solid rgba(148, 163, 184, 0.45);
+  background: rgba(2, 6, 23, 0.72);
+  color: #e2e8f0;
+  text-decoration: none;
+  padding: 0.3rem 0.62rem;
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.ai-page-quick-link:hover {
+  border-color: rgba(250, 204, 21, 0.65);
+  color: #fef08a;
+}
+
+.ai-page-quick-link--active {
+  border-color: rgba(250, 204, 21, 0.82);
+  color: #fef08a;
+  background: rgba(250, 204, 21, 0.12);
+}
+
+.ai-copilot-shell {
+  position: fixed;
+  right: 16px;
+  bottom: 16px;
+  z-index: 40;
+  display: grid;
+  gap: 0.55rem;
+}
+
+.ai-copilot-fab {
+  border-radius: 999px;
+  border: 1px solid rgba(250, 204, 21, 0.8);
+  background: linear-gradient(180deg, rgba(250, 204, 21, 0.95), rgba(245, 158, 11, 0.95));
+  color: #111827;
+  font-weight: 800;
+  padding: 0.55rem 0.95rem;
+  cursor: pointer;
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.35);
+}
+
+.ai-copilot-panel {
+  width: min(92vw, 340px);
+  border-radius: 12px;
+  border: 1px solid rgba(250, 204, 21, 0.4);
+  background: rgba(2, 6, 23, 0.96);
+  padding: 0.62rem 0.64rem;
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.45);
+}
+
+.ai-copilot-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.ai-copilot-feed {
+  max-height: 190px;
+  overflow: auto;
+  display: grid;
+  gap: 0.4rem;
+  margin: 0.55rem 0;
+  padding-right: 0.1rem;
+}
+
+.ai-copilot-msg {
+  margin: 0;
+  border-radius: 9px;
+  padding: 0.42rem 0.52rem;
+  line-height: 1.35;
+  font-size: 0.8rem;
+}
+
+.ai-copilot-msg--assistant {
+  border: 1px solid rgba(250, 204, 21, 0.33);
+  background: rgba(30, 41, 59, 0.9);
+  color: #f8fafc;
+}
+
+.ai-copilot-msg--user {
+  border: 1px solid rgba(59, 130, 246, 0.35);
+  background: rgba(30, 58, 138, 0.28);
+  color: #dbeafe;
+}
+
+.ai-copilot-form {
+  display: grid;
+  gap: 0.4rem;
+}
+
+.ai-copilot-form input {
+  width: 100%;
+}
+
+.ai-copilot-actions {
+  margin: 0.3rem 0 0.55rem;
+}
+
+@media (max-width: 680px) {
+  .ai-copilot-shell {
+    right: 10px;
+    bottom: 10px;
+  }
+}
+
 .app-layout {
   display: grid;
   grid-template-columns: minmax(0, 1fr);

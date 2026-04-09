@@ -617,10 +617,54 @@ router.get('/auto-trader/bot', requireSignedIn, (req, res) => {
 router.post('/auto-trader/run', requireSignedIn, (req, res) => {
   try {
     const cycle = runAutoTraderCycle(req.user, req.body || {});
+    let autoExecution = null;
+    const statusAfterCycle = getAutoTraderStatus(req.user);
+    const autoExecuteLive = Boolean(
+      statusAfterCycle?.config?.autoExecuteLive
+      && String(statusAfterCycle?.tradingMode || 'paper').toLowerCase() === 'live'
+    );
+    if (autoExecuteLive) {
+      if (!isPro(req)) {
+        autoExecution = {
+          attempted: false,
+          status: 'skipped',
+          reason: 'pro_required',
+          message: 'Auto-execution requires Pro live funding access.'
+        };
+      } else {
+        try {
+          const executed = executeAutoTraderBrokerOrders(req.user, {});
+          autoExecution = {
+            attempted: true,
+            status: 'submitted',
+            message: `Auto-execution submitted ${Number(executed.submittedCount || 0)} ticket(s).`,
+            submittedCount: Number(executed.submittedCount || 0),
+            rejectedCount: Number(executed.rejectedCount || 0)
+          };
+        } catch (autoError) {
+          const code = String(autoError.message || 'auto_execution_failed');
+          const messageByCode = {
+            live_mode_required: 'Switch to Live Funding mode before auto-execution.',
+            live_funding_required: 'Fund your live account before enabling auto-execution.',
+            broker_not_connected: 'Connect and test your broker bridge before enabling auto-execution.',
+            trade_permission_missing: 'Broker trade permission is missing; update broker permissions.',
+            no_order_tickets: 'No order tickets generated in this cycle.',
+            no_ready_tickets: 'Generated tickets are not broker-ready yet.'
+          };
+          autoExecution = {
+            attempted: true,
+            status: 'failed',
+            reason: code,
+            message: messageByCode[code] || 'Auto-execution failed. Review broker readiness and try again.'
+          };
+        }
+      }
+    }
     const bot = getAutoTraderStatus(req.user);
     return res.json({
       bot,
-      cycle
+      cycle,
+      autoExecution
     });
   } catch (error) {
     const code = String(error.message || '');
