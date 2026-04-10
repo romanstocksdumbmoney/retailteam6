@@ -30,6 +30,39 @@
 
         <section class="ai-trade-consensus">
           <h3>Step-by-step setup</h3>
+          <section class="ai-live-broker-open-section" aria-labelledby="ai-live-broker-open-title">
+            <h4 id="ai-live-broker-open-title">Open Brokerage Account (API-ready for AI)</h4>
+            <p class="small-note">Choose a broker below, open the account signup page, then jump straight into Broker Connect preselected for that broker.</p>
+            <div class="live-ai-entry-grid">
+              <article class="live-ai-entry-card">
+                <h4>Interactive Brokers (recommended)</h4>
+                <p>Widely used API path (TWS/Gateway) for systematic trading workflows.</p>
+                <div class="ai-bot-actions">
+                  <a class="open-link" href="https://www.interactivebrokers.com/en/accounts/open-account-country-list.php" target="_blank" rel="noopener noreferrer">Open IBKR account</a>
+                  <a class="open-link" href="https://www.interactivebrokers.com/en/trading/ib-api.php" target="_blank" rel="noopener noreferrer">IBKR API docs</a>
+                </div>
+                <button id="ai-live-open-broker-ibkr" class="btn-secondary" type="button">Use IBKR in Broker Connect</button>
+              </article>
+              <article class="live-ai-entry-card">
+                <h4>TradeStation</h4>
+                <p>Broker with API tooling options for supported strategies and account types.</p>
+                <div class="ai-bot-actions">
+                  <a class="open-link" href="https://www.tradestation.com/" target="_blank" rel="noopener noreferrer">Open TradeStation account</a>
+                  <a class="open-link" href="https://api.tradestation.com/docs/" target="_blank" rel="noopener noreferrer">TradeStation API docs</a>
+                </div>
+                <button id="ai-live-open-broker-tradestation" class="btn-secondary" type="button">Use TradeStation in Broker Connect</button>
+              </article>
+              <article class="live-ai-entry-card">
+                <h4>Robinhood / Webull (availability varies)</h4>
+                <p>Can work depending on integration route and account permissions.</p>
+                <div class="ai-bot-actions">
+                  <a class="open-link" href="https://robinhood.com/signup" target="_blank" rel="noopener noreferrer">Open Robinhood account</a>
+                  <a class="open-link" href="https://www.webull.com/" target="_blank" rel="noopener noreferrer">Open Webull account</a>
+                </div>
+                <button id="ai-live-open-broker-robinhood" class="btn-secondary" type="button">Use Robinhood in Broker Connect</button>
+              </article>
+            </div>
+          </section>
           <div class="live-ai-entry-grid">
             <article class="live-ai-entry-card">
               <h4>Step 1: Sign in</h4>

@@ -12,6 +12,12 @@ function setupActions() {
   const fundingButton = document.getElementById('ai-live-setup-open-funding');
   const brokerButton = document.getElementById('ai-live-setup-open-broker');
   const accountButton = document.getElementById('ai-live-setup-open-account');
+  const openIbApiButton = document.getElementById('ai-live-open-ib-api');
+  const openIbBridgeButton = document.getElementById('ai-live-open-ib-bridge');
+  const openRobinhoodApiButton = document.getElementById('ai-live-open-robinhood-api');
+  const openRobinhoodBridgeButton = document.getElementById('ai-live-open-robinhood-bridge');
+  const openTradestationApiButton = document.getElementById('ai-live-open-tradestation-api');
+  const openTradestationBridgeButton = document.getElementById('ai-live-open-tradestation-bridge');
 
   if (startButton instanceof HTMLButtonElement) {
     startButton.addEventListener('click', () => {
@@ -35,6 +41,39 @@ function setupActions() {
     accountButton.addEventListener('click', () => {
       setStatus('Opening AI account execution view...');
       window.location.href = '/ai-bot-account.html';
+    });
+  }
+  if (openIbApiButton instanceof HTMLAnchorElement) {
+    openIbApiButton.addEventListener('click', () => {
+      setStatus('Opening Interactive Brokers account/API page...');
+    });
+  }
+  if (openIbBridgeButton instanceof HTMLButtonElement) {
+    openIbBridgeButton.addEventListener('click', () => {
+      setStatus('Opening broker connect preselected for Interactive Brokers...');
+      window.location.href = '/brokerage-onboarding.html?broker=interactive-brokers';
+    });
+  }
+  if (openRobinhoodApiButton instanceof HTMLAnchorElement) {
+    openRobinhoodApiButton.addEventListener('click', () => {
+      setStatus('Opening Robinhood account page...');
+    });
+  }
+  if (openRobinhoodBridgeButton instanceof HTMLButtonElement) {
+    openRobinhoodBridgeButton.addEventListener('click', () => {
+      setStatus('Opening broker connect preselected for Robinhood...');
+      window.location.href = '/brokerage-onboarding.html?broker=robinhood';
+    });
+  }
+  if (openTradestationApiButton instanceof HTMLAnchorElement) {
+    openTradestationApiButton.addEventListener('click', () => {
+      setStatus('Opening TradeStation account/API page...');
+    });
+  }
+  if (openTradestationBridgeButton instanceof HTMLButtonElement) {
+    openTradestationBridgeButton.addEventListener('click', () => {
+      setStatus('Opening broker connect preselected for TradeStation...');
+      window.location.href = '/brokerage-onboarding.html?broker=tradestation';
     });
   }
 }

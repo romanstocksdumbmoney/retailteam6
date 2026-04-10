@@ -123,7 +123,7 @@ function buildRouteSuggestion(input, pathname) {
     {
       href: '/ai-live-account-setup.html',
       label: 'AI Live Account Guide',
-      keywords: ['guided', 'set up trading account', 'setup trading account', 'ai setup guide', 'start here ai']
+      keywords: ['guided', 'set up trading account', 'setup trading account', 'ai setup guide', 'start here ai', 'open brokerage account', 'broker account with api', 'good api keys']
     },
     {
       href: '/ai-bot-funding.html',
