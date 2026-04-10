@@ -14,8 +14,26 @@ async function fetchJson(url, options = {}) {
   return response.json();
 }
 
+function getStoredToken() {
+  return String(localStorage.getItem('dumbdollars_token') || '').trim();
+}
+
+async function ensureSessionReady() {
+  if (getStoredToken()) {
+    return true;
+  }
+  if (typeof window.restoreSessionIfNeeded === 'function') {
+    const restored = await window.restoreSessionIfNeeded();
+    const token = typeof restored === 'string'
+      ? restored
+      : String(restored?.token || '').trim();
+    return Boolean(token || getStoredToken());
+  }
+  return false;
+}
+
 function getAuthHeaders() {
-  const token = localStorage.getItem('dumbdollars_token') || '';
+  const token = getStoredToken();
   if (!token) {
     return {};
   }
@@ -171,14 +189,13 @@ function setupAiAnalyzerForm() {
     event.preventDefault();
     const submitButton = document.getElementById('ai-analyzer-submit');
     try {
+      const hasSession = await ensureSessionReady();
+      if (!hasSession) {
+        throw new Error('Please log in to use AI Analyzer.');
+      }
       const file = imageInput.files?.[0];
       if (!file) {
         throw new Error('Please upload a screenshot first.');
-      }
-
-      const token = localStorage.getItem('dumbdollars_token') || '';
-      if (!token) {
-        throw new Error('Please log in to use AI Analyzer.');
       }
 
       const symbol = String(document.getElementById('ai-analyzer-symbol')?.value || '').trim().toUpperCase() || 'SPY';

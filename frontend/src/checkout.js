@@ -15,8 +15,23 @@ async function fetchJson(url, options = {}) {
   return response.json();
 }
 
+function getStoredToken() {
+  return String(localStorage.getItem('dumbdollars_token') || '').trim();
+}
+
+async function tryRestoreSession() {
+  if (typeof window.restoreSessionIfNeeded === 'function') {
+    const restored = await window.restoreSessionIfNeeded();
+    if (typeof restored === 'string') {
+      return restored;
+    }
+    return String(restored?.token || '').trim();
+  }
+  return '';
+}
+
 function getAuthHeaders() {
-  const token = localStorage.getItem('dumbdollars_token') || '';
+  const token = getStoredToken();
   if (!token) {
     return {};
   }
@@ -102,7 +117,10 @@ async function startSecureCheckout() {
       startButton.disabled = true;
     }
     setStatus('Opening secure Stripe checkout...');
-    const token = localStorage.getItem('dumbdollars_token') || '';
+    let token = getStoredToken();
+    if (!token) {
+      token = await tryRestoreSession();
+    }
     if (!token) {
       throw new Error('Login required before secure checkout.');
     }
@@ -134,6 +152,9 @@ async function initializeCheckoutPage() {
     return;
   }
   setStatus('Ready for secure Stripe checkout.');
+  if (!getStoredToken()) {
+    await tryRestoreSession();
+  }
   startButton.addEventListener('click', async () => {
     await startSecureCheckout();
   });

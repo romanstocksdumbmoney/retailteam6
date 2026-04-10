@@ -14,6 +14,17 @@ async function fetchJson(url, options = {}) {
   return response.json();
 }
 
+async function tryRestoreSession() {
+  if (typeof window.restoreSessionIfNeeded === 'function') {
+    const restored = await window.restoreSessionIfNeeded();
+    if (typeof restored === 'string') {
+      return restored;
+    }
+    return String(restored?.token || '').trim();
+  }
+  return '';
+}
+
 function getAuthHeaders() {
   const token = localStorage.getItem('dumbdollars_token') || '';
   if (!token) {
@@ -138,6 +149,10 @@ function renderResult(payload) {
 }
 
 async function queueLatestAnalysisForLiveExecution() {
+  const token = String(localStorage.getItem('dumbdollars_token') || '').trim();
+  if (!token) {
+    await tryRestoreSession();
+  }
   if (!latestAnalysis) {
     throw new Error('Run an AI Trade analysis first.');
   }
@@ -220,7 +235,11 @@ function setupAiTradeForm() {
         throw new Error('Please upload a chart image first.');
       }
 
-      const token = localStorage.getItem('dumbdollars_token') || '';
+      let token = localStorage.getItem('dumbdollars_token') || '';
+      if (!token) {
+        await tryRestoreSession();
+        token = localStorage.getItem('dumbdollars_token') || '';
+      }
       if (!token) {
         throw new Error('Please log in to use AI Trade.');
       }
@@ -265,4 +284,13 @@ function setupAiTradeForm() {
   });
 }
 
-setupAiTradeForm();
+async function init() {
+  if (!localStorage.getItem('dumbdollars_token')) {
+    await tryRestoreSession();
+  }
+  setupAiTradeForm();
+}
+
+init().catch(() => {
+  setupAiTradeForm();
+});

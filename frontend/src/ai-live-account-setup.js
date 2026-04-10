@@ -7,17 +7,24 @@ function setStatus(text, isError = false) {
   node.className = isError ? 'small-note auth-error' : 'small-note';
 }
 
+function openBrokerConnectWithBroker(broker) {
+  const normalized = String(broker || '').trim().toLowerCase();
+  if (!normalized) {
+    window.location.href = '/brokerage-onboarding.html';
+    return;
+  }
+  window.location.href = `/brokerage-onboarding.html?broker=${encodeURIComponent(normalized)}&autostart=1&from=live-setup`;
+}
+
 function setupActions() {
   const startButton = document.getElementById('ai-live-setup-start');
   const fundingButton = document.getElementById('ai-live-setup-open-funding');
   const brokerButton = document.getElementById('ai-live-setup-open-broker');
   const accountButton = document.getElementById('ai-live-setup-open-account');
-  const openIbApiButton = document.getElementById('ai-live-open-ib-api');
-  const openIbBridgeButton = document.getElementById('ai-live-open-ib-bridge');
-  const openRobinhoodApiButton = document.getElementById('ai-live-open-robinhood-api');
-  const openRobinhoodBridgeButton = document.getElementById('ai-live-open-robinhood-bridge');
-  const openTradestationApiButton = document.getElementById('ai-live-open-tradestation-api');
-  const openTradestationBridgeButton = document.getElementById('ai-live-open-tradestation-bridge');
+  const directBrokerButton = document.getElementById('ai-live-setup-direct-broker');
+  const openIbBridgeButton = document.getElementById('ai-live-open-broker-ibkr');
+  const openRobinhoodBridgeButton = document.getElementById('ai-live-open-broker-robinhood');
+  const openTradestationBridgeButton = document.getElementById('ai-live-open-broker-tradestation');
 
   if (startButton instanceof HTMLButtonElement) {
     startButton.addEventListener('click', () => {
@@ -43,44 +50,35 @@ function setupActions() {
       window.location.href = '/ai-bot-account.html';
     });
   }
-  if (openIbApiButton instanceof HTMLAnchorElement) {
-    openIbApiButton.addEventListener('click', () => {
-      setStatus('Opening Interactive Brokers account/API page...');
+  if (directBrokerButton instanceof HTMLButtonElement) {
+    directBrokerButton.addEventListener('click', () => {
+      setStatus('Opening direct broker signup + AI auto setup...');
+      window.location.href = '/ai-broker-direct-setup.html';
     });
   }
   if (openIbBridgeButton instanceof HTMLButtonElement) {
     openIbBridgeButton.addEventListener('click', () => {
       setStatus('Opening broker connect preselected for Interactive Brokers...');
-      window.location.href = '/brokerage-onboarding.html?broker=interactive-brokers';
-    });
-  }
-  if (openRobinhoodApiButton instanceof HTMLAnchorElement) {
-    openRobinhoodApiButton.addEventListener('click', () => {
-      setStatus('Opening Robinhood account page...');
+      openBrokerConnectWithBroker('interactive-brokers');
     });
   }
   if (openRobinhoodBridgeButton instanceof HTMLButtonElement) {
     openRobinhoodBridgeButton.addEventListener('click', () => {
       setStatus('Opening broker connect preselected for Robinhood...');
-      window.location.href = '/brokerage-onboarding.html?broker=robinhood';
-    });
-  }
-  if (openTradestationApiButton instanceof HTMLAnchorElement) {
-    openTradestationApiButton.addEventListener('click', () => {
-      setStatus('Opening TradeStation account/API page...');
+      openBrokerConnectWithBroker('robinhood');
     });
   }
   if (openTradestationBridgeButton instanceof HTMLButtonElement) {
     openTradestationBridgeButton.addEventListener('click', () => {
       setStatus('Opening broker connect preselected for TradeStation...');
-      window.location.href = '/brokerage-onboarding.html?broker=tradestation';
+      openBrokerConnectWithBroker('tradestation');
     });
   }
 }
 
 function init() {
   setupActions();
-  setStatus('Use this checklist top-to-bottom to get AI trading on your account.');
+  setStatus('Use this checklist top-to-bottom to get AI trading on your account. For fastest flow, use Direct Broker Signup + Auto AI Setup.');
 }
 
 init();

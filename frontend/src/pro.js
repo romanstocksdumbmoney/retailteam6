@@ -15,8 +15,16 @@ async function fetchJson(url, options = {}) {
   return response.json();
 }
 
+async function restoreSessionIfNeededSafe() {
+  if (typeof window.restoreSessionIfNeeded === 'function') {
+    await window.restoreSessionIfNeeded();
+  }
+}
+
 function getAuthHeaders() {
-  const token = localStorage.getItem('dumbdollars_token') || '';
+  const token = typeof window.getStoredAuthToken === 'function'
+    ? window.getStoredAuthToken()
+    : (localStorage.getItem('dumbdollars_token') || '');
   if (!token) {
     return {};
   }
@@ -103,6 +111,7 @@ function clearCheckoutQueryParams() {
 }
 
 async function handleCheckoutReturn() {
+  await restoreSessionIfNeededSafe();
   const params = new URLSearchParams(window.location.search);
   const checkoutState = String(params.get('checkout') || '').trim().toLowerCase();
   if (!checkoutState) {
@@ -152,8 +161,11 @@ async function handleCheckoutReturn() {
   }
 }
 
-function openPaymentPage() {
-  const token = localStorage.getItem('dumbdollars_token') || '';
+async function openPaymentPage() {
+  await restoreSessionIfNeededSafe();
+  const token = typeof window.getStoredAuthToken === 'function'
+    ? window.getStoredAuthToken()
+    : (localStorage.getItem('dumbdollars_token') || '');
   if (!token) {
     setStatus('Login required before secure checkout.', true);
     return;
@@ -168,7 +180,7 @@ function initProPage() {
     return;
   }
   startButton.addEventListener('click', async () => {
-    openPaymentPage();
+    await openPaymentPage();
   });
 }
 handleCheckoutReturn()

@@ -18,7 +18,9 @@ async function fetchJson(url, options = {}) {
 const CHECKOUT_BUTTON_ID = 'payment-start-checkout';
 
 function getAuthHeaders() {
-  const token = localStorage.getItem('dumbdollars_token') || '';
+  const token = typeof window.getStoredAuthToken === 'function'
+    ? window.getStoredAuthToken()
+    : (localStorage.getItem('dumbdollars_token') || '');
   if (!token) {
     return {};
   }
@@ -79,6 +81,9 @@ function clearCheckoutQueryParams() {
 }
 
 async function handleCheckoutReturn() {
+  if (typeof window.restoreSessionIfNeeded === 'function') {
+    await window.restoreSessionIfNeeded();
+  }
   const params = new URLSearchParams(window.location.search);
   const checkoutState = String(params.get('checkout') || '').trim().toLowerCase();
   if (!checkoutState) {
@@ -100,7 +105,9 @@ async function handleCheckoutReturn() {
     clearCheckoutQueryParams();
     return;
   }
-  const token = localStorage.getItem('dumbdollars_token') || '';
+  const token = typeof window.getStoredAuthToken === 'function'
+    ? window.getStoredAuthToken()
+    : (localStorage.getItem('dumbdollars_token') || '');
   if (!token) {
     setStatus('Please log in again to finalize Pro activation.', true);
     clearCheckoutQueryParams();
@@ -117,7 +124,11 @@ async function handleCheckoutReturn() {
       body: JSON.stringify({ sessionId })
     });
     if (payload?.token) {
-      localStorage.setItem('dumbdollars_token', payload.token);
+      if (typeof window.setStoredAuthToken === 'function') {
+        window.setStoredAuthToken(payload.token);
+      } else {
+        localStorage.setItem('dumbdollars_token', payload.token);
+      }
     }
     setStatus('Payment confirmed. Pro access is now active.');
     clearCheckoutQueryParams();
@@ -247,7 +258,9 @@ async function loadPaymentSummary() {
 }
 
 function openFinalCheckoutStep() {
-  const token = localStorage.getItem('dumbdollars_token') || '';
+  const token = typeof window.getStoredAuthToken === 'function'
+    ? window.getStoredAuthToken()
+    : (localStorage.getItem('dumbdollars_token') || '');
   if (!token) {
     setStatus('Login required before secure checkout.', true);
     return;

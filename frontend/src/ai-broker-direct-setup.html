@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>DumbDollars Direct Broker Signup + Auto AI</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body class="payment-page-body">
+    <main class="ai-trade-page-shell">
+      <article class="ai-trade-page-card card" role="main" aria-labelledby="direct-broker-title">
+        <a class="open-link" href="/ai-live-account-setup.html">Back to AI Live Setup</a>
+        <div class="pro-plan-logo-wrap" aria-hidden="true">
+          <img class="pro-plan-logo-image" src="./logo-mark.svg" alt="" />
+        </div>
+        <h1 id="direct-broker-title">Direct Broker Signup + Auto AI Setup</h1>
+        <p class="pro-plan-subtitle">Open a broker signup page, complete terms/KYC, then return here and auto-implement AI setup into your account flow.</p>
+
+        <section class="ai-trade-consensus">
+          <h3>Fast path</h3>
+          <ol class="detail-list">
+            <li>Sign in first so setup is saved to your profile.</li>
+            <li>Open your broker signup page and complete terms/KYC.</li>
+            <li>Click "I finished signup" to auto-apply AI bot defaults and jump into Broker Connect.</li>
+          </ol>
+          <p class="small-note">
+            <a class="open-link" href="/ai-trade-access.html?next=%2Fai-broker-direct-setup.html">Sign in / create account first</a>
+          </p>
+        </section>
+
+        <form id="direct-broker-form" class="pro-plan-box ai-bot-form" novalidate>
+          <label>
+            Broker to open
+            <select id="direct-broker-select">
+              <option value="interactive-brokers" selected>Interactive Brokers (recommended API path)</option>
+              <option value="tradestation">TradeStation</option>
+              <option value="robinhood">Robinhood</option>
+              <option value="webull">Webull</option>
+            </select>
+          </label>
+          <div class="ai-bot-actions">
+            <button id="direct-broker-open-signup" type="button">Open Broker Signup</button>
+            <button id="direct-broker-copy-link" class="btn-secondary" type="button">Copy Signup Link</button>
+          </div>
+          <p class="small-note">After signup opens, complete all required forms (terms, identity verification, and account approval).</p>
+          <div class="ai-bot-actions">
+            <button id="direct-broker-auto-ai" type="button">I finished signup - Auto Implement AI</button>
+          </div>
+        </form>
+
+        <p id="direct-broker-status" class="small-note"></p>
+      </article>
+    </main>
+    <script src="./session-helper.js"></script>
+    <script src="./ai-copilot-widget.js"></script>
+    <script src="./ai-broker-direct-setup.js"></script>
+  </body>
+</html>

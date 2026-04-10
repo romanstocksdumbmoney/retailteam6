@@ -1149,8 +1149,8 @@ function setupStartHereRoutingGuard() {
     return;
   }
   const routeByStep = {
-    'signin': '/ai-trade-access.html?next=%2Fai-bot-trader.html',
-    'ai-setup': '/ai-bot-trader.html',
+    'signin': '/ai-trade-access.html?next=%2Fai-live-account-setup.html',
+    'ai-setup': '/ai-live-account-setup.html',
     'funding': '/ai-bot-funding.html',
     'broker': '/brokerage-onboarding.html',
     'account': '/ai-bot-account.html'
