@@ -66,6 +66,58 @@ async function requestWithAuthRetry(url, options = {}) {
 }
 
 let currentControlLink = '';
+let activeQuickProfile = 'balanced';
+
+const QUICK_SETUP_PROFILES = Object.freeze({
+  conservative: {
+    label: 'Conservative',
+    summary: 'lower risk, fewer positions',
+    prompt: 'Trade high-liquidity large caps only, favor higher-quality setups, avoid earnings-week names.',
+    config: {
+      riskPerTradePct: 0.8,
+      minRewardRiskRatio: 2.4,
+      targetReturnPct: 3.5,
+      maxSectorExposurePct: 25,
+      maxGrossExposurePct: 75,
+      maxPositions: 4,
+      timeframe: 'swing',
+      testAreaRiskPct: 0.8,
+      autoExecuteLive: false
+    }
+  },
+  balanced: {
+    label: 'Balanced',
+    summary: 'default mix of risk and growth',
+    prompt: 'Trade momentum breakouts with strict risk control, avoid earnings-day names, focus on liquid large caps.',
+    config: {
+      riskPerTradePct: 1.5,
+      minRewardRiskRatio: 1.8,
+      targetReturnPct: 4.5,
+      maxSectorExposurePct: 35,
+      maxGrossExposurePct: 100,
+      maxPositions: 6,
+      timeframe: 'intraday',
+      testAreaRiskPct: 1.5,
+      autoExecuteLive: false
+    }
+  },
+  aggressive: {
+    label: 'Aggressive',
+    summary: 'higher risk, faster rotation',
+    prompt: 'Trade stronger momentum names with tighter execution, use strict stop discipline, avoid low-liquidity symbols.',
+    config: {
+      riskPerTradePct: 2.8,
+      minRewardRiskRatio: 1.5,
+      targetReturnPct: 7,
+      maxSectorExposurePct: 45,
+      maxGrossExposurePct: 130,
+      maxPositions: 10,
+      timeframe: 'intraday',
+      testAreaRiskPct: 2.8,
+      autoExecuteLive: false
+    }
+  }
+});
 
 function setStatus(text, isError = false) {
   const statusNode = document.getElementById('ai-bot-status');
@@ -140,7 +192,10 @@ function applyConfigToForm(config = {}) {
     }
   };
   setInput('ai-bot-prompt', config.prompt || '');
+  setInput('ai-bot-capital', config.capitalUsd ?? 10000);
   setInput('ai-bot-risk-pct', config.riskPerTradePct ?? 1.5);
+  setInput('ai-bot-test-risk-pct', config.testAreaRiskPct ?? config.riskPerTradePct ?? 1.5);
+  setInput('ai-bot-test-capital', config.testAreaCapitalUsd ?? config.capitalUsd ?? 10000);
   setInput('ai-bot-target-return-pct', config.targetReturnPct ?? 12);
   setInput('ai-bot-min-rr', config.minRewardRiskRatio ?? 2);
   const autoExecuteNode = document.getElementById('ai-bot-auto-execute-live');
@@ -150,6 +205,7 @@ function applyConfigToForm(config = {}) {
   setInput('ai-bot-max-sector-exposure-pct', config.maxSectorExposurePct ?? 35);
   setInput('ai-bot-max-gross-exposure-pct', config.maxGrossExposurePct ?? 100);
   setInput('ai-bot-target-holdings', config.maxPositions ?? 4);
+  setSelect('ai-bot-trading-mode', config.tradingMode || 'paper');
   setSelect('ai-bot-timeframe', config.timeframe || 'intraday');
 
   const selectedSectors = new Set(Array.isArray(config.sectors) ? config.sectors : []);
@@ -160,6 +216,130 @@ function applyConfigToForm(config = {}) {
     }
   });
   syncAutoExecutionVisibility();
+}
+
+function updateQuickProfileUi(profileKey) {
+  const profile = QUICK_SETUP_PROFILES[profileKey] || QUICK_SETUP_PROFILES.balanced;
+  activeQuickProfile = profileKey in QUICK_SETUP_PROFILES ? profileKey : 'balanced';
+  const labelNode = document.getElementById('ai-bot-quick-profile');
+  if (labelNode) {
+    labelNode.textContent = `Risk profile: ${profile.label} (${profile.summary})`;
+  }
+  const presetButtons = document.querySelectorAll('.ai-bot-preset-btn');
+  presetButtons.forEach((node) => {
+    if (!(node instanceof HTMLButtonElement)) {
+      return;
+    }
+    const key = String(node.dataset.presetProfile || '').trim().toLowerCase();
+    const isActive = key === activeQuickProfile;
+    node.classList.toggle('is-active', isActive);
+    node.setAttribute('aria-pressed', isActive ? 'true' : 'false');
+  });
+}
+
+function applyQuickProfile(profileKey, options = {}) {
+  const profile = QUICK_SETUP_PROFILES[profileKey];
+  if (!profile) {
+    return;
+  }
+  const announce = options.announce !== false;
+  const promptNode = document.getElementById('ai-bot-prompt');
+  const existingPrompt = promptNode instanceof HTMLTextAreaElement ? promptNode.value.trim() : '';
+  const currentCapital = getNumberInputValue('ai-bot-capital', 10000);
+  const currentTestCapital = getNumberInputValue('ai-bot-test-capital', currentCapital);
+  const currentTradingMode = getSelectedTradingMode();
+
+  applyConfigToForm({
+    ...profile.config,
+    prompt: existingPrompt || profile.prompt,
+    capitalUsd: currentCapital,
+    testAreaCapitalUsd: currentTestCapital || currentCapital,
+    tradingMode: currentTradingMode
+  });
+  updateQuickProfileUi(profileKey);
+  if (announce) {
+    setStatus(`${profile.label} quick profile applied. Use a quick save button to continue.`);
+  }
+}
+
+function inferQuickProfileFromForm() {
+  const risk = getNumberInputValue('ai-bot-risk-pct', QUICK_SETUP_PROFILES.balanced.config.riskPerTradePct);
+  if (risk <= 1) {
+    return 'conservative';
+  }
+  if (risk >= 2.2) {
+    return 'aggressive';
+  }
+  return 'balanced';
+}
+
+function setupQuickSetupActions() {
+  const advancedDetails = document.getElementById('ai-bot-advanced-details');
+  const toggleAdvancedButton = document.getElementById('ai-bot-toggle-advanced');
+  const quickPaperButton = document.getElementById('ai-bot-quick-paper');
+  const quickLiveButton = document.getElementById('ai-bot-quick-live');
+  const modeSelect = document.getElementById('ai-bot-trading-mode');
+  const presetButtons = document.querySelectorAll('.ai-bot-preset-btn');
+
+  const syncAdvancedToggleLabel = () => {
+    if (!(toggleAdvancedButton instanceof HTMLButtonElement) || !(advancedDetails instanceof HTMLDetailsElement)) {
+      return;
+    }
+    toggleAdvancedButton.textContent = advancedDetails.open ? 'Hide Advanced Settings' : 'Show Advanced Settings';
+  };
+
+  if (advancedDetails instanceof HTMLDetailsElement && toggleAdvancedButton instanceof HTMLButtonElement) {
+    toggleAdvancedButton.addEventListener('click', () => {
+      advancedDetails.open = !advancedDetails.open;
+      syncAdvancedToggleLabel();
+    });
+    advancedDetails.addEventListener('toggle', syncAdvancedToggleLabel);
+    syncAdvancedToggleLabel();
+  }
+
+  presetButtons.forEach((node) => {
+    if (!(node instanceof HTMLButtonElement)) {
+      return;
+    }
+    node.addEventListener('click', () => {
+      const key = String(node.dataset.presetProfile || '').trim().toLowerCase();
+      applyQuickProfile(key, { announce: true });
+    });
+  });
+
+  updateQuickProfileUi(activeQuickProfile);
+
+  const saveQuickConfigAndRedirect = async (targetMode, destination, modeLabel, button) => {
+    if (!(button instanceof HTMLButtonElement)) {
+      return;
+    }
+    try {
+      button.disabled = true;
+      if (modeSelect instanceof HTMLSelectElement) {
+        modeSelect.value = targetMode;
+      }
+      syncAutoExecutionVisibility();
+      setStatus(`Saving ${modeLabel} quick setup...`);
+      await saveBotConfig();
+      setStatus(`Saved. Opening ${modeLabel} setup...`);
+      window.location.href = destination;
+    } catch (error) {
+      setStatus(error.message || `Could not save ${modeLabel} quick setup.`, true);
+    } finally {
+      button.disabled = false;
+    }
+  };
+
+  if (quickPaperButton instanceof HTMLButtonElement) {
+    quickPaperButton.addEventListener('click', async () => {
+      await saveQuickConfigAndRedirect('paper', '/ai-bot-funding.html', 'Test Area', quickPaperButton);
+    });
+  }
+  if (quickLiveButton instanceof HTMLButtonElement) {
+    quickLiveButton.addEventListener('click', async () => {
+      await saveQuickConfigAndRedirect('live', '/ai-live-account-setup.html', 'Live Account', quickLiveButton);
+    });
+  }
 }
 
 function renderBotSummary(payload) {
@@ -349,6 +529,7 @@ function renderState(payload) {
   renderLogs(payload.lastCycle || null);
   renderControlCenter(payload);
   applyConfigToForm(payload.config || {});
+  updateQuickProfileUi(inferQuickProfileFromForm());
 }
 
 async function loadBotState() {
@@ -460,6 +641,7 @@ function setupForm() {
     });
     syncAutoExecutionVisibility();
   }
+  setupQuickSetupActions();
 
   if (fundingButton instanceof HTMLButtonElement) {
     fundingButton.addEventListener('click', () => {

@@ -262,6 +262,35 @@ body {
   gap: 0.55rem;
 }
 
+.ai-bot-quick-setup {
+  border: 1px solid rgba(250, 204, 21, 0.45);
+  background: linear-gradient(180deg, rgba(250, 204, 21, 0.1), rgba(2, 6, 23, 0.88));
+}
+
+.ai-bot-preset-btn.is-active {
+  border-color: rgba(250, 204, 21, 0.88);
+  color: #fef08a;
+  box-shadow: 0 0 0 1px rgba(250, 204, 21, 0.5);
+}
+
+.ai-bot-advanced-details {
+  border: 1px solid rgba(148, 163, 184, 0.3);
+  border-radius: 12px;
+  padding: 0.55rem 0.65rem;
+  background: rgba(2, 6, 23, 0.66);
+}
+
+.ai-bot-advanced-details summary {
+  cursor: pointer;
+  color: #fde68a;
+  font-weight: 700;
+  margin-bottom: 0.45rem;
+}
+
+.ai-bot-advanced-details[open] summary {
+  margin-bottom: 0.7rem;
+}
+
 .ai-bot-layout {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));

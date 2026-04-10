@@ -14,7 +14,23 @@
           <img class="pro-plan-logo-image" src="./logo-mark.svg" alt="" />
         </div>
         <h1 id="ai-bot-title">AI Bot Trader</h1>
-        <p class="pro-plan-subtitle">Set prompt, risk limits, sectors, and portfolio allocation. Then move to Test Area / Live Funding to choose paper testing or funded live mode.</p>
+        <p class="pro-plan-subtitle">Set up your AI bot in 2 minutes: pick a risk profile, save, then follow guided funding + broker steps.</p>
+
+        <section class="ai-bot-quick-setup card" aria-labelledby="ai-bot-quick-setup-title">
+          <h3 id="ai-bot-quick-setup-title">Quick Setup (Recommended)</h3>
+          <p class="small-note">Choose a profile, then use one of the quick save buttons. You can still tune advanced settings anytime.</p>
+          <div class="ai-bot-actions">
+            <button type="button" class="btn-secondary ai-bot-preset-btn" data-preset-profile="conservative">Conservative</button>
+            <button type="button" class="btn-secondary ai-bot-preset-btn" data-preset-profile="balanced">Balanced</button>
+            <button type="button" class="btn-secondary ai-bot-preset-btn" data-preset-profile="aggressive">Aggressive</button>
+            <button type="button" class="btn-secondary" id="ai-bot-toggle-advanced">Show Advanced Settings</button>
+          </div>
+          <p id="ai-bot-quick-profile" class="small-note">Risk profile: Balanced (default)</p>
+          <div class="ai-bot-actions">
+            <button id="ai-bot-quick-paper" type="button">Quick Save + Open Test Area</button>
+            <button id="ai-bot-quick-live" class="btn-secondary" type="button">Quick Save + Open Live Setup</button>
+          </div>
+        </section>
 
         <form id="ai-bot-config-form" class="pro-plan-box ai-bot-form" novalidate>
           <label>
@@ -27,28 +43,11 @@
               <input id="ai-bot-capital" type="number" min="100" step="100" value="10000" required />
             </label>
             <label>
-              Max risk per trade (%)
-              <input id="ai-bot-risk-pct" type="number" min="0.1" max="10" step="0.1" value="1.5" required />
-            </label>
-            <label>
-              Min reward/risk ratio
-              <input id="ai-bot-min-rr" type="number" min="0.5" max="8" step="0.1" value="1.8" required />
-            </label>
-            <label>
-              Target holdings
-              <input id="ai-bot-target-holdings" type="number" min="1" max="25" step="1" value="6" required />
-            </label>
-            <label>
-              Max sector exposure (%)
-              <input id="ai-bot-max-sector-exposure-pct" type="number" min="5" max="100" step="1" value="35" required />
-            </label>
-            <label>
-              Max gross exposure (%)
-              <input id="ai-bot-max-gross-exposure-pct" type="number" min="10" max="200" step="1" value="100" required />
-            </label>
-            <label>
-              Target return per cycle (%)
-              <input id="ai-bot-target-return-pct" type="number" min="0.5" max="50" step="0.1" value="4.5" required />
+              Trading mode
+              <select id="ai-bot-trading-mode">
+                <option value="paper" selected>Test Area (Paper Trading)</option>
+                <option value="live">Live Funding Mode</option>
+              </select>
             </label>
             <label>
               Timeframe
@@ -59,38 +58,60 @@
               </select>
             </label>
             <label>
-              Trading mode
-              <select id="ai-bot-trading-mode">
-                <option value="paper" selected>Test Area (Paper Trading)</option>
-                <option value="live">Live Funding Mode</option>
-              </select>
+              Max risk per trade (%)
+              <input id="ai-bot-risk-pct" type="number" min="0.1" max="10" step="0.1" value="1.5" required />
             </label>
             <label>
+              Target holdings
+              <input id="ai-bot-target-holdings" type="number" min="1" max="25" step="1" value="6" required />
+            </label>
+            <label>
+              Min reward/risk ratio
+              <input id="ai-bot-min-rr" type="number" min="0.5" max="8" step="0.1" value="1.8" required />
+            </label>
+            <label id="ai-bot-auto-execute-wrap" class="field-full" hidden>
               <input id="ai-bot-auto-execute-live" type="checkbox" />
               Enable hands-free live execution (AI trades for you after broker setup passes)
             </label>
             <p class="small-note field-full"><strong>Easy path:</strong> Save setup → Open Funding + Test → Open Live Brokerage Account → Run broker test until all required checks pass → turn on hands-free execution.</p>
             <p class="small-note field-full">Broker account signup and identity verification (KYC) must be completed by the user before AI can execute live trades.</p>
-            <label>
-              Test Area capital ($)
-              <input id="ai-bot-test-capital" type="number" min="100" step="100" value="10000" required />
-            </label>
-            <label>
-              Test Area risk per trade (%)
-              <input id="ai-bot-test-risk-pct" type="number" min="0.1" max="20" step="0.1" value="1.5" required />
-            </label>
           </div>
-          <fieldset class="ai-bot-sectors">
-            <legend>Sectors to trade</legend>
-            <label><input type="checkbox" value="Technology" checked /> Technology</label>
-            <label><input type="checkbox" value="Semiconductors" checked /> Semiconductors</label>
-            <label><input type="checkbox" value="Financials" checked /> Financials</label>
-            <label><input type="checkbox" value="Energy" /> Energy</label>
-            <label><input type="checkbox" value="Healthcare" checked /> Healthcare</label>
-            <label><input type="checkbox" value="Consumer Discretionary" checked /> Consumer Discretionary</label>
-            <label><input type="checkbox" value="Industrials" /> Industrials</label>
-            <label><input type="checkbox" value="Communication Services" checked /> Communication Services</label>
-          </fieldset>
+          <details id="ai-bot-advanced-details" class="ai-bot-advanced-details">
+            <summary>Advanced settings (optional)</summary>
+            <div class="ai-bot-grid">
+              <label>
+                Max sector exposure (%)
+                <input id="ai-bot-max-sector-exposure-pct" type="number" min="5" max="100" step="1" value="35" required />
+              </label>
+              <label>
+                Max gross exposure (%)
+                <input id="ai-bot-max-gross-exposure-pct" type="number" min="10" max="200" step="1" value="100" required />
+              </label>
+              <label>
+                Target return per cycle (%)
+                <input id="ai-bot-target-return-pct" type="number" min="0.5" max="50" step="0.1" value="4.5" required />
+              </label>
+              <label>
+                Test Area capital ($)
+                <input id="ai-bot-test-capital" type="number" min="100" step="100" value="10000" required />
+              </label>
+              <label>
+                Test Area risk per trade (%)
+                <input id="ai-bot-test-risk-pct" type="number" min="0.1" max="20" step="0.1" value="1.5" required />
+              </label>
+            </div>
+            <fieldset class="ai-bot-sectors">
+              <legend>Sectors to trade</legend>
+              <label><input type="checkbox" value="Technology" checked /> Technology</label>
+              <label><input type="checkbox" value="Semiconductors" checked /> Semiconductors</label>
+              <label><input type="checkbox" value="Financials" checked /> Financials</label>
+              <label><input type="checkbox" value="Energy" /> Energy</label>
+              <label><input type="checkbox" value="Healthcare" checked /> Healthcare</label>
+              <label><input type="checkbox" value="Consumer Discretionary" checked /> Consumer Discretionary</label>
+              <label><input type="checkbox" value="Industrials" /> Industrials</label>
+              <label><input type="checkbox" value="Communication Services" checked /> Communication Services</label>
+            </fieldset>
+          </details>
           <button id="ai-bot-save" type="submit">Save Risk Setup</button>
         </form>
 
