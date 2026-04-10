@@ -830,6 +830,47 @@ h1 {
   border-color: rgba(250, 204, 21, 0.6);
 }
 
+.broker-account-open-card {
+  margin-top: 0.8rem;
+  border: 1px solid rgba(250, 204, 21, 0.4);
+  border-radius: 12px;
+  background: linear-gradient(180deg, rgba(15, 23, 42, 0.86), rgba(2, 6, 23, 0.86));
+  padding: 0.9rem;
+}
+
+.broker-account-open-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 0.55rem;
+  margin-top: 0.55rem;
+}
+
+.broker-account-open-item {
+  border: 1px solid rgba(148, 163, 184, 0.34);
+  border-radius: 10px;
+  background: rgba(2, 6, 23, 0.72);
+  padding: 0.62rem;
+  display: grid;
+  gap: 0.36rem;
+}
+
+.broker-account-open-item h4 {
+  margin: 0;
+  color: #fef08a;
+}
+
+.broker-account-open-item p {
+  margin: 0;
+  color: #dbe2ee;
+  font-size: 0.82rem;
+}
+
+.broker-account-open-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
 .start-here-link {
   cursor: pointer;
 }

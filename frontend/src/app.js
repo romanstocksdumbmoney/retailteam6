@@ -1134,6 +1134,15 @@ function openAiLiveAccountSetupPage() {
   window.location.href = '/ai-live-account-setup.html';
 }
 
+function openBrokerageOnboardingWithBroker(broker) {
+  const normalized = String(broker || '').trim().toLowerCase();
+  if (!normalized) {
+    openBrokerageOnboardingPage();
+    return;
+  }
+  window.location.href = `/brokerage-onboarding.html?broker=${encodeURIComponent(normalized)}`;
+}
+
 function setupStartHereRoutingGuard() {
   const links = Array.from(document.querySelectorAll('.start-here-grid .start-here-link'));
   if (!links.length) {
@@ -1158,6 +1167,37 @@ function setupStartHereRoutingGuard() {
       event.preventDefault();
       window.location.href = targetHref;
     });
+  });
+}
+
+function setupBrokerageApiSection() {
+  const section = document.getElementById('brokerage-api-section');
+  if (!section) {
+    return;
+  }
+  section.addEventListener('click', (event) => {
+    const target = event.target;
+    if (!(target instanceof HTMLElement)) {
+      return;
+    }
+    const trigger = target.closest('[data-broker-action]');
+    if (!(trigger instanceof HTMLElement)) {
+      return;
+    }
+    const action = String(trigger.getAttribute('data-broker-action') || '').trim().toLowerCase();
+    const broker = String(trigger.getAttribute('data-broker') || '').trim().toLowerCase();
+    if (!action) {
+      return;
+    }
+    if (action === 'use-broker') {
+      event.preventDefault();
+      openBrokerageOnboardingWithBroker(broker);
+      return;
+    }
+    if (action === 'open-account') {
+      // Let anchor default behavior handle external links.
+      return;
+    }
   });
 }
 
@@ -2920,6 +2960,7 @@ async function init() {
   setupStartHereRoutingGuard();
   setupModuleNavigation();
   setupDashboardOrganization();
+  setupBrokerageApiSection();
   setupAiSidebar();
   setupModuleDeepLinks();
   setupStockForm();
