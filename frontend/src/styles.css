@@ -830,6 +830,10 @@ h1 {
   border-color: rgba(250, 204, 21, 0.6);
 }
 
+.start-here-link {
+  cursor: pointer;
+}
+
 .ai-live-setup-flow {
   display: grid;
   gap: 0.62rem;

@@ -108,7 +108,7 @@ function buildRouteSuggestion(input, pathname) {
     {
       href: '/brokerage-onboarding.html',
       label: 'Broker Connection',
-      keywords: ['broker', 'robinhood', 'connect account', 'connection test', 'bridge']
+      keywords: ['broker', 'robinhood', 'alpaca', 'ibkr', 'interactive brokers', 'connect account', 'connection test', 'bridge']
     },
     {
       href: '/ai-bot-account.html',

@@ -1134,6 +1134,33 @@ function openAiLiveAccountSetupPage() {
   window.location.href = '/ai-live-account-setup.html';
 }
 
+function setupStartHereRoutingGuard() {
+  const links = Array.from(document.querySelectorAll('.start-here-grid .start-here-link'));
+  if (!links.length) {
+    return;
+  }
+  const routeByStep = {
+    'signin': '/ai-trade-access.html?next=%2Fai-bot-trader.html',
+    'ai-setup': '/ai-bot-trader.html',
+    'funding': '/ai-bot-funding.html',
+    'broker': '/brokerage-onboarding.html',
+    'account': '/ai-bot-account.html'
+  };
+  links.forEach((link) => {
+    const stepKey = String(link.getAttribute('data-start-step') || '').trim().toLowerCase();
+    const targetHref = routeByStep[stepKey];
+    if (!targetHref) {
+      return;
+    }
+    // Force explicit routing for guided tiles in case stale handlers or browser cache interfere.
+    link.setAttribute('href', targetHref);
+    link.addEventListener('click', (event) => {
+      event.preventDefault();
+      window.location.href = targetHref;
+    });
+  });
+}
+
 function openAiTradeEntryPage() {
   const hasStoredToken = Boolean(authToken || localStorage.getItem('dumbdollars_token'));
   if (currentUser || hasStoredToken) {
@@ -2890,6 +2917,7 @@ async function init() {
   setupProPopup();
   setupSidebarMenu();
   setupSidebarDropdowns();
+  setupStartHereRoutingGuard();
   setupModuleNavigation();
   setupDashboardOrganization();
   setupAiSidebar();
