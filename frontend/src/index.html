@@ -57,7 +57,13 @@
           </div>
           <p class="small-note">Use this first if the dashboard feels crowded. It opens the easiest path with clear steps.</p>
           <div class="instant-ai-launch-actions">
-            <button id="instant-ai-trade-button" class="instant-ai-primary-btn" type="button">AI Trade Instantly</button>
+            <a
+              id="instant-ai-trade-button"
+              class="instant-ai-primary-btn instant-ai-primary-link"
+              href="/ai-broker-direct-setup.html?broker=interactive-brokers&entry=instant"
+            >
+              AI Trade Instantly
+            </a>
           </div>
           <div class="instant-ai-broker-row">
             <label for="instant-broker-select">Connect broker AI can trade with</label>
@@ -67,7 +73,13 @@
               <option value="robinhood">Robinhood</option>
               <option value="webull">Webull</option>
             </select>
-            <button id="instant-connect-broker-button" class="btn-secondary" type="button">Connect Broker</button>
+            <a
+              id="instant-connect-broker-button"
+              class="btn-secondary instant-connect-broker-link"
+              href="/ai-broker-direct-setup.html?broker=interactive-brokers&entry=instant"
+            >
+              Connect Broker
+            </a>
           </div>
           <p id="instant-ai-launch-status" class="small-note">Recommended for real API automation: Interactive Brokers.</p>
         </section>

@@ -832,6 +832,14 @@ h1 {
   border-width: 1px;
 }
 
+.instant-ai-primary-link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  text-decoration: none;
+  color: #0f172a;
+}
+
 .instant-ai-launch-actions {
   display: grid;
   gap: 0.55rem;
@@ -850,12 +858,20 @@ h1 {
   margin-bottom: 0.1rem;
 }
 
+.instant-connect-broker-link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  text-decoration: none;
+}
+
 @media (max-width: 900px) {
   .instant-ai-broker-row {
     grid-template-columns: 1fr;
   }
 
-  .instant-ai-broker-row button {
+  .instant-ai-broker-row button,
+  .instant-connect-broker-link {
     width: 100%;
   }
 }

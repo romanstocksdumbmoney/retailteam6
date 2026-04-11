@@ -1230,31 +1230,49 @@ function setupInstantAiLaunchpad() {
     statusNode.textContent = text;
   };
 
+  const buildDirectSetupUrl = (broker) => `/ai-broker-direct-setup.html?broker=${encodeURIComponent(broker)}&entry=instant`;
+
+  const syncLaunchLinkTargets = (broker) => {
+    const targetUrl = buildDirectSetupUrl(broker);
+    if (instantTradeButton instanceof HTMLAnchorElement) {
+      instantTradeButton.setAttribute('href', targetUrl);
+    }
+    if (connectBrokerButton instanceof HTMLAnchorElement) {
+      connectBrokerButton.setAttribute('href', targetUrl);
+    }
+  };
+
   if (brokerSelect instanceof HTMLSelectElement) {
     const remembered = String(localStorage.getItem('dumbdollars_selected_broker') || '').trim().toLowerCase();
     if (remembered) {
       brokerSelect.value = remembered;
     }
+    syncLaunchLinkTargets(getSelectedBroker());
     brokerSelect.addEventListener('change', () => {
       const broker = getSelectedBroker();
       localStorage.setItem('dumbdollars_selected_broker', broker);
+      syncLaunchLinkTargets(broker);
       setLaunchStatus(`Broker selected: ${broker.replace(/-/g, ' ')}. Click Connect Broker to continue.`);
     });
   }
 
-  if (instantTradeButton instanceof HTMLButtonElement) {
+  if (instantTradeButton instanceof HTMLButtonElement || instantTradeButton instanceof HTMLAnchorElement) {
     instantTradeButton.addEventListener('click', () => {
       const broker = getSelectedBroker();
       localStorage.setItem('dumbdollars_selected_broker', broker);
-      openDirectBrokerAiSetupPage(broker);
+      if (instantTradeButton instanceof HTMLButtonElement) {
+        openDirectBrokerAiSetupPage(broker);
+      }
     });
   }
 
-  if (connectBrokerButton instanceof HTMLButtonElement) {
+  if (connectBrokerButton instanceof HTMLButtonElement || connectBrokerButton instanceof HTMLAnchorElement) {
     connectBrokerButton.addEventListener('click', () => {
       const broker = getSelectedBroker();
       localStorage.setItem('dumbdollars_selected_broker', broker);
-      openDirectBrokerAiSetupPage(broker);
+      if (connectBrokerButton instanceof HTMLButtonElement) {
+        openDirectBrokerAiSetupPage(broker);
+      }
     });
   }
 }
