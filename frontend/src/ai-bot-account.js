@@ -252,6 +252,14 @@ function renderExecutionCenter(execution) {
   const riskRewardGate = execution?.riskRewardGate || {};
   const proposals = Array.isArray(execution?.pendingTradeProposals) ? execution.pendingTradeProposals : [];
   const proposalsSummary = execution?.proposalsSummary || {};
+  const amplifiedSources = [
+    { label: 'AI Trade queue', count: Number(snapshot?.sources?.aiTradeQueue || 0), note: 'chart-upload setups with entry/stop/take levels' },
+    { label: 'Trend Trades', count: Number(snapshot?.sources?.trendTrades || 0), note: 'social momentum and unusual attention signals' },
+    { label: 'High IV Tracker', count: Number(snapshot?.sources?.highIvTracker || 0), note: 'elevated options-volatility context' }
+  ];
+  const amplifiedSummary = amplifiedSources
+    .map((source) => `${source.label}: ${source.count}`)
+    .join(' • ');
   summaryTarget.innerHTML = `
     <article class="bot-position-card">
       <p><strong>Broker Bridge:</strong> ${brokerConnection.isConnected ? 'CONNECTED' : 'MANUAL / NOT CONNECTED'}</p>
@@ -260,12 +268,20 @@ function renderExecutionCenter(execution) {
       <p><strong>Last Plan:</strong> ${lastPlan?.generatedAt || 'N/A'}</p>
       <p><strong>Plan Tickets:</strong> ${Number(lastPlan?.orderTickets?.length || 0)} • <strong>Manual Action:</strong> ${lastPlan?.manualActionRequired ? 'Yes' : 'No'}</p>
       <p><strong>Last Broker Submit:</strong> ${lastBrokerExecution?.submittedAt || 'N/A'} • <strong>Submitted:</strong> ${Number(lastBrokerExecution?.submittedCount || 0)} • <strong>Rejected:</strong> ${Number(lastBrokerExecution?.rejectedCount || 0)}</p>
-      <p><strong>Website Inputs:</strong> AI queue ${Number(snapshot?.sources?.aiTradeQueue || 0)} • Trend ${Number(snapshot?.sources?.trendTrades || 0)} • High IV ${Number(snapshot?.sources?.highIvTracker || 0)}</p>
+      <p><strong>Website Inputs:</strong> ${amplifiedSummary}</p>
+      <p class="small-note"><strong>Amplification logic:</strong> The AI increases priority for symbols with stronger combined input from AI queue, Trend Trades, and High IV. If one source is quiet, weighting shifts toward the active sources while risk/reward gate still blocks weak setups.</p>
       <p><strong>Broker setup pending steps:</strong> ${pendingSetupCount}</p>
       <p><strong>Risk/Reward gate:</strong> min ${fmtRatio(riskRewardGate.minRewardRiskRatio || 0)} • pass ${Number(riskRewardGate.passed || 0)} / fail ${Number(riskRewardGate.rejected || 0)}</p>
       <p><strong>Pending trade proposals:</strong> ${Number(proposalsSummary.pending || proposals.length || 0)}</p>
       <p class="small-note">Setup docs: ${setup?.docsUrl ? `<a class="open-link" href="${setup.docsUrl}" target="_blank" rel="noopener noreferrer">${setup.docsUrl}</a>` : 'N/A'}</p>
       <p class="small-note">Ranked symbols: ${(snapshot?.rankedSymbols || []).slice(0, 6).join(', ') || 'N/A'}</p>
+    </article>
+    <article class="bot-position-card">
+      <h4>What AI is amplifying right now</h4>
+      <ul class="detail-list">
+        ${amplifiedSources.map((source) => `<li><strong>${source.label}:</strong> ${source.count} signal(s) • ${source.note}</li>`).join('')}
+      </ul>
+      <p class="small-note">These amplified inputs are then filtered by risk/reward rules, broker readiness, and your mode (manual approval vs. auto-execution).</p>
     </article>
   `;
 

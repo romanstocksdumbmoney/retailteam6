@@ -91,14 +91,39 @@
           </ul>
         </section>
 
+        <section class="ai-trade-consensus">
+          <h3>How AI gets implemented in DumbDollars</h3>
+          <ul class="detail-list">
+            <li><strong>Implementation layer 1:</strong> You set prompt + risk rules in AI Bot Setup.</li>
+            <li><strong>Implementation layer 2:</strong> AI uses website signal inputs to rank opportunities.</li>
+            <li><strong>Implementation layer 3:</strong> Broker bridge converts approved AI tickets into executable orders.</li>
+            <li><strong>Implementation layer 4:</strong> Account View shows what AI proposed, what passed risk gates, and what was submitted.</li>
+          </ul>
+        </section>
+
+        <section class="ai-trade-consensus">
+          <h3>What AI is amplifying (signal sources)</h3>
+          <ul class="detail-list">
+            <li><strong>AI Trade Queue:</strong> chart-based setups you explicitly send into execution queue.</li>
+            <li><strong>Trend Trades:</strong> social momentum names used as directional context.</li>
+            <li><strong>High IV Tracker:</strong> elevated-volatility symbols that can affect risk/reward filtering.</li>
+            <li><strong>Prompt constraints:</strong> preferred/avoided symbols and sectors are amplified when ranking trades.</li>
+          </ul>
+          <p class="small-note">You can verify these amplified inputs in <strong>AI Brokerage Account View → Execution Center → Website Inputs</strong>.</p>
+        </section>
+
         <section class="ai-bot-actions">
           <button id="open-ai-trade-from-steps" type="button">Open AI Trade</button>
           <button id="open-ai-bot-from-steps" class="btn-secondary" type="button">Open AI Auto Trader</button>
+          <button id="open-ai-account-view-from-steps" class="btn-secondary" type="button">Open AI Account View</button>
+          <button id="open-direct-broker-flow-from-steps" class="btn-secondary" type="button">Open Direct Broker + Auto AI</button>
           <button id="open-brokerage-from-steps" class="btn-secondary" type="button">Open Live Brokerage Account</button>
         </section>
+        <p id="ai-implementation-steps-status" class="small-note"></p>
         <p class="small-note">Tip: Start in Test Area first, then move to live only after consistent risk-adjusted performance.</p>
       </article>
     </main>
+    <script src="./session-helper.js"></script>
     <script src="./ai-implementation-steps.js"></script>
     <script src="./ai-copilot-widget.js"></script>
   </body>
