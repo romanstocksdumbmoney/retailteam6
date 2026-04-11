@@ -59,6 +59,7 @@ const BROKER_LOGIN_DOCS = Object.freeze({
 });
 
 const traderStore = new Map();
+const brokerSecretStore = new Map();
 
 function clamp(value, min, max) {
   return Math.max(min, Math.min(max, value));
@@ -83,6 +84,223 @@ function nowIso() {
 
 function roundUsd(value) {
   return Number(Number(value || 0).toFixed(2));
+}
+
+function trimSecret(value, maxLength = 240) {
+  return String(value || '').trim().slice(0, maxLength);
+}
+
+function safeJson(value) {
+  try {
+    return JSON.stringify(value ?? null);
+  } catch (_error) {
+    return '';
+  }
+}
+
+function buildSourceAuditDetails(liveExecution, snapshot) {
+  const queuedAiTradesAll = Array.isArray(liveExecution?.queuedAiTrades) ? liveExecution.queuedAiTrades : [];
+  const pendingQueued = queuedAiTradesAll.filter((row) => String(row?.status || '').toLowerCase() === 'pending');
+  const queueSymbols = [...new Set(pendingQueued.map((row) => normalizeSymbol(row?.symbol)).filter(Boolean))];
+  const rankedSymbols = Array.isArray(snapshot?.rankedSymbols) ? snapshot.rankedSymbols : [];
+  const trendBySymbol = snapshot?.trendBySymbol && typeof snapshot.trendBySymbol === 'object'
+    ? snapshot.trendBySymbol
+    : {};
+  const aiQueueBySymbol = snapshot?.aiQueueBySymbol && typeof snapshot.aiQueueBySymbol === 'object'
+    ? snapshot.aiQueueBySymbol
+    : {};
+  const trendSymbols = Object.keys(trendBySymbol);
+  const combinedCoverage = new Set(
+    rankedSymbols
+      .concat(queueSymbols)
+      .concat(trendSymbols)
+      .map((symbol) => normalizeSymbol(symbol))
+      .filter(Boolean)
+  );
+  return {
+    generatedAt: snapshot?.generatedAt || nowIso(),
+    queuePendingCount: pendingQueued.length,
+    queueTotalCount: queuedAiTradesAll.length,
+    queueSymbols: queueSymbols.slice(0, 24),
+    trendSymbolsCount: trendSymbols.length,
+    highIvSignalsCount: Number(snapshot?.sources?.highIvTracker || 0),
+    rankedSymbolsCount: rankedSymbols.length,
+    rankedSymbolsPreview: rankedSymbols.slice(0, 12),
+    aiQueueBySymbolCount: Object.keys(aiQueueBySymbol).length,
+    trendBySymbolCount: trendSymbols.length,
+    totalUniqueSignalSymbols: combinedCoverage.size,
+    notes: Array.isArray(snapshot?.notes) ? snapshot.notes.slice(0, 8) : []
+  };
+}
+
+function extractAlpacaApiErrorMessage(body) {
+  if (!body || typeof body !== 'object') {
+    return '';
+  }
+  return String(
+    body.message
+    || body.error
+    || body.detail
+    || body.code
+    || ''
+  ).trim();
+}
+
+async function verifyAlpacaApiConnection(apiKey, apiSecret) {
+  const normalizedKey = trimSecret(apiKey, 160);
+  const normalizedSecret = trimSecret(apiSecret, 220);
+  if (!normalizedKey || !normalizedSecret) {
+    return {
+      ok: false,
+      reason: 'missing_credentials',
+      message: 'Missing Alpaca API key/secret.'
+    };
+  }
+  const endpoints = [
+    { env: 'live', apiEndpoint: 'https://api.alpaca.markets' },
+    { env: 'paper', apiEndpoint: 'https://paper-api.alpaca.markets' }
+  ];
+  const errors = [];
+  for (const endpoint of endpoints) {
+    let response;
+    try {
+      // eslint-disable-next-line no-await-in-loop
+      response = await fetch(`${endpoint.apiEndpoint}/v2/account`, {
+        method: 'GET',
+        headers: {
+          'APCA-API-KEY-ID': normalizedKey,
+          'APCA-API-SECRET-KEY': normalizedSecret
+        }
+      });
+    } catch (error) {
+      errors.push(`${endpoint.env}: network_error (${String(error?.message || 'request failed')})`);
+      continue;
+    }
+    let payload = null;
+    try {
+      // eslint-disable-next-line no-await-in-loop
+      payload = await response.json();
+    } catch (_error) {
+      payload = null;
+    }
+    if (response.ok) {
+      const accountId = String(payload?.account_number || payload?.id || '').trim();
+      return {
+        ok: true,
+        env: endpoint.env,
+        apiEndpoint: endpoint.apiEndpoint,
+        accountStatus: String(payload?.status || payload?.account_status || 'active').trim(),
+        accountIdLast4: accountId ? accountId.slice(-4) : ''
+      };
+    }
+    const reason = extractAlpacaApiErrorMessage(payload) || `HTTP ${response.status}`;
+    errors.push(`${endpoint.env}: ${reason}`);
+  }
+  return {
+    ok: false,
+    reason: 'alpaca_auth_failed',
+    message: errors.length > 0
+      ? `Alpaca API check failed (${errors.join(' | ')})`
+      : 'Alpaca API check failed.'
+  };
+}
+
+async function submitAlpacaBrokerOrder(input = {}) {
+  const apiEndpoint = String(input.apiEndpoint || '').trim() || 'https://api.alpaca.markets';
+  const apiKey = trimSecret(input.apiKey, 160);
+  const apiSecret = trimSecret(input.apiSecret, 220);
+  const orderPayload = input.orderPayload || {};
+  const symbol = normalizeSymbol(orderPayload.symbol || '');
+  const qty = Math.max(1, Math.trunc(Number(orderPayload.quantity || 0)));
+  const sideRaw = String(orderPayload.side || 'BUY').trim().toUpperCase();
+  const side = sideRaw === 'SELL_SHORT' ? 'sell' : 'buy';
+  const limitPrice = Number(orderPayload.limitPrice || 0);
+  if (!symbol || !apiKey || !apiSecret || !qty || !Number.isFinite(limitPrice) || limitPrice <= 0) {
+    return {
+      ok: false,
+      reason: 'invalid_alpaca_order_payload',
+      message: 'Alpaca order payload is incomplete.'
+    };
+  }
+  let response;
+  try {
+    response = await fetch(`${apiEndpoint}/v2/orders`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'APCA-API-KEY-ID': apiKey,
+        'APCA-API-SECRET-KEY': apiSecret
+      },
+      body: JSON.stringify({
+        symbol,
+        qty: String(qty),
+        side,
+        type: 'limit',
+        time_in_force: 'day',
+        limit_price: String(roundUsd(limitPrice))
+      })
+    });
+  } catch (error) {
+    return {
+      ok: false,
+      reason: 'alpaca_network_error',
+      message: String(error?.message || 'Network request failed.')
+    };
+  }
+  let payload = null;
+  try {
+    payload = await response.json();
+  } catch (_error) {
+    payload = null;
+  }
+  if (!response.ok) {
+    return {
+      ok: false,
+      reason: 'alpaca_order_rejected',
+      message: extractAlpacaApiErrorMessage(payload) || `HTTP ${response.status}`,
+      payload
+    };
+  }
+  return {
+    ok: true,
+    brokerOrderId: String(payload?.id || payload?.client_order_id || '').trim(),
+    brokerStatus: String(payload?.status || 'accepted').trim(),
+    payload
+  };
+}
+
+function brokerSecretKey(userId, broker) {
+  return `${String(userId || '').trim()}::${String(broker || '').trim().toLowerCase()}`;
+}
+
+function setBrokerSecrets(userId, broker, credentials = {}) {
+  const key = brokerSecretKey(userId, broker);
+  const apiKey = trimSecret(credentials.apiKey, 160);
+  const apiSecret = trimSecret(credentials.apiSecret, 220);
+  if (!apiKey || !apiSecret) {
+    brokerSecretStore.delete(key);
+    return;
+  }
+  brokerSecretStore.set(key, {
+    apiKey,
+    apiSecret,
+    savedAt: nowIso()
+  });
+}
+
+function getBrokerSecrets(userId, broker) {
+  return brokerSecretStore.get(brokerSecretKey(userId, broker)) || null;
+}
+
+function clearBrokerSecrets(userId, broker) {
+  if (broker) {
+    brokerSecretStore.delete(brokerSecretKey(userId, broker));
+    return;
+  }
+  const prefix = `${String(userId || '').trim()}::`;
+  Array.from(brokerSecretStore.keys())
+    .filter((key) => key.startsWith(prefix))
+    .forEach((key) => brokerSecretStore.delete(key));
 }
 
 function daySeed() {
@@ -160,6 +378,9 @@ function defaultState() {
           apiKeyLast4: '',
           secretSaved: false,
           passphraseSaved: false,
+          brokerApiMode: 'simulated',
+          apiEndpoint: '',
+          accountStatus: '',
           credentialFingerprint: '',
           loginUsernameMasked: '',
           loginSaved: false,
@@ -673,6 +894,8 @@ function buildWebsiteSignalSnapshot(state, userId) {
   const highIvSymbols = highIvItems.map((row) => normalizeSymbol(row.symbol)).filter(Boolean);
   const aiQueueSymbols = queuedAiTrades.map((row) => normalizeSymbol(row.symbol)).filter(Boolean);
   const rankedSymbols = [...new Set([...aiQueueSymbols, ...trendSymbols, ...highIvSymbols])].slice(0, 25);
+  const allInputSymbols = [...aiQueueSymbols, ...trendSymbols, ...highIvSymbols];
+  const uniqueInputSymbols = [...new Set(allInputSymbols)];
 
   const trendBySymbol = {};
   trendItems.forEach((row) => {
@@ -702,6 +925,13 @@ function buildWebsiteSignalSnapshot(state, userId) {
       aiTradeQueue: queuedAiTrades.length,
       trendTrades: trendItems.length,
       highIvTracker: highIvItems.length
+    },
+    sourceAudit: {
+      aiTradeQueueSymbols: aiQueueSymbols.length,
+      trendSymbols: trendSymbols.length,
+      highIvSymbols: highIvSymbols.length,
+      uniqueSymbols: uniqueInputSymbols.length,
+      duplicateSignals: Math.max(0, allInputSymbols.length - uniqueInputSymbols.length)
     },
     rankedSymbols,
     trendBySymbol,
@@ -758,7 +988,7 @@ function buildExecutionTicket(state, trade) {
   };
 }
 
-function executeAutoTraderBrokerOrders(user, input = {}) {
+async function executeAutoTraderBrokerOrders(user, input = {}) {
   const userId = user?.id;
   if (!userId) {
     throw new Error('missing_user');
@@ -808,11 +1038,44 @@ function executeAutoTraderBrokerOrders(user, input = {}) {
   }
 
   const submittedAt = nowIso();
-  const brokerOrders = readyTickets.map((ticket, index) => {
+  const auth = brokerConnection.auth || {};
+  const secrets = getBrokerSecrets(userId, broker);
+  const useRealAlpacaApi = broker === 'alpaca'
+    && String(auth.connectionMethod || 'api_keys') === 'api_keys'
+    && Boolean(auth.brokerApiMode === 'real')
+    && Boolean(secrets?.apiKey && secrets?.apiSecret);
+  const brokerOrders = [];
+  for (let index = 0; index < readyTickets.length; index += 1) {
+    const ticket = readyTickets[index];
+    if (useRealAlpacaApi) {
+      // eslint-disable-next-line no-await-in-loop
+      const submitted = await submitAlpacaBrokerOrder({
+        apiEndpoint: auth.apiEndpoint || 'https://api.alpaca.markets',
+        apiKey: secrets.apiKey,
+        apiSecret: secrets.apiSecret,
+        orderPayload: ticket.orderPayload
+      });
+      brokerOrders.push({
+        brokerOrderId: submitted.ok ? submitted.brokerOrderId : null,
+        ticketId: ticket.ticketId,
+        sourceOrderId: ticket.sourceOrderId || null,
+        broker,
+        status: submitted.ok ? 'submitted' : 'rejected',
+        submittedAt,
+        reason: submitted.ok
+          ? null
+          : String(submitted.message || 'Broker adapter rejected this order payload. Review order fields and retry.'),
+        orderPayload: ticket.orderPayload,
+        brokerStatus: submitted.ok ? submitted.brokerStatus : null,
+        executionPath: 'real_api',
+        responseMeta: submitted.payload || null
+      });
+      continue;
+    }
     const seed = hashString(`${userId}:${ticket.ticketId}:${submittedAt}:${index}`);
     const accepted = pseudoRandom(seed) >= 0.08;
     const brokerOrderId = accepted ? `brk-${hashString(`${ticket.ticketId}:${submittedAt}`)}` : null;
-    return {
+    brokerOrders.push({
       brokerOrderId,
       ticketId: ticket.ticketId,
       sourceOrderId: ticket.sourceOrderId || null,
@@ -822,9 +1085,10 @@ function executeAutoTraderBrokerOrders(user, input = {}) {
       reason: accepted
         ? null
         : 'Broker adapter rejected this order payload. Review order fields and retry.',
-      orderPayload: ticket.orderPayload
-    };
-  });
+      orderPayload: ticket.orderPayload,
+      executionPath: 'simulated'
+    });
+  }
 
   const orderByTicket = {};
   brokerOrders.forEach((order) => {
@@ -914,6 +1178,7 @@ function executeAutoTraderBrokerOrders(user, input = {}) {
   liveExecution.lastBrokerExecution = {
     submittedAt,
     broker,
+    executionPath: useRealAlpacaApi ? 'real_api' : 'simulated',
     selectedTickets: selectedTickets.length,
     submittedCount: brokerOrders.filter((row) => row.status === 'submitted').length,
     rejectedCount: brokerOrders.filter((row) => row.status === 'rejected').length,
@@ -1553,12 +1818,14 @@ function getAutoTraderBrokerConnectionGuide(user, options = {}) {
   };
 }
 
-function connectAutoTraderBrokerBridge(user, details = {}) {
+async function connectAutoTraderBrokerBridge(user, details = {}) {
   const userId = user?.id;
   if (!userId) {
     throw new Error('missing_user');
   }
   const state = getState(userId);
+  const existingConnection = ensureLiveExecutionState(state).brokerConnection || defaultState().liveExecution.brokerConnection;
+  const previousBroker = String(existingConnection.broker || 'manual');
   const broker = parseBrokerOrThrow(details.broker);
   if (broker === 'manual') {
     throw new Error('invalid_broker_connection');
@@ -1600,6 +1867,29 @@ function connectAutoTraderBrokerBridge(user, details = {}) {
   }
 
   const bridgeMode = parseExecutionMode(details.bridgeMode || details.executionMode || 'broker_linked');
+  let brokerApiMode = 'simulated';
+  let apiEndpoint = '';
+  let accountStatus = '';
+  if (broker === 'alpaca' && connectionMethod === 'api_keys') {
+    if (!apiKey || !apiSecret) {
+      throw new Error('invalid_alpaca_api_credentials');
+    }
+    const validation = await verifyAlpacaApiConnection(apiKey, apiSecret);
+    if (!validation.ok) {
+      const error = new Error('validate_real_broker_connection_failed');
+      error.details = validation;
+      throw error;
+    }
+    brokerApiMode = 'real';
+    apiEndpoint = validation.apiEndpoint || '';
+    accountStatus = validation.accountStatus || '';
+    setBrokerSecrets(userId, broker, { apiKey, apiSecret });
+  } else {
+    clearBrokerSecrets(userId, broker);
+  }
+  if (previousBroker && previousBroker !== 'manual' && previousBroker !== broker) {
+    clearBrokerSecrets(userId, previousBroker);
+  }
   const paymentRail = String(details.paymentRail || state.liveFunding?.paymentRail || 'bank_transfer').trim().toLowerCase() || 'bank_transfer';
   state.liveFunding = {
     ...(state.liveFunding || defaultState().liveFunding),
@@ -1628,6 +1918,9 @@ function connectAutoTraderBrokerBridge(user, details = {}) {
       apiKeyLast4: connectionMethod === 'api_keys' ? maskLast4(apiKey) : '',
       secretSaved: connectionMethod === 'api_keys',
       passphraseSaved: connectionMethod === 'api_keys' && Boolean(passphrase),
+      brokerApiMode,
+      apiEndpoint,
+      accountStatus,
       credentialFingerprint,
       loginUsernameMasked: connectionMethod === 'existing_account' ? maskLoginIdentifier(loginUsername) : '',
       loginSaved: connectionMethod === 'existing_account',
@@ -1641,7 +1934,7 @@ function connectAutoTraderBrokerBridge(user, details = {}) {
   return getAutoTraderBrokerConnectionGuide(user, { broker });
 }
 
-function testAutoTraderBrokerBridge(user, options = {}) {
+async function testAutoTraderBrokerBridge(user, options = {}) {
   const userId = user?.id;
   if (!userId) {
     throw new Error('missing_user');
@@ -1721,8 +2014,36 @@ function testAutoTraderBrokerBridge(user, options = {}) {
       detail: `Current trading mode: ${state.tradingMode || 'paper'}`
     }
   ];
+  if (broker === 'alpaca' && connectionMethod === 'api_keys') {
+    const secrets = getBrokerSecrets(userId, broker);
+    const validation = await verifyAlpacaApiConnection(secrets?.apiKey, secrets?.apiSecret);
+    checks.push({
+      key: 'broker_live_validation',
+      label: 'Live broker API handshake',
+      ok: Boolean(validation.ok),
+      detail: validation.ok
+        ? `Authenticated against Alpaca ${validation.env} endpoint (${validation.apiEndpoint}).`
+        : String(validation.message || 'Could not validate Alpaca API credentials.')
+    });
+    if (validation.ok) {
+      liveExecution.brokerConnection = {
+        ...connection,
+        auth: {
+          ...(connection.auth || {}),
+          brokerApiMode: 'real',
+          apiEndpoint: validation.apiEndpoint || '',
+          accountStatus: validation.accountStatus || ''
+        }
+      };
+    } else {
+      const error = new Error('validate_real_broker_connection_failed');
+      error.details = validation;
+      throw error;
+    }
+  }
 
-  const bridgeCheckKeys = new Set(['credentials', 'auth_method', 'two_factor', 'permissions', 'bridge_mode']);
+  const connectionState = liveExecution.brokerConnection || connection;
+  const bridgeCheckKeys = new Set(['credentials', 'auth_method', 'two_factor', 'permissions', 'bridge_mode', 'broker_live_validation']);
   const bridgeReady = checks
     .filter((check) => bridgeCheckKeys.has(check.key))
     .every((check) => check.ok);
@@ -1731,7 +2052,7 @@ function testAutoTraderBrokerBridge(user, options = {}) {
     .every((check) => check.ok);
   const testedAt = nowIso();
   liveExecution.brokerConnection = {
-    ...connection,
+    ...connectionState,
     broker,
     bridgeMode,
     isConnected: bridgeReady,
@@ -1771,6 +2092,7 @@ function disconnectAutoTraderBrokerBridge(user) {
   const state = getState(userId);
   const liveExecution = ensureLiveExecutionState(state);
   const previousBroker = String(liveExecution.brokerConnection?.broker || state.liveFunding?.broker || 'manual');
+  clearBrokerSecrets(userId, previousBroker === 'manual' ? undefined : previousBroker);
   liveExecution.brokerConnection = defaultState().liveExecution.brokerConnection;
   state.liveFunding = {
     ...(state.liveFunding || defaultState().liveFunding),
@@ -1928,6 +2250,10 @@ function getAutoTraderAccountView(user) {
   const broker = liveFunding.broker || 'manual';
   const accountHolder = liveFunding.accountHolder || 'live-account';
   const setupBroker = parseBrokerOrThrow(liveFunding.broker || liveExecution.brokerConnection?.broker || 'manual');
+  const sourceAuditDetails = buildSourceAuditDetails(
+    liveExecution,
+    liveExecution.lastWebsiteSignalSnapshot || null
+  );
 
   return {
     account: {
@@ -1980,6 +2306,7 @@ function getAutoTraderAccountView(user) {
       lastBrokerExecution: liveExecution.lastBrokerExecution || null,
       lastPlan: liveExecution.lastPlan || null,
       lastWebsiteSignalSnapshot: liveExecution.lastWebsiteSignalSnapshot || null,
+      sourceAuditDetails,
       promptControl: parsePromptControl(state.config?.prompt || ''),
       promptActivity: (liveExecution.promptActivity || []).slice(0, 20),
       controlCenter: buildControlCenterPayload(state, liveExecution),
@@ -2008,6 +2335,10 @@ function getAutoTraderStatus(user) {
   }
   const state = getState(userId);
   const liveExecution = ensureLiveExecutionState(state);
+  const sourceAuditDetails = buildSourceAuditDetails(
+    liveExecution,
+    liveExecution.lastWebsiteSignalSnapshot || null
+  );
   return {
     configured: state.configured,
     isActive: state.isActive,
@@ -2041,6 +2372,7 @@ function getAutoTraderStatus(user) {
       lastBrokerExecution: liveExecution.lastBrokerExecution || null,
       lastPlan: liveExecution.lastPlan || null,
       lastWebsiteSignalSnapshot: liveExecution.lastWebsiteSignalSnapshot || null,
+      sourceAuditDetails,
       promptControl: parsePromptControl(state.config?.prompt || ''),
       promptActivity: (liveExecution.promptActivity || []).slice(0, 20),
       controlCenter: buildControlCenterPayload(state, liveExecution),

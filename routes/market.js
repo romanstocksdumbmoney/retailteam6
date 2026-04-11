@@ -639,7 +639,7 @@ router.get('/auto-trader/bot', requireSignedIn, (req, res) => {
   return res.json(payload);
 });
 
-router.post('/auto-trader/run', requireSignedIn, (req, res) => {
+router.post('/auto-trader/run', requireSignedIn, async (req, res) => {
   try {
     const cycle = runAutoTraderCycle(req.user, req.body || {});
     let autoExecution = null;
@@ -658,7 +658,7 @@ router.post('/auto-trader/run', requireSignedIn, (req, res) => {
         };
       } else {
         try {
-          const executed = executeAutoTraderBrokerOrders(req.user, {});
+          const executed = await executeAutoTraderBrokerOrders(req.user, {});
           autoExecution = {
             attempted: true,
             status: 'submitted',
@@ -673,6 +673,8 @@ router.post('/auto-trader/run', requireSignedIn, (req, res) => {
             live_funding_required: 'Fund your live account before enabling auto-execution.',
             broker_not_connected: 'Connect and test your broker bridge before enabling auto-execution.',
             trade_permission_missing: 'Broker trade permission is missing; update broker permissions.',
+            missing_broker_api_credentials: 'Live broker credentials are missing. Reconnect broker API keys and run bridge test again.',
+            validate_real_broker_order_failed: 'Live broker rejected one or more orders. Review broker rejection details and retry.',
             no_order_tickets: 'No order tickets generated in this cycle.',
             no_ready_tickets: 'Generated tickets are not broker-ready yet.'
           };
@@ -724,9 +726,9 @@ router.post('/auto-trader/run', requireSignedIn, (req, res) => {
   }
 });
 
-router.post('/auto-trader/execute-orders', requireSignedIn, requireLiveFundingAccess, (req, res) => {
+router.post('/auto-trader/execute-orders', requireSignedIn, requireLiveFundingAccess, async (req, res) => {
   try {
-    const payload = executeAutoTraderBrokerOrders(req.user, req.body || {});
+    const payload = await executeAutoTraderBrokerOrders(req.user, req.body || {});
     return res.json(payload);
   } catch (error) {
     const code = String(error.message || '');
@@ -758,6 +760,18 @@ router.post('/auto-trader/execute-orders', requireSignedIn, requireLiveFundingAc
       return res.status(400).json({
         error: 'trade_permission_missing',
         message: 'Broker connection is missing trade permission.'
+      });
+    }
+    if (code === 'missing_broker_api_credentials') {
+      return res.status(400).json({
+        error: 'missing_broker_api_credentials',
+        message: 'Live broker credentials are not available. Reconnect your broker API credentials and run test again.'
+      });
+    }
+    if (code === 'validate_real_broker_order_failed') {
+      return res.status(400).json({
+        error: 'validate_real_broker_order_failed',
+        message: error.details?.message || 'Live broker order submission failed. Verify broker API credentials, account permissions, and order constraints.'
       });
     }
     if (code === 'no_order_tickets') {
@@ -1045,9 +1059,9 @@ router.get('/auto-trader/broker-connect/steps', requireSignedIn, (req, res) => {
   }
 });
 
-router.post('/auto-trader/broker-connect', requireSignedIn, (req, res) => {
+router.post('/auto-trader/broker-connect', requireSignedIn, async (req, res) => {
   try {
-    const payload = connectAutoTraderBrokerBridge(req.user, req.body || {});
+    const payload = await connectAutoTraderBrokerBridge(req.user, req.body || {});
     return res.json(payload);
   } catch (error) {
     const code = String(error.message || '');
@@ -1067,6 +1081,12 @@ router.post('/auto-trader/broker-connect', requireSignedIn, (req, res) => {
       return res.status(400).json({
         error: 'invalid_api_credentials',
         message: 'API key/secret are required and must be valid length.'
+      });
+    }
+    if (code === 'invalid_alpaca_api_credentials') {
+      return res.status(400).json({
+        error: 'invalid_alpaca_api_credentials',
+        message: 'For Alpaca, API key and API secret are required.'
       });
     }
     if (code === 'invalid_existing_login') {
@@ -1105,6 +1125,12 @@ router.post('/auto-trader/broker-connect', requireSignedIn, (req, res) => {
         message: 'You must acknowledge live trading risk to connect the broker bridge.'
       });
     }
+    if (code === 'validate_real_broker_connection_failed') {
+      return res.status(400).json({
+        error: 'validate_real_broker_connection_failed',
+        message: error.details?.message || 'Live broker credential validation failed. Verify API credentials and try again.'
+      });
+    }
     return res.status(400).json({
       error: 'invalid_request',
       message: 'Could not connect broker bridge.'
@@ -1112,9 +1138,9 @@ router.post('/auto-trader/broker-connect', requireSignedIn, (req, res) => {
   }
 });
 
-router.post('/auto-trader/broker-connect/test', requireSignedIn, (req, res) => {
+router.post('/auto-trader/broker-connect/test', requireSignedIn, async (req, res) => {
   try {
-    const payload = testAutoTraderBrokerBridge(req.user, req.body || {});
+    const payload = await testAutoTraderBrokerBridge(req.user, req.body || {});
     return res.json(payload);
   } catch (error) {
     const code = String(error.message || '');
@@ -1122,6 +1148,12 @@ router.post('/auto-trader/broker-connect/test', requireSignedIn, (req, res) => {
       return res.status(400).json({
         error: 'invalid_broker',
         message: 'Select a supported non-manual broker before running connection test.'
+      });
+    }
+    if (code === 'validate_real_broker_connection_failed') {
+      return res.status(400).json({
+        error: 'validate_real_broker_connection_failed',
+        message: error.details?.message || 'Live broker connection test failed for provided credentials.'
       });
     }
     return res.status(400).json({

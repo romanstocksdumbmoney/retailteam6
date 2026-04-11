@@ -252,6 +252,17 @@ function renderExecutionCenter(execution) {
   const riskRewardGate = execution?.riskRewardGate || {};
   const proposals = Array.isArray(execution?.pendingTradeProposals) ? execution.pendingTradeProposals : [];
   const proposalsSummary = execution?.proposalsSummary || {};
+  const sourceAudit = snapshot?.sourceAudit || {};
+  const sourceAuditDetails = execution?.sourceAuditDetails || {};
+  const auth = brokerConnection?.auth || {};
+  const brokerExecutionPath = String(
+    execution?.lastBrokerExecution?.executionPath
+    || auth?.brokerApiMode
+    || 'simulated'
+  ).toLowerCase();
+  const executionPathLabel = brokerExecutionPath === 'real_api' || brokerExecutionPath === 'real'
+    ? 'REAL API'
+    : 'SIMULATED';
   const amplifiedSources = [
     { label: 'AI Trade queue', count: Number(snapshot?.sources?.aiTradeQueue || 0), note: 'chart-upload setups with entry/stop/take levels' },
     { label: 'Trend Trades', count: Number(snapshot?.sources?.trendTrades || 0), note: 'social momentum and unusual attention signals' },
@@ -264,11 +275,14 @@ function renderExecutionCenter(execution) {
     <article class="bot-position-card">
       <p><strong>Broker Bridge:</strong> ${brokerConnection.isConnected ? 'CONNECTED' : 'MANUAL / NOT CONNECTED'}</p>
       <p><strong>Broker:</strong> ${String(brokerConnection.broker || 'manual').toUpperCase()} • <strong>Mode:</strong> ${String(brokerConnection.bridgeMode || 'manual_confirmed').replace(/_/g, ' ')}</p>
+      <p><strong>Execution Path:</strong> ${executionPathLabel}${auth?.apiEndpoint ? ` • <strong>Endpoint:</strong> ${String(auth.apiEndpoint)}` : ''}</p>
+      <p><strong>Broker API Status:</strong> ${auth?.accountStatus ? String(auth.accountStatus).toUpperCase() : 'N/A'}</p>
       <p><strong>Hands-free live mode:</strong> ${lastPlan?.requiresApproval ? 'OFF (approval required)' : 'ON (AI auto-submit enabled)'}</p>
       <p><strong>Last Plan:</strong> ${lastPlan?.generatedAt || 'N/A'}</p>
       <p><strong>Plan Tickets:</strong> ${Number(lastPlan?.orderTickets?.length || 0)} • <strong>Manual Action:</strong> ${lastPlan?.manualActionRequired ? 'Yes' : 'No'}</p>
       <p><strong>Last Broker Submit:</strong> ${lastBrokerExecution?.submittedAt || 'N/A'} • <strong>Submitted:</strong> ${Number(lastBrokerExecution?.submittedCount || 0)} • <strong>Rejected:</strong> ${Number(lastBrokerExecution?.rejectedCount || 0)}</p>
       <p><strong>Website Inputs:</strong> ${amplifiedSummary}</p>
+      <p><strong>Source Audit:</strong> Unique symbols ${Number(sourceAudit.uniqueSymbols || sourceAuditDetails.totalUniqueSignalSymbols || 0)} • Duplicates ${Number(sourceAudit.duplicateSignals || 0)} • Ranked ${Number(sourceAuditDetails.rankedSymbolsCount || (snapshot?.rankedSymbols || []).length || 0)}</p>
       <p class="small-note"><strong>Amplification logic:</strong> The AI increases priority for symbols with stronger combined input from AI queue, Trend Trades, and High IV. If one source is quiet, weighting shifts toward the active sources while risk/reward gate still blocks weak setups.</p>
       <p><strong>Broker setup pending steps:</strong> ${pendingSetupCount}</p>
       <p><strong>Risk/Reward gate:</strong> min ${fmtRatio(riskRewardGate.minRewardRiskRatio || 0)} • pass ${Number(riskRewardGate.passed || 0)} / fail ${Number(riskRewardGate.rejected || 0)}</p>
