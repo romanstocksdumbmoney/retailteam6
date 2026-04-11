@@ -267,10 +267,22 @@ body {
   background: linear-gradient(180deg, rgba(250, 204, 21, 0.1), rgba(2, 6, 23, 0.88));
 }
 
-.ai-bot-preset-btn.is-active {
+.ai-bot-preset-btn.is-active,
+.ai-strategy-template-btn.is-active {
   border-color: rgba(250, 204, 21, 0.88);
   color: #fef08a;
   box-shadow: 0 0 0 1px rgba(250, 204, 21, 0.5);
+}
+
+.handsfree-step-link {
+  color: #fde047;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  font-weight: 650;
+}
+
+.handsfree-step-link:hover {
+  color: #fef08a;
 }
 
 .ai-bot-advanced-details {

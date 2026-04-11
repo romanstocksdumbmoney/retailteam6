@@ -303,9 +303,18 @@ function renderExecutionCenter(execution) {
     setupSteps.forEach((step, index) => {
       const card = document.createElement('article');
       card.className = `bot-position-card ${step.completed ? 'bot-position-card--success' : 'bot-position-card--warning'}`;
+      const stepLink = String(step.navigateUrl || step.actionHref || step.actionUrl || '').trim();
+      const linkTarget = step.actionExternal ? ' target="_blank" rel="noopener noreferrer"' : '';
+      const stepTitle = stepLink
+        ? `<a class="broker-step-link" href="${stepLink}"${linkTarget}><strong>Step ${index + 1}:</strong> ${step.title}</a>`
+        : `<strong>Step ${index + 1}:</strong> ${step.title}`;
+      const actionLine = stepLink
+        ? `<p class="small-note"><a class="broker-step-action" href="${stepLink}"${linkTarget}>${step.actionLabel || 'Open step'}</a></p>`
+        : '';
       card.innerHTML = `
-        <p><strong>Step ${index + 1}:</strong> ${step.title}</p>
+        <p>${stepTitle}</p>
         <p class="small-note">${step.description || ''}</p>
+        ${actionLine}
         <p class="small-note"><strong>Status:</strong> ${step.completed ? 'Complete' : 'Pending'}</p>
       `;
       stepsTarget.appendChild(card);

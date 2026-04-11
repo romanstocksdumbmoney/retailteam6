@@ -32,6 +32,29 @@
           </div>
         </section>
 
+        <section class="ai-bot-quick-setup card" aria-labelledby="ai-bot-link-steps-title">
+          <h3 id="ai-bot-link-steps-title">Linked Setup Steps (Click each step)</h3>
+          <ol class="detail-list">
+            <li><a class="handsfree-step-link" href="/ai-trade-access.html?next=%2Fai-bot-trader.html"><strong>Step 1:</strong> Sign in so your setup saves to your account.</a></li>
+            <li><a class="handsfree-step-link" href="/ai-bot-trader.html#ai-bot-config-form"><strong>Step 2:</strong> Save AI bot risk + prompt setup on this page.</a></li>
+            <li><a class="handsfree-step-link" href="/ai-bot-funding.html#ai-funding-form"><strong>Step 3:</strong> Open funding page and enable live mode.</a></li>
+            <li><a class="handsfree-step-link" href="/brokerage-onboarding.html#broker-connect-form"><strong>Step 4:</strong> Connect broker and run bridge connection test.</a></li>
+            <li><a class="handsfree-step-link" href="/ai-bot-account.html#ai-account-start-autopilot"><strong>Step 5:</strong> Start hands-free AI trading.</a></li>
+          </ol>
+        </section>
+
+        <section class="ai-bot-quick-setup card" aria-labelledby="ai-bot-strategy-templates-title">
+          <h3 id="ai-bot-strategy-templates-title">AI Trading Templates (Common live AI styles)</h3>
+          <p class="small-note">These templates are inspired by common algorithmic AI approaches used in live trading systems. Click one to apply and customize.</p>
+          <div class="ai-bot-actions">
+            <button type="button" class="btn-secondary ai-strategy-template-btn" data-strategy-template="trend-following">Trend Following</button>
+            <button type="button" class="btn-secondary ai-strategy-template-btn" data-strategy-template="momentum-breakout">Momentum Breakout</button>
+            <button type="button" class="btn-secondary ai-strategy-template-btn" data-strategy-template="mean-reversion">Mean Reversion</button>
+            <button type="button" class="btn-secondary ai-strategy-template-btn" data-strategy-template="volatility-regime">Volatility Regime</button>
+          </div>
+          <p id="ai-strategy-template-active" class="small-note">Template: Momentum Breakout (default).</p>
+        </section>
+
         <form id="ai-bot-config-form" class="pro-plan-box ai-bot-form" novalidate>
           <label>
             Strategy prompt

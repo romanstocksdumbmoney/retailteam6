@@ -67,6 +67,7 @@ async function requestWithAuthRetry(url, options = {}) {
 
 let currentControlLink = '';
 let activeQuickProfile = 'balanced';
+let activeStrategyTemplate = 'momentum-breakout';
 
 const QUICK_SETUP_PROFILES = Object.freeze({
   conservative: {
@@ -115,6 +116,69 @@ const QUICK_SETUP_PROFILES = Object.freeze({
       timeframe: 'intraday',
       testAreaRiskPct: 2.8,
       autoExecuteLive: false
+    }
+  }
+});
+
+const STRATEGY_TEMPLATES = Object.freeze({
+  'trend-following': {
+    label: 'Trend Following',
+    summary: 'swing continuation with moderate sizing',
+    prompt: 'Trade liquid trend continuation setups only, favor pullback entries in established trends, avoid earnings-week names, keep strict stop discipline.',
+    config: {
+      riskPerTradePct: 1.2,
+      minRewardRiskRatio: 2.1,
+      targetReturnPct: 4.8,
+      maxSectorExposurePct: 30,
+      maxGrossExposurePct: 90,
+      maxPositions: 5,
+      timeframe: 'swing',
+      testAreaRiskPct: 1.2
+    }
+  },
+  'momentum-breakout': {
+    label: 'Momentum Breakout',
+    summary: 'intraday breakout continuation',
+    prompt: 'Trade high-liquidity momentum breakouts, require volume confirmation, avoid fading strong trend names, and keep trades short duration.',
+    config: {
+      riskPerTradePct: 1.8,
+      minRewardRiskRatio: 1.8,
+      targetReturnPct: 5.4,
+      maxSectorExposurePct: 40,
+      maxGrossExposurePct: 110,
+      maxPositions: 7,
+      timeframe: 'intraday',
+      testAreaRiskPct: 1.8
+    }
+  },
+  'mean-reversion': {
+    label: 'Mean Reversion',
+    summary: 'reversion to VWAP/value zones',
+    prompt: 'Trade liquid mean-reversion setups after overextension, scale risk down in trend days, and avoid low-volume names.',
+    config: {
+      riskPerTradePct: 0.9,
+      minRewardRiskRatio: 2.3,
+      targetReturnPct: 3.9,
+      maxSectorExposurePct: 25,
+      maxGrossExposurePct: 80,
+      maxPositions: 4,
+      timeframe: 'swing',
+      testAreaRiskPct: 0.9
+    }
+  },
+  'volatility-regime': {
+    label: 'Volatility Regime',
+    summary: 'defensive when volatility expands',
+    prompt: 'Trade only top-liquidity symbols, reduce sizing in high-volatility sessions, avoid crowded names, and prioritize asymmetric reward/risk.',
+    config: {
+      riskPerTradePct: 1.1,
+      minRewardRiskRatio: 2.5,
+      targetReturnPct: 4.2,
+      maxSectorExposurePct: 22,
+      maxGrossExposurePct: 70,
+      maxPositions: 3,
+      timeframe: 'intraday',
+      testAreaRiskPct: 1.1
     }
   }
 });
@@ -276,6 +340,81 @@ function inferQuickProfileFromForm() {
     return 'aggressive';
   }
   return 'balanced';
+}
+
+function updateStrategyTemplateUi(templateKey) {
+  const selectedKey = templateKey in STRATEGY_TEMPLATES ? templateKey : 'momentum-breakout';
+  const template = STRATEGY_TEMPLATES[selectedKey];
+  activeStrategyTemplate = selectedKey;
+  const labelNode = document.getElementById('ai-strategy-template-active');
+  if (labelNode) {
+    labelNode.textContent = `Template: ${template.label} (${template.summary}).`;
+  }
+  const templateButtons = document.querySelectorAll('.ai-strategy-template-btn');
+  templateButtons.forEach((node) => {
+    if (!(node instanceof HTMLButtonElement)) {
+      return;
+    }
+    const key = String(node.dataset.strategyTemplate || '').trim().toLowerCase();
+    const isActive = key === selectedKey;
+    node.classList.toggle('is-active', isActive);
+    node.setAttribute('aria-pressed', isActive ? 'true' : 'false');
+  });
+}
+
+function inferStrategyTemplateFromForm() {
+  const timeframeNode = document.getElementById('ai-bot-timeframe');
+  const timeframe = timeframeNode instanceof HTMLSelectElement
+    ? String(timeframeNode.value || 'intraday').trim().toLowerCase()
+    : 'intraday';
+  const risk = getNumberInputValue('ai-bot-risk-pct', 1.5);
+  const minRewardRisk = getNumberInputValue('ai-bot-min-rr', 1.8);
+  if (timeframe === 'swing' && risk <= 1) {
+    return 'mean-reversion';
+  }
+  if (minRewardRisk >= 2.4 && risk <= 1.2) {
+    return 'volatility-regime';
+  }
+  if (timeframe === 'swing') {
+    return 'trend-following';
+  }
+  return 'momentum-breakout';
+}
+
+function applyStrategyTemplate(templateKey, options = {}) {
+  const template = STRATEGY_TEMPLATES[templateKey];
+  if (!template) {
+    return;
+  }
+  const announce = options.announce !== false;
+  const currentCapital = getNumberInputValue('ai-bot-capital', 10000);
+  const currentTestCapital = getNumberInputValue('ai-bot-test-capital', currentCapital);
+  const currentTradingMode = getSelectedTradingMode();
+  applyConfigToForm({
+    ...template.config,
+    prompt: template.prompt,
+    capitalUsd: currentCapital,
+    testAreaCapitalUsd: currentTestCapital || currentCapital,
+    tradingMode: currentTradingMode
+  });
+  updateStrategyTemplateUi(templateKey);
+  if (announce) {
+    setStatus(`${template.label} template applied. Save setup to continue.`);
+  }
+}
+
+function setupStrategyTemplateActions() {
+  const templateButtons = document.querySelectorAll('.ai-strategy-template-btn');
+  templateButtons.forEach((node) => {
+    if (!(node instanceof HTMLButtonElement)) {
+      return;
+    }
+    node.addEventListener('click', () => {
+      const key = String(node.dataset.strategyTemplate || '').trim().toLowerCase();
+      applyStrategyTemplate(key, { announce: true });
+    });
+  });
+  updateStrategyTemplateUi(activeStrategyTemplate);
 }
 
 function setupQuickSetupActions() {
@@ -535,6 +674,7 @@ function renderState(payload) {
   renderControlCenter(payload);
   applyConfigToForm(payload.config || {});
   updateQuickProfileUi(inferQuickProfileFromForm());
+  updateStrategyTemplateUi(inferStrategyTemplateFromForm());
 }
 
 async function loadBotState() {
@@ -646,6 +786,7 @@ function setupForm() {
     syncAutoExecutionVisibility();
   }
   setupQuickSetupActions();
+  setupStrategyTemplateActions();
 
   if (fundingButton instanceof HTMLButtonElement) {
     fundingButton.addEventListener('click', () => {
