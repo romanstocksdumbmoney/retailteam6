@@ -237,8 +237,7 @@ function renderExecutionCenter(execution) {
   const queueTarget = document.getElementById('ai-account-queued-ai-trades');
   const stepsTarget = document.getElementById('ai-account-broker-setup-steps');
   const ordersTarget = document.getElementById('ai-account-broker-orders');
-  const proposalsTarget = document.getElementById('ai-account-trade-inbox');
-  if (!summaryTarget || !queueTarget || !stepsTarget || !ordersTarget || !proposalsTarget) {
+  if (!summaryTarget || !queueTarget || !stepsTarget || !ordersTarget) {
     return;
   }
   const brokerConnection = execution?.brokerConnection || {};
@@ -250,8 +249,6 @@ function renderExecutionCenter(execution) {
   const setupSteps = Array.isArray(setup.steps) ? setup.steps : [];
   const pendingSetupCount = setupSteps.filter((step) => !step.completed).length;
   const riskRewardGate = execution?.riskRewardGate || {};
-  const proposals = Array.isArray(execution?.pendingTradeProposals) ? execution.pendingTradeProposals : [];
-  const proposalsSummary = execution?.proposalsSummary || {};
   const sourceAudit = snapshot?.sourceAudit || {};
   const sourceAuditDetails = execution?.sourceAuditDetails || {};
   const auth = brokerConnection?.auth || {};
@@ -277,7 +274,8 @@ function renderExecutionCenter(execution) {
       <p><strong>Broker:</strong> ${String(brokerConnection.broker || 'manual').toUpperCase()} • <strong>Mode:</strong> ${String(brokerConnection.bridgeMode || 'manual_confirmed').replace(/_/g, ' ')}</p>
       <p><strong>Execution Path:</strong> ${executionPathLabel}${auth?.apiEndpoint ? ` • <strong>Endpoint:</strong> ${String(auth.apiEndpoint)}` : ''}</p>
       <p><strong>Broker API Status:</strong> ${auth?.accountStatus ? String(auth.accountStatus).toUpperCase() : 'N/A'}</p>
-      <p><strong>Hands-free live mode:</strong> ${lastPlan?.requiresApproval ? 'OFF (approval required)' : 'ON (AI auto-submit enabled)'}</p>
+      <p><strong>Hands-free live mode:</strong> ${execution?.autopilot?.enabled ? 'ON (autonomous)' : 'OFF'}</p>
+      <p><strong>Autopilot status:</strong> ${execution?.autopilot?.active ? 'RUNNING' : 'STOPPED'}${execution?.autopilot?.intervalMs ? ` • every ${Math.round(Number(execution.autopilot.intervalMs || 0) / 1000)}s` : ''}</p>
       <p><strong>Last Plan:</strong> ${lastPlan?.generatedAt || 'N/A'}</p>
       <p><strong>Plan Tickets:</strong> ${Number(lastPlan?.orderTickets?.length || 0)} • <strong>Manual Action:</strong> ${lastPlan?.manualActionRequired ? 'Yes' : 'No'}</p>
       <p><strong>Last Broker Submit:</strong> ${lastBrokerExecution?.submittedAt || 'N/A'} • <strong>Submitted:</strong> ${Number(lastBrokerExecution?.submittedCount || 0)} • <strong>Rejected:</strong> ${Number(lastBrokerExecution?.rejectedCount || 0)}</p>
@@ -286,7 +284,6 @@ function renderExecutionCenter(execution) {
       <p class="small-note"><strong>Amplification logic:</strong> The AI increases priority for symbols with stronger combined input from AI queue, Trend Trades, and High IV. If one source is quiet, weighting shifts toward the active sources while risk/reward gate still blocks weak setups.</p>
       <p><strong>Broker setup pending steps:</strong> ${pendingSetupCount}</p>
       <p><strong>Risk/Reward gate:</strong> min ${fmtRatio(riskRewardGate.minRewardRiskRatio || 0)} • pass ${Number(riskRewardGate.passed || 0)} / fail ${Number(riskRewardGate.rejected || 0)}</p>
-      <p><strong>Pending trade proposals:</strong> ${Number(proposalsSummary.pending || proposals.length || 0)}</p>
       <p class="small-note">Setup docs: ${setup?.docsUrl ? `<a class="open-link" href="${setup.docsUrl}" target="_blank" rel="noopener noreferrer">${setup.docsUrl}</a>` : 'N/A'}</p>
       <p class="small-note">Ranked symbols: ${(snapshot?.rankedSymbols || []).slice(0, 6).join(', ') || 'N/A'}</p>
     </article>
@@ -295,7 +292,7 @@ function renderExecutionCenter(execution) {
       <ul class="detail-list">
         ${amplifiedSources.map((source) => `<li><strong>${source.label}:</strong> ${source.count} signal(s) • ${source.note}</li>`).join('')}
       </ul>
-      <p class="small-note">These amplified inputs are then filtered by risk/reward rules, broker readiness, and your mode (manual approval vs. auto-execution).</p>
+      <p class="small-note">These amplified inputs are then filtered by risk/reward rules, broker readiness, and autonomous live execution safeguards.</p>
     </article>
   `;
 
@@ -333,42 +330,6 @@ function renderExecutionCenter(execution) {
     });
   }
 
-  proposalsTarget.innerHTML = '';
-  if (!proposals.length) {
-    proposalsTarget.innerHTML = '<div class="pro-lock">No pending trade proposals yet. Run AI cycle to generate risk/reward-filtered proposals.</div>';
-  } else {
-    const controls = document.createElement('article');
-    controls.className = 'bot-position-card';
-    controls.innerHTML = `
-      <p><strong>Select proposals and submit:</strong> only selected rows are sent for broker execution.</p>
-      <p class="small-note">AI already filtered proposals by your risk/reward rule.</p>
-      <div class="ai-bot-actions">
-        <button id="ai-account-select-all-proposals" class="btn-secondary" type="button">Select All</button>
-        <button id="ai-account-clear-proposals" class="btn-secondary" type="button">Clear</button>
-      </div>
-    `;
-    proposalsTarget.appendChild(controls);
-    proposals.forEach((proposal, index) => {
-      const row = document.createElement('article');
-      row.className = 'bot-position-card';
-      const ticketId = String(proposal.ticketId || '');
-      const safeTicketId = escapeHtml(ticketId);
-      const inputId = `trade-proposal-${index}`;
-      row.innerHTML = `
-        <label for="${inputId}" class="small-note">
-          <input id="${inputId}" type="checkbox" class="trade-proposal-check" value="${safeTicketId}" />
-          Take this trade
-        </label>
-        <h4>${proposal.ticker || '-'} • ${String(proposal.direction || 'long').toUpperCase()} <span class="chip">${proposal.sector || 'N/A'}</span></h4>
-        <p><strong>Shares:</strong> ${Number(proposal.shares || 0).toLocaleString()} • <strong>Notional:</strong> ${fmtUsd(proposal.notionalUsd)}</p>
-        <p><strong>Entry:</strong> ${fmtUsd(proposal.entry)} • <strong>Stop:</strong> ${fmtUsd(proposal.stopLoss)} • <strong>Take:</strong> ${fmtUsd(proposal.takeProfit)}</p>
-        <p><strong>Risk/Reward:</strong> ${fmtRatio(proposal.rewardRiskRatio)} • <strong>Risk:</strong> ${fmtUsd(proposal.riskUsd)} • <strong>Reward:</strong> ${fmtUsd(proposal.potentialRewardUsd)}</p>
-        <p class="small-note">Ticket: ${ticketId || '-'} • Proposed at: ${proposal.proposedAt || '-'}</p>
-      `;
-      proposalsTarget.appendChild(row);
-    });
-  }
-
   const queued = Array.isArray(execution?.queuedAiTrades) ? execution.queuedAiTrades : [];
   queueTarget.innerHTML = '';
   if (!queued.length) {
@@ -389,45 +350,6 @@ function renderExecutionCenter(execution) {
   });
 }
 
-function getSelectedProposalIds() {
-  const selected = [];
-  const checks = document.querySelectorAll('.trade-proposal-check');
-  checks.forEach((node) => {
-    if (node instanceof HTMLInputElement && node.checked) {
-      const ticketId = String(node.value || '').trim();
-      if (ticketId) {
-        selected.push(ticketId);
-      }
-    }
-  });
-  return selected;
-}
-
-function setupProposalSelectionActions() {
-  const selectAllButton = document.getElementById('ai-account-select-all-proposals');
-  if (selectAllButton instanceof HTMLButtonElement) {
-    selectAllButton.addEventListener('click', () => {
-      const checks = document.querySelectorAll('.trade-proposal-check');
-      checks.forEach((node) => {
-        if (node instanceof HTMLInputElement) {
-          node.checked = true;
-        }
-      });
-    });
-  }
-  const clearButton = document.getElementById('ai-account-clear-proposals');
-  if (clearButton instanceof HTMLButtonElement) {
-    clearButton.addEventListener('click', () => {
-      const checks = document.querySelectorAll('.trade-proposal-check');
-      checks.forEach((node) => {
-        if (node instanceof HTMLInputElement) {
-          node.checked = false;
-        }
-      });
-    });
-  }
-}
-
 async function loadAccountView() {
   const payload = await requestWithAuthRetry('/api/market/auto-trader/account-view', {
     method: 'GET'
@@ -435,7 +357,6 @@ async function loadAccountView() {
   renderAccountSnapshot(payload);
   renderOpenPositions(payload.openPositions || []);
   renderExecutionCenter(payload.execution || null);
-  setupProposalSelectionActions();
   renderFundingActivity(payload.activity?.recentFunding || []);
   renderCycleActivity(payload.activity?.recentCycles || []);
   return payload;
@@ -443,9 +364,8 @@ async function loadAccountView() {
 
 function setupActions() {
   const refreshButton = document.getElementById('ai-account-refresh');
-  const runCycleButton = document.getElementById('ai-account-run-cycle');
-  const executeOrdersButton = document.getElementById('ai-account-execute-orders');
-  const executeSelectedButton = document.getElementById('ai-account-execute-selected');
+  const startAutopilotButton = document.getElementById('ai-account-start-autopilot');
+  const stopAutopilotButton = document.getElementById('ai-account-stop-autopilot');
   const openFundingButton = document.getElementById('ai-account-back-funding');
   const openBrokerOnboardingButton = document.getElementById('ai-account-open-brokerage');
 
@@ -476,80 +396,45 @@ function setupActions() {
     });
   }
 
-  if (runCycleButton) {
-    runCycleButton.addEventListener('click', async () => {
+  if (startAutopilotButton) {
+    startAutopilotButton.addEventListener('click', async () => {
       try {
-        runCycleButton.disabled = true;
-        setStatus('Running AI cycle...');
-        await requestWithAuthRetry('/api/market/auto-trader/run', {
+        startAutopilotButton.disabled = true;
+        setStatus('Starting autonomous live trading...');
+        await requestWithAuthRetry('/api/market/auto-trader/autopilot/start', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json'
           },
-          body: JSON.stringify({})
+          body: JSON.stringify({ intervalMs: 30000 })
         });
         await loadAccountView();
-        setStatus('Cycle complete. Account view updated.');
+        setStatus('Hands-free AI trading is ON. AI will run and place broker orders automatically.');
       } catch (error) {
-        setStatus(error.message || 'Could not run AI cycle.', true);
+        setStatus(error.message || 'Could not start autonomous live trading.', true);
       } finally {
-        runCycleButton.disabled = false;
+        startAutopilotButton.disabled = false;
       }
     });
   }
 
-  if (executeOrdersButton) {
-    executeOrdersButton.addEventListener('click', async () => {
+  if (stopAutopilotButton) {
+    stopAutopilotButton.addEventListener('click', async () => {
       try {
-        executeOrdersButton.disabled = true;
-        const selectedProposalIds = getSelectedProposalIds();
-        setStatus(selectedProposalIds.length
-          ? `Submitting ${selectedProposalIds.length} selected trade proposal(s)...`
-          : 'Submitting all available broker tickets...');
-        const payload = await requestWithAuthRetry('/api/market/auto-trader/execute-orders', {
+        stopAutopilotButton.disabled = true;
+        setStatus('Stopping autonomous live trading...');
+        await requestWithAuthRetry('/api/market/auto-trader/autopilot/stop', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json'
-          },
-          body: JSON.stringify({
-            ticketIds: selectedProposalIds
-          })
+          }
         });
         await loadAccountView();
-        setStatus(`Broker submit complete. Submitted ${Number(payload.submittedCount || 0)} ticket(s), rejected ${Number(payload.rejectedCount || 0)}.`);
+        setStatus('Hands-free AI trading stopped.');
       } catch (error) {
-        setStatus(error.message || 'Could not submit broker tickets.', true);
+        setStatus(error.message || 'Could not stop autonomous live trading.', true);
       } finally {
-        executeOrdersButton.disabled = false;
-      }
-    });
-  }
-
-  if (executeSelectedButton) {
-    executeSelectedButton.addEventListener('click', async () => {
-      try {
-        executeSelectedButton.disabled = true;
-        const selectedProposalIds = getSelectedProposalIds();
-        if (!selectedProposalIds.length) {
-          setStatus('Select at least one trade proposal first.', true);
-          return;
-        }
-        setStatus(`Submitting ${selectedProposalIds.length} selected trade proposal(s)...`);
-        const payload = await requestWithAuthRetry('/api/market/auto-trader/execute-orders', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify({
-            ticketIds: selectedProposalIds
-          })
-        });
-        await loadAccountView();
-        setStatus(`Selected trades submitted. Submitted ${Number(payload.submittedCount || 0)} ticket(s), rejected ${Number(payload.rejectedCount || 0)}.`);
-      } catch (error) {
-        setStatus(error.message || 'Could not submit selected trade proposals.', true);
-      } finally {
-        executeSelectedButton.disabled = false;
+        stopAutopilotButton.disabled = false;
       }
     });
   }

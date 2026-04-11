@@ -175,7 +175,12 @@ function syncAutoExecutionVisibility() {
     return;
   }
   const live = String(modeSelect.value || 'paper').trim().toLowerCase() === 'live';
-  autoWrap.hidden = !live;
+  autoWrap.hidden = false;
+  const autoExecuteNode = document.getElementById('ai-bot-auto-execute-live');
+  if (autoExecuteNode instanceof HTMLInputElement) {
+    autoExecuteNode.checked = live;
+    autoExecuteNode.disabled = true;
+  }
 }
 
 function applyConfigToForm(config = {}) {
@@ -561,7 +566,7 @@ async function saveBotConfig() {
     takeProfitPct: Math.max(1.2, riskPerTradePct * 3),
     targetReturnPct: getNumberInputValue('ai-bot-target-return-pct', 8),
     minRewardRiskRatio: getNumberInputValue('ai-bot-min-rr', 2),
-    autoExecuteLive: getCheckboxValue('ai-bot-auto-execute-live', false),
+    autoExecuteLive: true,
     testAreaCapitalUsd: getNumberInputValue('ai-bot-test-capital', 10000),
     testAreaRiskPct: getNumberInputValue('ai-bot-test-risk-pct', riskPerTradePct),
     maxGrossExposurePct: getNumberInputValue('ai-bot-max-gross-exposure-pct', 100),
@@ -622,7 +627,6 @@ async function setBotActive(active) {
 
 function setupForm() {
   const form = document.getElementById('ai-bot-config-form');
-  const runButton = document.getElementById('ai-bot-run-cycle');
   const refreshButton = document.getElementById('ai-bot-refresh');
   const pauseButton = document.getElementById('ai-bot-pause');
   const resumeButton = document.getElementById('ai-bot-resume');
@@ -742,30 +746,6 @@ function setupForm() {
         if (saveButton instanceof HTMLButtonElement) {
           saveButton.disabled = false;
         }
-      }
-    });
-  }
-
-  if (runButton instanceof HTMLButtonElement) {
-    runButton.addEventListener('click', async () => {
-      try {
-        runButton.disabled = true;
-        setStatus('Running bot cycle...');
-        const payload = await runCycle();
-        const autoExecution = payload?.autoExecution || null;
-        if (autoExecution?.status === 'submitted') {
-          setStatus(autoExecution.message || 'Bot cycle complete. Auto-execution submitted trades.');
-        } else if (autoExecution?.status === 'failed') {
-          setStatus(`Bot cycle complete, but auto-execution failed: ${autoExecution.message || autoExecution.reason || 'unknown error'}`, true);
-        } else if (autoExecution?.status === 'skipped') {
-          setStatus(`Bot cycle complete. ${autoExecution.message || 'Auto-execution skipped.'}`);
-        } else {
-          setStatus('Bot cycle complete.');
-        }
-      } catch (error) {
-        setStatus(error.message || 'Could not run bot cycle.', true);
-      } finally {
-        runButton.disabled = false;
       }
     });
   }

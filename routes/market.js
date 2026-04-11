@@ -37,7 +37,9 @@ const {
   listAutoTraderSectors,
   setBotActive,
   setAutoTraderFundingMode,
-  fundAutoTrader
+  fundAutoTrader,
+  runAutoTraderAutopilotTick,
+  stopAutoTraderAutopilot
 } = require('../services/autoTraderService');
 const {
   createComplaintTicket,
@@ -795,6 +797,91 @@ router.post('/auto-trader/execute-orders', requireSignedIn, requireLiveFundingAc
     return res.status(400).json({
       error: 'invalid_request',
       message: 'Could not submit broker orders from execution tickets.'
+    });
+  }
+});
+
+router.get('/auto-trader/autopilot/status', requireSignedIn, (req, res) => {
+  try {
+    const bot = getAutoTraderStatus(req.user);
+    const execution = bot?.execution || {};
+    const autopilot = execution?.autopilot || {
+      enabled: false,
+      active: false,
+      intervalMs: null,
+      startedAt: null,
+      tickCount: 0,
+      reason: 'not_configured'
+    };
+    return res.json({
+      autopilot,
+      tradingMode: bot?.tradingMode || 'paper',
+      botActive: Boolean(bot?.isActive),
+      brokerConnected: Boolean(execution?.brokerConnection?.isConnected),
+      autoExecuteLive: Boolean(bot?.config?.autoExecuteLive)
+    });
+  } catch (error) {
+    if (String(error.message || '') === 'missing_user') {
+      return res.status(401).json({
+        error: 'unauthorized',
+        message: 'Login required.'
+      });
+    }
+    return res.status(400).json({
+      error: 'invalid_request',
+      message: 'Could not load autopilot status.'
+    });
+  }
+});
+
+router.post('/auto-trader/autopilot/start', requireSignedIn, requireLiveFundingAccess, async (req, res) => {
+  try {
+    const intervalMs = Number(req.body?.intervalMs);
+    const payload = await runAutoTraderAutopilotTick(req.user, {
+      intervalMs: Number.isFinite(intervalMs) ? intervalMs : undefined
+    });
+    return res.json(payload);
+  } catch (error) {
+    const code = String(error.message || '');
+    if (code === 'autopilot_requirements_not_met') {
+      return res.status(400).json({
+        error: 'autopilot_requirements_not_met',
+        message: 'Autopilot requires live mode, funded account, connected broker, and hands-free live execution enabled.'
+      });
+    }
+    if (code === 'invalid_autopilot_interval') {
+      return res.status(400).json({
+        error: 'invalid_autopilot_interval',
+        message: 'Autopilot interval must be at least 15 seconds.'
+      });
+    }
+    if (code === 'missing_user') {
+      return res.status(401).json({
+        error: 'unauthorized',
+        message: 'Login required.'
+      });
+    }
+    return res.status(400).json({
+      error: 'invalid_request',
+      message: 'Could not start AI autopilot.'
+    });
+  }
+});
+
+router.post('/auto-trader/autopilot/stop', requireSignedIn, (req, res) => {
+  try {
+    const payload = stopAutoTraderAutopilot(req.user?.id);
+    return res.json({
+      stopped: Boolean(payload),
+      autopilot: {
+        enabled: false,
+        active: false
+      }
+    });
+  } catch (_error) {
+    return res.status(400).json({
+      error: 'invalid_request',
+      message: 'Could not stop AI autopilot.'
     });
   }
 });

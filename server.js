@@ -10,6 +10,7 @@ const newsRoutes = require('./routes/news');
 const earningsRoutes = require('./routes/earnings');
 const marketRoutes = require('./routes/market');
 const authRoutes = require('./routes/auth');
+const { runAutoTraderAutopilotSweep } = require('./services/autoTraderService');
 
 const app = express();
 const buildDir = path.join(__dirname, 'frontend', 'build');
@@ -118,6 +119,26 @@ app.use('/api/earnings', earningsRoutes);
 app.use('/api/market', marketRoutes);
 app.use('/api/auth', authRoutes);
 
+let autopilotSweepRunning = false;
+const autopilotEveryMs = Math.max(
+    10_000,
+    Number.parseInt(String(process.env.AI_AUTOPILOT_SWEEP_MS || '30000'), 10) || 30_000
+);
+
+async function runAutopilotSweepSafe() {
+    if (autopilotSweepRunning) {
+        return;
+    }
+    autopilotSweepRunning = true;
+    try {
+        await runAutoTraderAutopilotSweep();
+    } catch (error) {
+        console.error('Autopilot sweep failed:', error?.message || error);
+    } finally {
+        autopilotSweepRunning = false;
+    }
+}
+
 if (hasFrontendBuild) {
     app.use(express.static(buildDir));
     app.get('*', (req, res, next) => {
@@ -132,6 +153,10 @@ if (hasFrontendBuild) {
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => {
     console.log(`Server running on port ${PORT}`);
+    console.log(`AI autopilot sweep interval: ${autopilotEveryMs}ms`);
+    setInterval(() => {
+        runAutopilotSweepSafe();
+    }, autopilotEveryMs);
     if (hasFrontendBuild) {
         console.log('Serving frontend from frontend/build');
     } else {

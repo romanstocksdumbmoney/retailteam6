@@ -60,6 +60,9 @@ const BROKER_LOGIN_DOCS = Object.freeze({
 
 const traderStore = new Map();
 const brokerSecretStore = new Map();
+const autopilotTimers = new Map();
+const AUTOPILOT_MIN_INTERVAL_MS = 15_000;
+const AUTOPILOT_DEFAULT_INTERVAL_MS = 45_000;
 
 function clamp(value, min, max) {
   return Math.max(min, Math.min(max, value));
@@ -611,6 +614,215 @@ function getState(userId) {
     traderStore.set(userId, defaultState());
   }
   return traderStore.get(userId);
+}
+
+function parseAutopilotIntervalMs(value) {
+  const raw = Number(value);
+  if (!Number.isFinite(raw)) {
+    return AUTOPILOT_DEFAULT_INTERVAL_MS;
+  }
+  return Math.max(AUTOPILOT_MIN_INTERVAL_MS, Math.trunc(raw));
+}
+
+function stopAutoTraderAutopilot(userId) {
+  const key = String(userId || '').trim();
+  if (!key) {
+    return false;
+  }
+  const active = autopilotTimers.get(key);
+  if (!active) {
+    return false;
+  }
+  clearInterval(active.intervalRef);
+  autopilotTimers.delete(key);
+  return true;
+}
+
+function getAutoTraderAutopilotStatus(userId) {
+  const key = String(userId || '').trim();
+  if (!key) {
+    return {
+      enabled: false,
+      active: false,
+      intervalMs: null,
+      startedAt: null,
+      tickCount: 0,
+      reason: 'missing_user'
+    };
+  }
+  const timer = autopilotTimers.get(key);
+  if (!timer) {
+    return {
+      enabled: false,
+      active: false,
+      intervalMs: null,
+      startedAt: null,
+      tickCount: 0,
+      reason: 'inactive'
+    };
+  }
+  return {
+    enabled: true,
+    active: true,
+    intervalMs: timer.intervalMs,
+    startedAt: timer.startedAt,
+    tickCount: timer.tickCount || 0,
+    reason: null
+  };
+}
+
+function canRunAutopilotNow(state, userId) {
+  if (!state || !userId) {
+    return false;
+  }
+  if (!state.configured || !state.isActive) {
+    return false;
+  }
+  if (String(state.tradingMode || 'paper').toLowerCase() !== 'live') {
+    return false;
+  }
+  if (!state.liveFunding?.isFunded) {
+    return false;
+  }
+  if (!Boolean(state.config?.autoExecuteLive)) {
+    return false;
+  }
+  const brokerConnection = ensureLiveExecutionState(state).brokerConnection || {};
+  return Boolean(
+    brokerConnection.isConnected
+    && brokerConnection.permissions?.canTrade
+  );
+}
+
+function ensureAutoTraderAutopilot(user, options = {}) {
+  const userId = user?.id;
+  if (!userId) {
+    return {
+      active: false,
+      reason: 'missing_user'
+    };
+  }
+  const key = String(userId).trim();
+  const state = getState(userId);
+  if (!canRunAutopilotNow(state, userId)) {
+    stopAutoTraderAutopilot(userId);
+    return {
+      active: false,
+      reason: 'autopilot_requirements_not_met'
+    };
+  }
+  const intervalMs = parseAutopilotIntervalMs(
+    options.intervalMs
+    ?? state.config?.autopilotIntervalMs
+    ?? AUTOPILOT_DEFAULT_INTERVAL_MS
+  );
+  const existing = autopilotTimers.get(key);
+  if (existing && existing.intervalMs === intervalMs) {
+    return {
+      active: true,
+      intervalMs,
+      startedAt: existing.startedAt,
+      tickCount: existing.tickCount || 0
+    };
+  }
+  if (existing) {
+    clearInterval(existing.intervalRef);
+  }
+  const timerState = {
+    intervalRef: null,
+    startedAt: nowIso(),
+    intervalMs,
+    tickCount: 0
+  };
+  const runTick = async () => {
+    timerState.tickCount += 1;
+    const liveState = getState(userId);
+    if (!canRunAutopilotNow(liveState, userId)) {
+      stopAutoTraderAutopilot(userId);
+      return;
+    }
+    try {
+      runAutoTraderCycle(user);
+      await executeAutoTraderBrokerOrders(user, {});
+    } catch (_error) {
+      // Keep loop alive; status/errors are visible in account view.
+    }
+  };
+  timerState.intervalRef = setInterval(() => {
+    runTick().catch(() => {});
+  }, intervalMs);
+  autopilotTimers.set(key, timerState);
+  runTick().catch(() => {});
+  return {
+    active: true,
+    intervalMs,
+    startedAt: timerState.startedAt,
+    tickCount: timerState.tickCount
+  };
+}
+
+async function runAutoTraderAutopilotTick(user) {
+  const userId = user?.id;
+  if (!userId) {
+    return {
+      active: false,
+      skipped: true,
+      reason: 'missing_user'
+    };
+  }
+  const state = getState(userId);
+  if (!canRunAutopilotNow(state, userId)) {
+    stopAutoTraderAutopilot(userId);
+    return {
+      active: false,
+      skipped: true,
+      reason: 'autopilot_requirements_not_met'
+    };
+  }
+  const cycle = runAutoTraderCycle(user);
+  const execution = await executeAutoTraderBrokerOrders(user, {});
+  const ensured = ensureAutoTraderAutopilot(user, {
+    intervalMs: state.config?.autopilotIntervalMs
+  });
+  return {
+    active: Boolean(ensured.active),
+    skipped: false,
+    cycleId: cycle?.cycleId || null,
+    execution
+  };
+}
+
+async function runAutoTraderAutopilotSweep() {
+  const userIds = Array.from(traderStore.keys());
+  const summary = {
+    scannedUsers: userIds.length,
+    activeBefore: autopilotTimers.size,
+    ensured: 0,
+    disabled: 0,
+    failures: 0
+  };
+  for (const userId of userIds) {
+    const state = getState(userId);
+    const user = {
+      id: userId
+    };
+    if (canRunAutopilotNow(state, userId)) {
+      try {
+        const ensured = ensureAutoTraderAutopilot(user, {
+          intervalMs: state.config?.autopilotIntervalMs
+        });
+        if (ensured.active) {
+          summary.ensured += 1;
+        }
+      } catch (_error) {
+        summary.failures += 1;
+      }
+    } else if (stopAutoTraderAutopilot(userId)) {
+      summary.disabled += 1;
+    }
+  }
+  summary.activeAfter = autopilotTimers.size;
+  return summary;
 }
 
 function sanitizeSectors(inputSectors) {
@@ -1613,6 +1825,7 @@ function configureAutoTrader(user, inputConfig = {}) {
     state.totalDepositedUsd = roundUsd(capitalUsd);
   }
   state.updatedAt = nowIso();
+  ensureAutoTraderAutopilot(user, { intervalMs: state.config?.autopilotIntervalMs });
   return state;
 }
 
@@ -1643,6 +1856,7 @@ function setAutoTraderFundingMode(user, mode) {
     }
   }
   state.updatedAt = nowIso();
+  ensureAutoTraderAutopilot(user, { intervalMs: state.config?.autopilotIntervalMs });
   return state;
 }
 
@@ -1657,6 +1871,7 @@ function setBotActive(user, active) {
   }
   state.isActive = Boolean(active);
   state.updatedAt = nowIso();
+  ensureAutoTraderAutopilot(user, { intervalMs: state.config?.autopilotIntervalMs });
   return state;
 }
 
@@ -1713,6 +1928,7 @@ function fundAutoTrader(user, amountUsd, details = {}) {
   };
   state.fundingTransactions = [transaction, ...(state.fundingTransactions || [])].slice(0, 120);
   state.updatedAt = nowIso();
+  ensureAutoTraderAutopilot(user, { intervalMs: state.config?.autopilotIntervalMs });
   return state;
 }
 
@@ -1931,6 +2147,7 @@ async function connectAutoTraderBrokerBridge(user, details = {}) {
     lastTestResult: null
   };
   state.updatedAt = nowIso();
+  ensureAutoTraderAutopilot(user, { intervalMs: state.config?.autopilotIntervalMs });
   return getAutoTraderBrokerConnectionGuide(user, { broker });
 }
 
@@ -2068,6 +2285,7 @@ async function testAutoTraderBrokerBridge(user, options = {}) {
     }
   };
   state.updatedAt = nowIso();
+  ensureAutoTraderAutopilot(user, { intervalMs: state.config?.autopilotIntervalMs });
 
   const failedBridgeChecks = checks.filter((check) => bridgeCheckKeys.has(check.key) && !check.ok);
   const missingLiveChecks = checks.filter((check) => (check.key === 'funding' || check.key === 'live_mode') && !check.ok);
@@ -2100,6 +2318,7 @@ function disconnectAutoTraderBrokerBridge(user) {
     executionMode: 'manual_confirmed'
   };
   state.updatedAt = nowIso();
+  stopAutoTraderAutopilot(userId);
   return {
     disconnected: true,
     previousBroker,
@@ -2307,6 +2526,7 @@ function getAutoTraderAccountView(user) {
       lastPlan: liveExecution.lastPlan || null,
       lastWebsiteSignalSnapshot: liveExecution.lastWebsiteSignalSnapshot || null,
       sourceAuditDetails,
+      autopilot: getAutoTraderAutopilotStatus(userId),
       promptControl: parsePromptControl(state.config?.prompt || ''),
       promptActivity: (liveExecution.promptActivity || []).slice(0, 20),
       controlCenter: buildControlCenterPayload(state, liveExecution),
@@ -2373,6 +2593,7 @@ function getAutoTraderStatus(user) {
       lastPlan: liveExecution.lastPlan || null,
       lastWebsiteSignalSnapshot: liveExecution.lastWebsiteSignalSnapshot || null,
       sourceAuditDetails,
+      autopilot: getAutoTraderAutopilotStatus(userId),
       promptControl: parsePromptControl(state.config?.prompt || ''),
       promptActivity: (liveExecution.promptActivity || []).slice(0, 20),
       controlCenter: buildControlCenterPayload(state, liveExecution),
@@ -2419,6 +2640,10 @@ module.exports = {
   setAutoTraderPrompt,
   executeAutoTraderBrokerOrders,
   getAutoTraderAccountView,
+  ensureAutoTraderAutopilot,
+  stopAutoTraderAutopilot,
+  runAutoTraderAutopilotTick,
+  runAutoTraderAutopilotSweep,
   runAutoTraderCycle,
   getAutoTraderStatus,
   listAutoTraderSectors
