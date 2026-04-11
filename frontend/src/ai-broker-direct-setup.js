@@ -1,4 +1,5 @@
 const BROKER_SIGNUP_LINKS = {
+  alpaca: 'https://alpaca.markets/',
   robinhood: 'https://robinhood.com/signup',
   webull: 'https://www.webull.com/',
   'interactive-brokers': 'https://www.interactivebrokers.com/en/accounts/open-account-country-list.php',
@@ -64,17 +65,20 @@ async function ensureAuthSession() {
 function getSelectedBroker() {
   const select = document.getElementById('direct-broker-select');
   if (!(select instanceof HTMLSelectElement)) {
-    return 'interactive-brokers';
+    return 'alpaca';
   }
-  const broker = String(select.value || 'interactive-brokers').trim().toLowerCase();
-  return BROKER_SIGNUP_LINKS[broker] ? broker : 'interactive-brokers';
+  const broker = String(select.value || 'alpaca').trim().toLowerCase();
+  return BROKER_SIGNUP_LINKS[broker] ? broker : 'alpaca';
 }
 
 function getBrokerSignupUrl(broker) {
-  return BROKER_SIGNUP_LINKS[String(broker || '').trim().toLowerCase()] || BROKER_SIGNUP_LINKS['interactive-brokers'];
+  return BROKER_SIGNUP_LINKS[String(broker || '').trim().toLowerCase()] || BROKER_SIGNUP_LINKS.alpaca;
 }
 
 function defaultPromptForBroker(broker) {
+  if (broker === 'alpaca') {
+    return 'Trade liquid U.S. equities with disciplined risk, avoid event-driven volatility spikes, and prioritize clean reward/risk setups.';
+  }
   if (broker === 'interactive-brokers') {
     return 'Trade liquid large-cap momentum setups with strict risk controls and avoid earnings-week names.';
   }

@@ -22,7 +22,7 @@ function setupActions() {
   const brokerButton = document.getElementById('ai-live-setup-open-broker');
   const accountButton = document.getElementById('ai-live-setup-open-account');
   const directBrokerButton = document.getElementById('ai-live-setup-direct-broker');
-  const openIbBridgeButton = document.getElementById('ai-live-open-broker-ibkr');
+  const openAlpacaBridgeButton = document.getElementById('ai-live-open-broker-alpaca');
   const openRobinhoodBridgeButton = document.getElementById('ai-live-open-broker-robinhood');
   const openTradestationBridgeButton = document.getElementById('ai-live-open-broker-tradestation');
 
@@ -56,10 +56,10 @@ function setupActions() {
       window.location.href = '/ai-broker-direct-setup.html';
     });
   }
-  if (openIbBridgeButton instanceof HTMLButtonElement) {
-    openIbBridgeButton.addEventListener('click', () => {
-      setStatus('Opening broker connect preselected for Interactive Brokers...');
-      openBrokerConnectWithBroker('interactive-brokers');
+  if (openAlpacaBridgeButton instanceof HTMLButtonElement) {
+    openAlpacaBridgeButton.addEventListener('click', () => {
+      setStatus('Opening broker connect preselected for Alpaca...');
+      openBrokerConnectWithBroker('alpaca');
     });
   }
   if (openRobinhoodBridgeButton instanceof HTMLButtonElement) {

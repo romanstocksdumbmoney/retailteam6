@@ -1,4 +1,5 @@
 const BROKER_OPENING_LINKS = {
+  alpaca: 'https://alpaca.markets/',
   robinhood: 'https://robinhood.com/signup',
   webull: 'https://www.webull.com/',
   'interactive-brokers': 'https://www.interactivebrokers.com/en/accounts/open-account-country-list.php',
@@ -103,10 +104,10 @@ function setStatus(text, isError = false) {
 function getSelectedBroker() {
   const select = document.getElementById('brokerage-picker-select');
   if (!(select instanceof HTMLSelectElement)) {
-    return 'robinhood';
+    return 'alpaca';
   }
-  const broker = String(select.value || 'robinhood').trim().toLowerCase();
-  return BROKER_OPENING_LINKS[broker] ? broker : 'robinhood';
+  const broker = String(select.value || 'alpaca').trim().toLowerCase();
+  return BROKER_OPENING_LINKS[broker] ? broker : 'alpaca';
 }
 
 function activateRobinhoodExistingAccountShortcut() {

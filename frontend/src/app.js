@@ -1218,9 +1218,9 @@ function setupInstantAiLaunchpad() {
 
   const getSelectedBroker = () => {
     if (!(brokerSelect instanceof HTMLSelectElement)) {
-      return 'interactive-brokers';
+      return 'alpaca';
     }
-    return String(brokerSelect.value || 'interactive-brokers').trim().toLowerCase();
+    return String(brokerSelect.value || 'alpaca').trim().toLowerCase();
   };
 
   const setLaunchStatus = (text) => {

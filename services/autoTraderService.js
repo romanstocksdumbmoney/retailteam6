@@ -21,7 +21,7 @@ const SECTOR_UNIVERSE = {
 
 const ALLOWED_TIMEFRAMES = new Set(['intraday', 'swing', 'position']);
 const ALLOWED_TRADING_MODES = new Set(['paper', 'live']);
-const ALLOWED_BROKERS = new Set(['manual', 'robinhood', 'webull', 'interactive-brokers', 'tradestation']);
+const ALLOWED_BROKERS = new Set(['manual', 'alpaca', 'robinhood', 'webull', 'interactive-brokers', 'tradestation']);
 const ALLOWED_EXECUTION_MODES = new Set(['manual_confirmed', 'broker_linked']);
 const ALLOWED_CONNECTION_METHODS = new Set(['api_keys', 'existing_account']);
 const ALLOWED_TWO_FACTOR_MODES = new Set(['none', 'sms', 'totp']);
@@ -42,6 +42,7 @@ const PROMPT_TICKER_STOPWORDS = new Set([
   'RISK'
 ]);
 const BROKER_SETUP_DOCS = Object.freeze({
+  alpaca: 'https://alpaca.markets/',
   robinhood: 'https://robinhood.com/signup',
   webull: 'https://www.webull.com/help',
   'interactive-brokers': 'https://www.interactivebrokers.com/en/accounts/open-account-country-list.php',
@@ -49,6 +50,7 @@ const BROKER_SETUP_DOCS = Object.freeze({
   manual: 'https://dumbdollars.org/ai-implementation-steps.html'
 });
 const BROKER_LOGIN_DOCS = Object.freeze({
+  alpaca: 'https://app.alpaca.markets/login',
   robinhood: 'https://robinhood.com/login',
   webull: 'https://www.webull.com/',
   'interactive-brokers': 'https://www.interactivebrokers.com/sso/Login?RL=1',

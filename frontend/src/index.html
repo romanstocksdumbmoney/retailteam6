@@ -60,7 +60,7 @@
             <a
               id="instant-ai-trade-button"
               class="instant-ai-primary-btn instant-ai-primary-link"
-              href="/ai-broker-direct-setup.html?broker=interactive-brokers&entry=instant"
+              href="/ai-broker-direct-setup.html?broker=alpaca&entry=instant"
             >
               AI Trade Instantly
             </a>
@@ -68,7 +68,8 @@
           <div class="instant-ai-broker-row">
             <label for="instant-broker-select">Connect broker AI can trade with</label>
             <select id="instant-broker-select" aria-label="Choose broker for AI connect">
-              <option value="interactive-brokers" selected>Interactive Brokers (recommended)</option>
+              <option value="alpaca" selected>Alpaca (recommended)</option>
+              <option value="interactive-brokers">Interactive Brokers</option>
               <option value="tradestation">TradeStation</option>
               <option value="robinhood">Robinhood</option>
               <option value="webull">Webull</option>
@@ -76,12 +77,12 @@
             <a
               id="instant-connect-broker-button"
               class="btn-secondary instant-connect-broker-link"
-              href="/ai-broker-direct-setup.html?broker=interactive-brokers&entry=instant"
+              href="/ai-broker-direct-setup.html?broker=alpaca&entry=instant"
             >
               Connect Broker
             </a>
           </div>
-          <p id="instant-ai-launch-status" class="small-note">Recommended for real API automation: Interactive Brokers.</p>
+          <p id="instant-ai-launch-status" class="small-note">Recommended for API-first automation: Alpaca.</p>
         </section>
         <section class="start-here-card" aria-labelledby="start-here-title">
           <div class="section-header">
@@ -135,16 +136,16 @@
           <p class="small-note">Open an account with API support, then connect it to AI live setup.</p>
           <div class="start-here-grid">
             <a class="start-here-link" href="/ai-live-account-setup.html">
-              <strong>Interactive Brokers</strong>
-              <span>Recommended for robust API automation</span>
+              <strong>Alpaca</strong>
+              <span>Recommended API-first broker path</span>
             </a>
             <a class="start-here-link" href="/ai-live-account-setup.html">
               <strong>TradeStation</strong>
-              <span>API-focused brokerage path</span>
+              <span>Alternative API-focused brokerage path</span>
             </a>
             <a class="start-here-link" href="/ai-live-account-setup.html">
-              <strong>Robinhood</strong>
-              <span>Quick-start retail flow (integration varies)</span>
+              <strong>Interactive Brokers</strong>
+              <span>Alternative advanced API workflow</span>
             </a>
           </div>
           <div class="ai-bot-actions">
