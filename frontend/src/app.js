@@ -1134,6 +1134,15 @@ function openAiLiveAccountSetupPage() {
   window.location.href = '/ai-live-account-setup.html';
 }
 
+function openDirectBrokerAiSetupPage(broker) {
+  const normalized = String(broker || '').trim().toLowerCase();
+  if (!normalized) {
+    window.location.href = '/ai-broker-direct-setup.html';
+    return;
+  }
+  window.location.href = `/ai-broker-direct-setup.html?broker=${encodeURIComponent(normalized)}&flow=instant`;
+}
+
 function openBrokerageOnboardingWithBroker(broker) {
   const normalized = String(broker || '').trim().toLowerCase();
   if (!normalized) {
@@ -1199,6 +1208,55 @@ function setupBrokerageApiSection() {
       return;
     }
   });
+}
+
+function setupInstantAiLaunchpad() {
+  const instantTradeButton = document.getElementById('instant-ai-trade-button');
+  const connectBrokerButton = document.getElementById('instant-connect-broker-button');
+  const brokerSelect = document.getElementById('instant-broker-select');
+  const statusNode = document.getElementById('instant-ai-launch-status');
+
+  const getSelectedBroker = () => {
+    if (!(brokerSelect instanceof HTMLSelectElement)) {
+      return 'interactive-brokers';
+    }
+    return String(brokerSelect.value || 'interactive-brokers').trim().toLowerCase();
+  };
+
+  const setLaunchStatus = (text) => {
+    if (!statusNode) {
+      return;
+    }
+    statusNode.textContent = text;
+  };
+
+  if (brokerSelect instanceof HTMLSelectElement) {
+    const remembered = String(localStorage.getItem('dumbdollars_selected_broker') || '').trim().toLowerCase();
+    if (remembered) {
+      brokerSelect.value = remembered;
+    }
+    brokerSelect.addEventListener('change', () => {
+      const broker = getSelectedBroker();
+      localStorage.setItem('dumbdollars_selected_broker', broker);
+      setLaunchStatus(`Broker selected: ${broker.replace(/-/g, ' ')}. Click Connect Broker to continue.`);
+    });
+  }
+
+  if (instantTradeButton instanceof HTMLButtonElement) {
+    instantTradeButton.addEventListener('click', () => {
+      const broker = getSelectedBroker();
+      localStorage.setItem('dumbdollars_selected_broker', broker);
+      openDirectBrokerAiSetupPage(broker);
+    });
+  }
+
+  if (connectBrokerButton instanceof HTMLButtonElement) {
+    connectBrokerButton.addEventListener('click', () => {
+      const broker = getSelectedBroker();
+      localStorage.setItem('dumbdollars_selected_broker', broker);
+      openDirectBrokerAiSetupPage(broker);
+    });
+  }
 }
 
 function openAiTradeEntryPage() {
@@ -2958,6 +3016,7 @@ async function init() {
   setupSidebarMenu();
   setupSidebarDropdowns();
   setupStartHereRoutingGuard();
+  setupInstantAiLaunchpad();
   setupModuleNavigation();
   setupDashboardOrganization();
   setupBrokerageApiSection();

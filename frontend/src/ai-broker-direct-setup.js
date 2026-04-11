@@ -5,6 +5,10 @@ const BROKER_SIGNUP_LINKS = {
   tradestation: 'https://www.tradestation.com/'
 };
 
+function getQueryParam(name) {
+  return String(new URLSearchParams(window.location.search).get(name) || '').trim();
+}
+
 function setStatus(text, isError = false) {
   const node = document.getElementById('direct-broker-status');
   if (!node) {
@@ -162,8 +166,12 @@ function setupActions() {
   const select = document.getElementById('direct-broker-select');
 
   if (select instanceof HTMLSelectElement) {
+    const brokerFromQuery = String(getQueryParam('broker') || '').trim().toLowerCase();
     const rememberedBroker = String(localStorage.getItem('dumbdollars_selected_broker') || '').trim().toLowerCase();
-    if (rememberedBroker && BROKER_SIGNUP_LINKS[rememberedBroker]) {
+    if (brokerFromQuery && BROKER_SIGNUP_LINKS[brokerFromQuery]) {
+      select.value = brokerFromQuery;
+      localStorage.setItem('dumbdollars_selected_broker', brokerFromQuery);
+    } else if (rememberedBroker && BROKER_SIGNUP_LINKS[rememberedBroker]) {
       select.value = rememberedBroker;
     }
   }
@@ -196,8 +204,16 @@ function setupActions() {
 
 async function init() {
   setupActions();
+  const flow = String(getQueryParam('flow') || '').trim().toLowerCase();
+  const brokerFromQuery = String(getQueryParam('broker') || '').trim().toLowerCase();
   const token = await ensureAuthSession();
   if (token) {
+    if (flow === 'instant') {
+      setStatus(
+        `Instant mode ready for ${brokerFromQuery ? brokerFromQuery.replace(/-/g, ' ') : 'your selected broker'}. Click "Open Broker Signup", then click "I finished signup - Auto Implement AI".`
+      );
+      return;
+    }
     setStatus('Signed in. Open broker signup, then click "I finished signup - Auto Implement AI".');
     return;
   }

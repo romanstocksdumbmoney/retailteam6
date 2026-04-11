@@ -815,6 +815,51 @@ h1 {
   padding: 0.85rem;
 }
 
+.instant-ai-launch-card {
+  margin-top: 0.85rem;
+  border: 1px solid rgba(250, 204, 21, 0.58);
+  border-radius: 14px;
+  background: linear-gradient(180deg, rgba(120, 53, 15, 0.34), rgba(2, 6, 23, 0.9));
+  padding: 1rem;
+  box-shadow: 0 14px 30px rgba(0, 0, 0, 0.36);
+}
+
+.instant-ai-primary-btn {
+  width: 100%;
+  min-height: 54px;
+  font-size: 1rem;
+  font-weight: 800;
+  border-width: 1px;
+}
+
+.instant-ai-launch-actions {
+  display: grid;
+  gap: 0.55rem;
+  margin-top: 0.45rem;
+}
+
+.instant-ai-broker-row {
+  margin-top: 0.7rem;
+  display: grid;
+  gap: 0.45rem;
+  grid-template-columns: minmax(180px, 1fr) minmax(210px, 1.1fr) auto;
+  align-items: end;
+}
+
+.instant-ai-broker-row label {
+  margin-bottom: 0.1rem;
+}
+
+@media (max-width: 900px) {
+  .instant-ai-broker-row {
+    grid-template-columns: 1fr;
+  }
+
+  .instant-ai-broker-row button {
+    width: 100%;
+  }
+}
+
 .start-here-card {
   margin-top: 0.8rem;
   border: 1px solid rgba(250, 204, 21, 0.4);

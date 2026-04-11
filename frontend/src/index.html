@@ -50,6 +50,27 @@
           </ul>
         </section>
         <p id="status" class="status">Checking API status...</p>
+        <section id="instant-ai-launchpad" class="instant-ai-launch-card" aria-labelledby="instant-ai-launch-title">
+          <div class="section-header">
+            <h2 id="instant-ai-launch-title">AI Trade Instantly</h2>
+            <span class="chip">1-Click Start</span>
+          </div>
+          <p class="small-note">Use this first if the dashboard feels crowded. It opens the easiest path with clear steps.</p>
+          <div class="instant-ai-launch-actions">
+            <button id="instant-ai-trade-button" class="instant-ai-primary-btn" type="button">AI Trade Instantly</button>
+          </div>
+          <div class="instant-ai-broker-row">
+            <label for="instant-broker-select">Connect broker AI can trade with</label>
+            <select id="instant-broker-select" aria-label="Choose broker for AI connect">
+              <option value="interactive-brokers" selected>Interactive Brokers (recommended)</option>
+              <option value="tradestation">TradeStation</option>
+              <option value="robinhood">Robinhood</option>
+              <option value="webull">Webull</option>
+            </select>
+            <button id="instant-connect-broker-button" class="btn-secondary" type="button">Connect Broker</button>
+          </div>
+          <p id="instant-ai-launch-status" class="small-note">Recommended for real API automation: Interactive Brokers.</p>
+        </section>
         <section class="start-here-card" aria-labelledby="start-here-title">
           <div class="section-header">
             <h2 id="start-here-title">Start Here (Guided)</h2>
