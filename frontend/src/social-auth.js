@@ -73,7 +73,12 @@ function getSafeNextPath() {
 }
 
 function saveAuthSession(token, email) {
-  localStorage.setItem('dumbdollars_token', String(token || ''));
+  const normalizedToken = String(token || '').trim();
+  if (!normalizedToken) {
+    localStorage.removeItem('dumbdollars_token');
+  } else {
+    localStorage.setItem('dumbdollars_token', normalizedToken);
+  }
   const normalizedEmail = normalizeEmail(email);
   if (normalizedEmail) {
     localStorage.setItem('dumbdollars_saved_email', normalizedEmail);

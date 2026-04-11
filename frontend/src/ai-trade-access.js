@@ -35,6 +35,10 @@ function saveAuthToken(token) {
   localStorage.setItem('dumbdollars_token', value);
 }
 
+function clearAuthToken() {
+  localStorage.removeItem('dumbdollars_token');
+}
+
 function getRememberToken() {
   return String(localStorage.getItem(REMEMBER_TOKEN_STORAGE_KEY) || '').trim();
 }
@@ -154,6 +158,17 @@ function goToNextPath() {
   window.location.href = getSafeNextPath();
 }
 
+async function hydrateSessionUser(token) {
+  const authToken = String(token || '').trim();
+  if (!authToken) {
+    return null;
+  }
+  const payload = await fetchJson('/api/auth/me', {
+    headers: { authorization: `Bearer ${authToken}` }
+  });
+  return payload?.user || null;
+}
+
 async function verifySessionAndRedirectIfSignedIn() {
   async function restoreFromRemember() {
     const rememberToken = getRememberToken();
@@ -186,13 +201,11 @@ async function verifySessionAndRedirectIfSignedIn() {
     }
   }
   try {
-    await fetchJson('/api/auth/me', {
-      headers: { authorization: `Bearer ${token}` }
-    });
+    await hydrateSessionUser(token);
     goToNextPath();
     return;
   } catch (_error) {
-    saveAuthToken('');
+    clearAuthToken();
   }
 
   token = await restoreFromRemember();
@@ -200,12 +213,10 @@ async function verifySessionAndRedirectIfSignedIn() {
     return;
   }
   try {
-    await fetchJson('/api/auth/me', {
-      headers: { authorization: `Bearer ${token}` }
-    });
+    await hydrateSessionUser(token);
     goToNextPath();
   } catch (_retryError) {
-    saveAuthToken('');
+    clearAuthToken();
     clearRememberToken();
   }
 }
@@ -317,6 +328,7 @@ function setupForms() {
       setButtonBusy(submitButton, true, idleLabel, 'Creating...');
       const remember = !(signupRememberInput instanceof HTMLInputElement) || signupRememberInput.checked;
       await signUp(email, password, { remember });
+      await hydrateSessionUser(String(localStorage.getItem('dumbdollars_token') || '').trim());
       setStatus('Account created. Redirecting...');
       goToNextPath();
     } catch (error) {
@@ -339,6 +351,7 @@ function setupForms() {
       setButtonBusy(submitButton, true, idleLabel, 'Signing in...');
       const remember = !(loginRememberInput instanceof HTMLInputElement) || loginRememberInput.checked;
       await logIn(email, password, { remember });
+      await hydrateSessionUser(String(localStorage.getItem('dumbdollars_token') || '').trim());
       setStatus('Login successful. Redirecting...');
       goToNextPath();
     } catch (error) {

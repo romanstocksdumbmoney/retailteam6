@@ -1179,6 +1179,49 @@ function setupStartHereRoutingGuard() {
   });
 }
 
+async function openSmartAiSetupPath() {
+  const shortcutButton = document.getElementById('handsfree-smart-setup-button');
+  const statusNode = document.getElementById('handsfree-setup-status');
+  const setBusy = (busy, text = '') => {
+    if (shortcutButton instanceof HTMLButtonElement) {
+      shortcutButton.disabled = busy;
+      shortcutButton.textContent = busy
+        ? 'Checking your setup...'
+        : 'Do This For Me (Fastest Setup)';
+    }
+    if (statusNode && text) {
+      statusNode.textContent = text;
+      statusNode.className = 'small-note';
+    }
+  };
+
+  const hasSignedIn = Boolean(authToken || currentUser || localStorage.getItem('dumbdollars_token'));
+  if (!hasSignedIn) {
+    window.location.href = '/ai-trade-access.html?next=%2Fai-live-account-setup.html';
+    return;
+  }
+
+  try {
+    setBusy(true, 'Checking your AI setup progress...');
+    const profile = await fetchJson('/api/market/auto-trader/account-view', {
+      headers: headersWithPlan()
+    });
+    const steps = Array.isArray(profile?.execution?.setup?.steps) ? profile.execution.setup.steps : [];
+    const nextPending = steps.find((step) => !step.completed);
+    const nextHref = String(nextPending?.navigateUrl || nextPending?.actionHref || nextPending?.actionUrl || '').trim();
+    if (nextHref) {
+      window.location.href = nextHref;
+      return;
+    }
+    window.location.href = '/ai-bot-account.html#ai-account-start-autopilot';
+  } catch (_error) {
+    // Fallback to the safest first step if progress lookup fails.
+    window.location.href = '/ai-live-account-setup.html';
+  } finally {
+    setBusy(false);
+  }
+}
+
 function setupBrokerageApiSection() {
   const section = document.getElementById('brokerage-api-section');
   if (!section) {
@@ -1321,6 +1364,13 @@ function setupInstantAiLaunchpad() {
   if (runByAiControlButton instanceof HTMLButtonElement) {
     runByAiControlButton.addEventListener('click', () => {
       window.location.href = '/ai-bot-account.html';
+    });
+  }
+
+  const smartSetupButton = document.getElementById('handsfree-smart-setup-button');
+  if (smartSetupButton instanceof HTMLButtonElement) {
+    smartSetupButton.addEventListener('click', async () => {
+      await openSmartAiSetupPath();
     });
   }
 }
@@ -2316,6 +2366,7 @@ async function fetchBillingInfo() {
 }
 
 async function fetchCurrentUser() {
+  let restoredFromRemember = false;
   if (!authToken) {
     const restored = await restoreAuthSessionFromRememberToken();
     if (!restored) {
@@ -2323,6 +2374,7 @@ async function fetchCurrentUser() {
       renderAuthState();
       return;
     }
+    restoredFromRemember = true;
   }
 
   try {
@@ -2347,6 +2399,9 @@ async function fetchCurrentUser() {
     }
   }
 
+  if (currentUser && restoredFromRemember) {
+    setAuthMessage(`Welcome back, ${currentUser.email}. Session restored.`);
+  }
   renderAuthState();
 }
 
@@ -2362,6 +2417,7 @@ async function login(email, password, options = {}) {
   });
   applyAuthPayload(payload, email);
   await fetchCurrentUser();
+  return payload;
 }
 
 async function signup(email, password, options = {}) {
@@ -2376,13 +2432,14 @@ async function signup(email, password, options = {}) {
   });
   applyAuthPayload(payload, email);
   await fetchCurrentUser();
+  return payload;
 }
 
 async function resolveExistingEmailConflict(email, password) {
   try {
-    await login(email, password);
+    await login(email, password, { skipPostLoginRefresh: true });
     setAuthMessage('That email already had an account. Logged you in successfully.');
-    await Promise.all([refreshBaseline(), loadUnusualFeed(), loadTrendTrades()]);
+    await runPostAuthHydration();
     return true;
   } catch (_error) {
     setAuthMessage('That email already has an account. Please use Log in with the same email/password.', true);
@@ -2454,6 +2511,14 @@ function setupAuthForms() {
   applySavedEmailToForms();
   updatePasswordHint('signup-password', 'signup-password-strength');
 
+  const refreshAfterAuth = async () => {
+    await Promise.allSettled([
+      refreshBaseline(),
+      loadUnusualFeed(),
+      loadTrendTrades()
+    ]);
+  };
+
   loginForm.addEventListener('submit', async (event) => {
     event.preventDefault();
     const email = document.getElementById('login-email').value.trim().toLowerCase();
@@ -2466,7 +2531,7 @@ function setupAuthForms() {
       await login(email, password, { remember });
       savePreferredEmail(email);
       setAuthMessage('Logged in successfully.');
-      await Promise.all([refreshBaseline(), loadUnusualFeed(), loadTrendTrades()]);
+      await refreshAfterAuth();
     } catch (error) {
       setAuthMessage(error.message || 'Login failed.', true);
     } finally {
@@ -2494,7 +2559,7 @@ function setupAuthForms() {
       await signup(email, password, { remember });
       savePreferredEmail(email);
       setAuthMessage('Account created and logged in.');
-      await Promise.all([refreshBaseline(), loadUnusualFeed(), loadTrendTrades()]);
+      await refreshAfterAuth();
     } catch (error) {
       if (error?.status === 409 || String(error?.body?.error || '').trim().toLowerCase() === 'email_in_use') {
         await resolveExistingEmailConflict(email, password);
@@ -2541,7 +2606,7 @@ function setupAuthForms() {
     closeBillingCard();
     renderAuthState();
     setAuthMessage('Logged out.');
-    await Promise.all([refreshBaseline(), loadUnusualFeed(), loadTrendTrades()]);
+    await refreshAfterAuth();
   });
 
   if (billingCancelButton) {
