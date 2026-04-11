@@ -50,6 +50,34 @@
           </ul>
         </section>
         <p id="status" class="status">Checking API status...</p>
+        <section id="handsfree-ai-setup-hub" class="handsfree-setup-hub" aria-labelledby="handsfree-setup-title">
+          <div class="section-header">
+            <h2 id="handsfree-setup-title">Set Up Account Run by AI (Hands-Free)</h2>
+            <span class="chip pro">Most Important</span>
+          </div>
+          <p class="small-note">If you want AI to actually trade in your account for you, start with this section first.</p>
+          <div class="handsfree-setup-actions">
+            <a
+              id="handsfree-start-button"
+              class="instant-ai-primary-btn instant-ai-primary-link"
+              href="/ai-live-account-setup.html?entry=handsfree"
+            >
+              Start Hands-Free AI Setup
+            </a>
+            <a
+              id="handsfree-control-button"
+              class="btn-secondary instant-connect-broker-link"
+              href="/ai-bot-account.html"
+            >
+              Open Hands-Free Trading Control
+            </a>
+          </div>
+          <ol class="detail-list handsfree-setup-steps">
+            <li><strong>1)</strong> Save your AI bot in <strong>Live Funding Mode</strong>.</li>
+            <li><strong>2)</strong> Connect your broker API and pass broker bridge test.</li>
+            <li><strong>3)</strong> Start <strong>Hands-Free AI Trading</strong> from account control page.</li>
+          </ol>
+        </section>
         <section id="instant-ai-launchpad" class="instant-ai-launch-card" aria-labelledby="instant-ai-launch-title">
           <div class="section-header">
             <h2 id="instant-ai-launch-title">AI Trade Instantly</h2>
@@ -115,16 +143,16 @@
               <span>Open live AI account guide</span>
             </a>
             <a id="start-here-funding-link" class="start-here-link" data-start-step="funding" href="/ai-bot-funding.html">
-              <strong>3) Funding/Test</strong>
-              <span>Pick paper or live mode</span>
+              <strong>3) Live Funding</strong>
+              <span>Enable live mode + funded capital</span>
             </a>
             <a id="start-here-broker-link" class="start-here-link" data-start-step="broker" href="/brokerage-onboarding.html">
-              <strong>4) Broker Connect</strong>
-              <span>Run bridge test checklist</span>
+              <strong>4) Broker Connect (Live API)</strong>
+              <span>Run bridge test until it passes</span>
             </a>
             <a id="start-here-account-link" class="start-here-link" data-start-step="account" href="/ai-bot-account.html">
-              <strong>5) Account View</strong>
-              <span>Run cycle + execute</span>
+              <strong>5) Hands-Free Control</strong>
+              <span>Start autonomous AI trading</span>
             </a>
           </div>
         </section>
@@ -149,8 +177,8 @@
             </a>
           </div>
           <div class="ai-bot-actions">
-            <button id="open-api-broker-live-setup" type="button">Open API Broker Setup Page</button>
-            <button id="open-api-broker-onboarding" class="btn-secondary" type="button">Open Broker Connect</button>
+            <a id="open-api-broker-live-setup" class="instant-ai-primary-link" href="/ai-live-account-setup.html?entry=api-broker-section">Open API Broker Setup Page</a>
+            <a id="open-api-broker-onboarding" class="btn-secondary instant-connect-broker-link" href="/brokerage-onboarding.html?broker=alpaca&entry=api-broker-section">Open Broker Connect</a>
           </div>
         </section>
         <section id="dashboard-organizer" class="dashboard-organizer-card" aria-labelledby="dashboard-organizer-title">

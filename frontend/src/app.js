@@ -1213,6 +1213,10 @@ function setupBrokerageApiSection() {
 function setupInstantAiLaunchpad() {
   const instantTradeButton = document.getElementById('instant-ai-trade-button');
   const connectBrokerButton = document.getElementById('instant-connect-broker-button');
+  const runByAiButton = document.getElementById('run-by-ai-now-button');
+  const runByAiSetupButton = document.getElementById('run-by-ai-setup-button');
+  const runByAiBrokerButton = document.getElementById('run-by-ai-broker-button');
+  const runByAiControlButton = document.getElementById('run-by-ai-control-button');
   const brokerSelect = document.getElementById('instant-broker-select');
   const statusNode = document.getElementById('instant-ai-launch-status');
 
@@ -1239,6 +1243,18 @@ function setupInstantAiLaunchpad() {
     }
     if (connectBrokerButton instanceof HTMLAnchorElement) {
       connectBrokerButton.setAttribute('href', targetUrl);
+    }
+    if (runByAiButton instanceof HTMLAnchorElement) {
+      runByAiButton.setAttribute('href', targetUrl);
+    }
+    if (runByAiSetupButton instanceof HTMLAnchorElement) {
+      runByAiSetupButton.setAttribute('href', '/ai-live-account-setup.html');
+    }
+    if (runByAiBrokerButton instanceof HTMLAnchorElement) {
+      runByAiBrokerButton.setAttribute('href', `/brokerage-onboarding.html?broker=${encodeURIComponent(broker)}`);
+    }
+    if (runByAiControlButton instanceof HTMLAnchorElement) {
+      runByAiControlButton.setAttribute('href', '/ai-bot-account.html');
     }
   };
 
@@ -1273,6 +1289,38 @@ function setupInstantAiLaunchpad() {
       if (connectBrokerButton instanceof HTMLButtonElement) {
         openDirectBrokerAiSetupPage(broker);
       }
+    });
+  }
+
+  if (runByAiButton instanceof HTMLButtonElement || runByAiButton instanceof HTMLAnchorElement) {
+    runByAiButton.addEventListener('click', () => {
+      const broker = getSelectedBroker();
+      localStorage.setItem('dumbdollars_selected_broker', broker);
+      if (runByAiButton instanceof HTMLButtonElement) {
+        openDirectBrokerAiSetupPage(broker);
+      }
+    });
+  }
+
+  if (runByAiBrokerButton instanceof HTMLButtonElement || runByAiBrokerButton instanceof HTMLAnchorElement) {
+    runByAiBrokerButton.addEventListener('click', () => {
+      const broker = getSelectedBroker();
+      localStorage.setItem('dumbdollars_selected_broker', broker);
+      if (runByAiBrokerButton instanceof HTMLButtonElement) {
+        openBrokerageOnboardingWithBroker(broker);
+      }
+    });
+  }
+
+  if (runByAiSetupButton instanceof HTMLButtonElement) {
+    runByAiSetupButton.addEventListener('click', () => {
+      window.location.href = '/ai-live-account-setup.html';
+    });
+  }
+
+  if (runByAiControlButton instanceof HTMLButtonElement) {
+    runByAiControlButton.addEventListener('click', () => {
+      window.location.href = '/ai-bot-account.html';
     });
   }
 }
