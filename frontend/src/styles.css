@@ -285,6 +285,10 @@ body {
   color: #fef08a;
 }
 
+.handsfree-auto-guide-status--working {
+  color: #fde68a;
+}
+
 .handsfree-step-link--done {
   color: #86efac;
   text-decoration: none;

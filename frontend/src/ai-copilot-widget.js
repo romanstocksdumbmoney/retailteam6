@@ -800,6 +800,27 @@ function initAiCopilotWidget() {
   mountAiCopilotWidget();
 }
 
+window.dumbdollarsAiCopilot = window.dumbdollarsAiCopilot || {};
+window.dumbdollarsAiCopilot.openAndGuide = function openAndGuide(question) {
+  const fab = document.getElementById('ai-copilot-fab');
+  const panel = document.getElementById('ai-copilot-panel');
+  const form = document.getElementById('ai-copilot-form');
+  const input = document.getElementById('ai-copilot-input');
+  if (!(fab instanceof HTMLButtonElement) || !panel || !(form instanceof HTMLFormElement) || !(input instanceof HTMLInputElement)) {
+    return false;
+  }
+  if (panel.hidden) {
+    fab.click();
+  }
+  const prompt = String(question || '').trim();
+  if (!prompt) {
+    return true;
+  }
+  input.value = prompt;
+  form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+  return true;
+};
+
 if (document.readyState === 'loading') {
   document.addEventListener('DOMContentLoaded', initAiCopilotWidget);
 } else {

@@ -1180,14 +1180,37 @@ function setupStartHereRoutingGuard() {
 }
 
 async function openSmartAiSetupPath() {
-  const shortcutButton = document.getElementById('handsfree-smart-setup-button');
-  const statusNode = document.getElementById('handsfree-setup-status');
+  const shortcutButton = document.getElementById('handsfree-auto-guide-button')
+    || document.getElementById('handsfree-smart-setup-button');
+  const statusNode = document.getElementById('handsfree-auto-guide-status')
+    || document.getElementById('handsfree-setup-status');
+  const openCopilotGuide = (detail = {}) => {
+    try {
+      window.dispatchEvent(new CustomEvent('dumbdollars:copilot-open', { detail }));
+      return true;
+    } catch (_error) {
+      return false;
+    }
+  };
+  const guideWithAiAndFallback = (guide) => {
+    const route = guide?.route || null;
+    const message = String(guide?.message || '').trim();
+    const prompt = String(guide?.prompt || '').trim();
+    const opened = openCopilotGuide({
+      message,
+      prompt,
+      route
+    });
+    if (!opened && route?.href) {
+      window.location.href = route.href;
+    }
+  };
   const setBusy = (busy, text = '') => {
     if (shortcutButton instanceof HTMLButtonElement) {
       shortcutButton.disabled = busy;
       shortcutButton.textContent = busy
         ? 'Checking your setup...'
-        : 'Do This For Me (Fastest Setup)';
+        : 'Auto Guide Me to Next Step';
     }
     if (statusNode && text) {
       statusNode.textContent = text;
@@ -1197,7 +1220,16 @@ async function openSmartAiSetupPath() {
 
   const hasSignedIn = Boolean(authToken || currentUser || localStorage.getItem('dumbdollars_token'));
   if (!hasSignedIn) {
-    window.location.href = '/ai-trade-access.html?next=%2Fai-live-account-setup.html';
+    setBusy(false, 'AI guide: sign in first, then I will guide each next step.');
+    guideWithAiAndFallback({
+      message: 'You are not signed in yet. I will guide you through setup after sign in.',
+      prompt: 'Open sign in page for AI live account setup',
+      route: {
+        href: '/ai-trade-access.html?next=%2Fai-live-account-setup.html',
+        label: 'Sign in / Create account',
+        wantsRedirect: false
+      }
+    });
     return;
   }
 
@@ -1210,13 +1242,40 @@ async function openSmartAiSetupPath() {
     const nextPending = steps.find((step) => !step.completed);
     const nextHref = String(nextPending?.navigateUrl || nextPending?.actionHref || nextPending?.actionUrl || '').trim();
     if (nextHref) {
-      window.location.href = nextHref;
+      setBusy(false, `AI guide ready: ${nextPending.title}`);
+      guideWithAiAndFallback({
+        message: `Next step: ${nextPending.title}. ${nextPending.description || ''}`.trim(),
+        prompt: `Guide me to complete this step: ${nextPending.title}`,
+        route: {
+          href: nextHref,
+          label: nextPending.actionLabel || nextPending.title || 'Open next step',
+          wantsRedirect: false
+        }
+      });
       return;
     }
-    window.location.href = '/ai-bot-account.html#ai-account-start-autopilot';
+    setBusy(false, 'AI guide: setup looks complete. Open hands-free trading control.');
+    guideWithAiAndFallback({
+      message: 'Great news: your setup looks complete. Open hands-free trading control and start autopilot.',
+      prompt: 'Open AI account view and start hands-free AI trading',
+      route: {
+        href: '/ai-bot-account.html#ai-account-start-autopilot',
+        label: 'Open Hands-Free Trading Control',
+        wantsRedirect: false
+      }
+    });
   } catch (_error) {
     // Fallback to the safest first step if progress lookup fails.
-    window.location.href = '/ai-live-account-setup.html';
+    setBusy(false, 'AI guide: opening setup guide because progress check failed.');
+    guideWithAiAndFallback({
+      message: 'I could not read your setup progress right now, so start with the guided live setup page.',
+      prompt: 'Open AI live account setup guide',
+      route: {
+        href: '/ai-live-account-setup.html',
+        label: 'Open AI Live Account Setup',
+        wantsRedirect: false
+      }
+    });
   } finally {
     setBusy(false);
   }
@@ -1367,7 +1426,8 @@ function setupInstantAiLaunchpad() {
     });
   }
 
-  const smartSetupButton = document.getElementById('handsfree-smart-setup-button');
+  const smartSetupButton = document.getElementById('handsfree-auto-guide-button')
+    || document.getElementById('handsfree-smart-setup-button');
   if (smartSetupButton instanceof HTMLButtonElement) {
     smartSetupButton.addEventListener('click', async () => {
       await openSmartAiSetupPath();
