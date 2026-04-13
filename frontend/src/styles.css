@@ -285,6 +285,38 @@ body {
   color: #fef08a;
 }
 
+.simple-setup-progress {
+  display: grid;
+  gap: 0.6rem;
+}
+
+.simple-setup-step {
+  border-radius: 10px;
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  background: rgba(2, 6, 23, 0.76);
+  padding: 0.7rem;
+}
+
+.simple-setup-step--done {
+  border-color: rgba(16, 185, 129, 0.52);
+  background: rgba(16, 185, 129, 0.12);
+}
+
+.simple-setup-step--pending {
+  border-color: rgba(245, 158, 11, 0.52);
+  background: rgba(245, 158, 11, 0.1);
+}
+
+.simple-setup-step-title {
+  margin: 0;
+}
+
+.simple-setup-primary-btn {
+  font-size: 1rem;
+  font-weight: 800;
+  padding: 0.8rem 1rem;
+}
+
 .handsfree-auto-guide-status--working {
   color: #fde68a;
 }

@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>DumbDollars Easy AI Setup</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body class="payment-page-body">
+    <main class="ai-trade-page-shell">
+      <article class="ai-trade-page-card card" role="main" aria-labelledby="ai-simple-setup-title">
+        <a class="open-link" href="/">Back to dashboard</a>
+        <div class="pro-plan-logo-wrap" aria-hidden="true">
+          <img class="pro-plan-logo-image" src="./logo-mark.svg" alt="" />
+        </div>
+        <h1 id="ai-simple-setup-title">Easy AI Account Setup</h1>
+        <p class="pro-plan-subtitle">Simple mode: press one button and we take you to the exact next step.</p>
+
+        <section class="ai-trade-consensus">
+          <h3>Your setup progress</h3>
+          <div id="ai-simple-setup-steps" class="simple-setup-progress"></div>
+        </section>
+
+        <section class="ai-trade-consensus">
+          <h3>Do this now</h3>
+          <div class="ai-bot-actions">
+            <button id="ai-simple-next-button" class="simple-setup-primary-btn" type="button">
+              Checking next step...
+            </button>
+            <button id="ai-simple-guide-button" class="btn-secondary" type="button">Guide me with AI</button>
+            <button id="ai-simple-refresh-button" class="btn-secondary" type="button">Refresh Progress</button>
+          </div>
+          <p id="ai-simple-setup-status" class="small-note">Loading your setup progress...</p>
+        </section>
+
+        <section class="ai-trade-consensus">
+          <h3>Need full detail?</h3>
+          <p class="small-note">
+            <a class="open-link" href="/ai-live-account-setup.html">Open advanced setup checklist</a>
+          </p>
+        </section>
+      </article>
+    </main>
+    <script src="./session-helper.js"></script>
+    <script src="./ai-copilot-widget.js"></script>
+    <script src="./ai-simple-setup.js"></script>
+  </body>
+</html>

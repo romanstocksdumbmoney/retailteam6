@@ -121,8 +121,8 @@ function buildRouteSuggestion(input, pathname) {
       keywords: ['ai bot', 'auto trader', 'setup ai', 'hands-free', 'risk reward', 'prompt control']
     },
     {
-      href: '/ai-live-account-setup.html',
-      label: 'AI Live Account Guide',
+      href: '/ai-simple-setup.html',
+      label: 'Easy AI Setup',
       keywords: ['guided', 'set up trading account', 'setup trading account', 'ai setup guide', 'start here ai', 'open brokerage account', 'broker account with api', 'good api keys']
     },
     {
@@ -313,12 +313,22 @@ function getAiCopilotContext(pathname) {
     },
     '/': {
       pageTitle: 'Dashboard',
-      nextHref: '/ai-bot-trader.html',
-      nextLabel: 'Open AI Trader setup',
+      nextHref: '/ai-simple-setup.html',
+      nextLabel: 'Open Easy AI setup',
       starterTips: [
         'Use module search to jump to any feature quickly.',
         'For AI trading, start with AI setup, then Funding/Test, then Broker Connect.',
         'If you are new, start paper mode first before moving to live.'
+      ]
+    },
+    '/ai-simple-setup.html': {
+      pageTitle: 'Easy AI setup',
+      nextHref: '/ai-bot-trader.html',
+      nextLabel: 'Open bot setup step',
+      starterTips: [
+        'This page shows your current progress and the exact next action.',
+        'Use "Do this now" to continue with one click.',
+        'Use "Guide me with AI" if you want Copilot to explain where to click.'
       ]
     },
     '/pro.html': {

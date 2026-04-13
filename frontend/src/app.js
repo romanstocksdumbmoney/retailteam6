@@ -1131,7 +1131,7 @@ function openAiImplementationGuidePage() {
 }
 
 function openAiLiveAccountSetupPage() {
-  window.location.href = '/ai-live-account-setup.html';
+  window.location.href = '/ai-simple-setup.html';
 }
 
 function openDirectBrokerAiSetupPage(broker) {
@@ -1158,8 +1158,8 @@ function setupStartHereRoutingGuard() {
     return;
   }
   const routeByStep = {
-    'signin': '/ai-trade-access.html?next=%2Fai-live-account-setup.html',
-    'ai-setup': '/ai-live-account-setup.html',
+    'signin': '/ai-trade-access.html?next=%2Fai-simple-setup.html',
+    'ai-setup': '/ai-simple-setup.html',
     'funding': '/ai-bot-funding.html',
     'broker': '/brokerage-onboarding.html',
     'account': '/ai-bot-account.html'
@@ -1225,7 +1225,7 @@ async function openSmartAiSetupPath() {
       message: 'You are not signed in yet. I will guide you through setup after sign in.',
       prompt: 'Open sign in page for AI live account setup',
       route: {
-        href: '/ai-trade-access.html?next=%2Fai-live-account-setup.html',
+        href: '/ai-trade-access.html?next=%2Fai-simple-setup.html',
         label: 'Sign in / Create account',
         wantsRedirect: false
       }
@@ -1271,8 +1271,8 @@ async function openSmartAiSetupPath() {
       message: 'I could not read your setup progress right now, so start with the guided live setup page.',
       prompt: 'Open AI live account setup guide',
       route: {
-        href: '/ai-live-account-setup.html',
-        label: 'Open AI Live Account Setup',
+        href: '/ai-simple-setup.html',
+        label: 'Open Easy AI Setup',
         wantsRedirect: false
       }
     });
@@ -1350,7 +1350,7 @@ function setupInstantAiLaunchpad() {
       runByAiButton.setAttribute('href', targetUrl);
     }
     if (runByAiSetupButton instanceof HTMLAnchorElement) {
-      runByAiSetupButton.setAttribute('href', '/ai-live-account-setup.html');
+      runByAiSetupButton.setAttribute('href', '/ai-simple-setup.html');
     }
     if (runByAiBrokerButton instanceof HTMLAnchorElement) {
       runByAiBrokerButton.setAttribute('href', `/brokerage-onboarding.html?broker=${encodeURIComponent(broker)}`);
@@ -1416,7 +1416,7 @@ function setupInstantAiLaunchpad() {
 
   if (runByAiSetupButton instanceof HTMLButtonElement) {
     runByAiSetupButton.addEventListener('click', () => {
-      window.location.href = '/ai-live-account-setup.html';
+      window.location.href = '/ai-simple-setup.html';
     });
   }
 
