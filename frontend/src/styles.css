@@ -285,6 +285,35 @@ body {
   color: #fef08a;
 }
 
+.quick-access-hub-card {
+  margin-top: 0.9rem;
+  border: 1px solid rgba(250, 204, 21, 0.42);
+  border-radius: 14px;
+  padding: 0.8rem;
+  background: linear-gradient(180deg, rgba(250, 204, 21, 0.08), rgba(2, 6, 23, 0.9));
+}
+
+.quick-access-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 0.62rem;
+}
+
+.quick-access-item {
+  border-radius: 10px;
+  border: 1px solid rgba(148, 163, 184, 0.32);
+  background: rgba(2, 6, 23, 0.72);
+  padding: 0.66rem;
+  display: grid;
+  gap: 0.38rem;
+}
+
+.quick-access-item h3 {
+  margin: 0;
+  font-size: 0.97rem;
+  color: #fde68a;
+}
+
 .simple-setup-progress {
   display: grid;
   gap: 0.6rem;

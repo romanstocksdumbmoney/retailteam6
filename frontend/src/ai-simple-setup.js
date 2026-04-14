@@ -191,6 +191,11 @@ function openCopilotGuide(nextStep, statusText) {
   }
 }
 
+function wantsAutoGuideFromQuery() {
+  const raw = String(new URLSearchParams(window.location.search).get('guide') || '').trim().toLowerCase();
+  return raw === '1' || raw === 'true' || raw === 'yes';
+}
+
 async function loadSimpleProgress() {
   const token = getStoredToken() || await tryRestoreSession();
   if (!token) {
@@ -245,6 +250,8 @@ function setupActions() {
   const refreshButton = document.getElementById('ai-simple-refresh-button');
   const guideButton = document.getElementById('ai-simple-guide-button');
   let activeNextStep = null;
+  const autoGuideRequested = wantsAutoGuideFromQuery();
+  let autoGuideHandled = false;
 
   const refresh = async () => {
     try {
@@ -253,12 +260,23 @@ function setupActions() {
       }
       setStatus('Checking your setup progress...');
       activeNextStep = await loadSimpleProgress();
+      if (autoGuideRequested && !autoGuideHandled) {
+        const next = activeNextStep || {
+          href: '/ai-simple-setup.html',
+          actionLabel: 'Reload easy setup',
+          title: 'Easy setup'
+        };
+        const message = `AI Guide: your next step is "${next.title}". Click the action link to continue.`;
+        openCopilotGuide(next, message);
+        setStatus('AI guide opened automatically. Follow the action in Copilot.');
+        autoGuideHandled = true;
+      }
     } catch (error) {
       setStatus(error.message || 'Could not load setup progress. Opening guided setup page.', true);
       activeNextStep = {
-        href: '/ai-live-account-setup.html',
-        actionLabel: 'Open guided setup',
-        title: 'Guided setup'
+        href: '/ai-simple-setup.html',
+        actionLabel: 'Reload easy setup',
+        title: 'Easy setup'
       };
       setNextButton(activeNextStep);
     } finally {
@@ -278,9 +296,9 @@ function setupActions() {
   if (guideButton instanceof HTMLButtonElement) {
     guideButton.addEventListener('click', () => {
       const next = activeNextStep || {
-        href: '/ai-live-account-setup.html',
-        actionLabel: 'Open guided setup',
-        title: 'Guided setup'
+        href: '/ai-simple-setup.html',
+        actionLabel: 'Reload easy setup',
+        title: 'Easy setup'
       };
       const message = `AI Guide: your next step is "${next.title}". Click the action link to continue.`;
       openCopilotGuide(next, message);

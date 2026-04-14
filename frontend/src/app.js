@@ -709,6 +709,26 @@ function setupModuleNavigation() {
   });
 }
 
+function setupQuickAccessHub() {
+  const searchButton = document.getElementById('quick-access-open-search');
+  if (!(searchButton instanceof HTMLButtonElement)) {
+    return;
+  }
+  searchButton.addEventListener('click', () => {
+    const searchSection = document.getElementById('module-command-title');
+    const searchInput = document.getElementById('module-search-input');
+    if (searchSection instanceof HTMLElement) {
+      searchSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+    if (searchInput instanceof HTMLInputElement) {
+      window.setTimeout(() => {
+        searchInput.focus();
+      }, 180);
+    }
+    setModuleSearchStatus('Type what you need and press "Go to module".');
+  });
+}
+
 function getSidebarDropdownById(id) {
   const node = document.getElementById(id);
   return node instanceof HTMLDetailsElement ? node : null;
@@ -3208,6 +3228,7 @@ async function init() {
   setupSidebarDropdowns();
   setupStartHereRoutingGuard();
   setupInstantAiLaunchpad();
+  setupQuickAccessHub();
   setupModuleNavigation();
   setupDashboardOrganization();
   setupBrokerageApiSection();
