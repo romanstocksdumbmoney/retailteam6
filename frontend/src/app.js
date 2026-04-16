@@ -711,22 +711,72 @@ function setupModuleNavigation() {
 
 function setupQuickAccessHub() {
   const searchButton = document.getElementById('quick-access-open-search');
+  const showProButton = document.getElementById('quick-access-show-pro');
+  const openTrendTradesButton = document.getElementById('quick-access-open-trend-trades');
+  const openPremiumSpikesButton = document.getElementById('quick-access-open-premium-spikes');
   if (!(searchButton instanceof HTMLButtonElement)) {
-    return;
+    // Keep compatibility on pages where quick access search is absent.
+  } else {
+    searchButton.addEventListener('click', () => {
+      const searchSection = document.getElementById('module-command-title');
+      const searchInput = document.getElementById('module-search-input');
+      if (searchSection instanceof HTMLElement) {
+        searchSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }
+      if (searchInput instanceof HTMLInputElement) {
+        window.setTimeout(() => {
+          searchInput.focus();
+        }, 180);
+      }
+      setModuleSearchStatus('Type what you need and press "Go to module".');
+    });
   }
-  searchButton.addEventListener('click', () => {
-    const searchSection = document.getElementById('module-command-title');
-    const searchInput = document.getElementById('module-search-input');
-    if (searchSection instanceof HTMLElement) {
-      searchSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+
+  const showProModules = () => {
+    if (dashboardModeController && typeof dashboardModeController.applyMode === 'function') {
+      dashboardModeController.applyMode('research', {
+        save: true,
+        statusOverride: 'Pro modules are now visible in the sidebar (Trend Trades, High IV, Premium Spikes).'
+      });
     }
-    if (searchInput instanceof HTMLInputElement) {
-      window.setTimeout(() => {
-        searchInput.focus();
-      }, 180);
+    openSidebarMenu();
+    const proDropdown = document.getElementById('sidebar-pro-dropdown');
+    if (proDropdown instanceof HTMLDetailsElement) {
+      proDropdown.hidden = false;
+      proDropdown.open = true;
+      proDropdown.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }
-    setModuleSearchStatus('Type what you need and press "Go to module".');
-  });
+  };
+
+  if (showProButton instanceof HTMLButtonElement) {
+    showProButton.addEventListener('click', () => {
+      showProModules();
+      setModuleSearchStatus('Pro modules opened. Pick Trend Trades, High IV, or Premium Spikes.');
+    });
+  }
+
+  if (openTrendTradesButton instanceof HTMLButtonElement) {
+    openTrendTradesButton.addEventListener('click', () => {
+      showProModules();
+      const target = getModuleTargetByKey('trend-trades');
+      if (target) {
+        jumpToModule(target);
+        setModuleSearchStatus('Opened Trend Trades.');
+      }
+    });
+  }
+
+  if (openPremiumSpikesButton instanceof HTMLButtonElement) {
+    openPremiumSpikesButton.addEventListener('click', async () => {
+      showProModules();
+      const target = getModuleTargetByKey('premium-spikes');
+      if (target) {
+        jumpToModule(target);
+      }
+      await focusPremiumSpikesSection({ load: true });
+      setModuleSearchStatus('Opened Premium Spikes.');
+    });
+  }
 }
 
 function getSidebarDropdownById(id) {
