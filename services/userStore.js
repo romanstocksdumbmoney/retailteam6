@@ -10,6 +10,18 @@ const USER_STORE_FILE = String(process.env.USER_STORE_FILE || path.join(process.
 const SUPPORTED_AUTH_PROVIDERS = new Set(['password', 'google', 'apple', 'github', 'discord', 'x']);
 const REMEMBER_SESSION_TTL_DAYS = Math.max(7, Math.min(365, Number(process.env.REMEMBER_SESSION_TTL_DAYS || 120)));
 const MAX_REMEMBER_SESSIONS_PER_USER = 8;
+const isProduction = String(process.env.NODE_ENV || '').trim().toLowerCase() === 'production';
+const OWNER_EMAILS = new Set(
+  [
+    String(process.env.OWNER_EMAIL || ''),
+    String(process.env.OWNER_EMAILS || '')
+  ]
+    .join(',')
+    .split(',')
+    .map((entry) => normalizeEmail(entry))
+    .filter(Boolean)
+);
+const OWNER_PREVIEW_IN_DEV = String(process.env.OWNER_PREVIEW_IN_DEV || '1').trim() === '1';
 const DISPOSABLE_EMAIL_DOMAINS = new Set([
   'mailinator.com',
   'guerrillamail.com',
@@ -23,6 +35,19 @@ function normalizeEmail(email) {
   return String(email || '')
     .trim()
     .toLowerCase();
+}
+
+function hasOwnerAccessByEmail(email) {
+  const normalizedEmail = normalizeEmail(email);
+  if (!normalizedEmail) {
+    return false;
+  }
+  if (OWNER_EMAILS.has(normalizedEmail)) {
+    return true;
+  }
+  // In non-production environments, allow preview access by default so owners can test
+  // Pro-only areas without requiring a paid subscription on each test account.
+  return !isProduction && OWNER_PREVIEW_IN_DEV;
 }
 
 function ensureStoreDirExists() {
@@ -207,7 +232,7 @@ function planFromSubscriptionStatus(status) {
 }
 
 function sanitizeUser(user) {
-  return {
+  const sanitized = {
     id: user.id,
     email: user.email,
     plan: user.plan,
@@ -219,6 +244,13 @@ function sanitizeUser(user) {
     createdAt: user.createdAt,
     updatedAt: user.updatedAt
   };
+  const ownerAccess = hasOwnerAccessByEmail(sanitized.email);
+  if (ownerAccess) {
+    sanitized.plan = 'pro';
+    sanitized.subscriptionStatus = 'active';
+  }
+  sanitized.ownerAccess = ownerAccess;
+  return sanitized;
 }
 
 function normalizeAuthProvider(provider) {

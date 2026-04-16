@@ -1706,20 +1706,25 @@ function renderAuthState() {
   const checkoutButton = document.getElementById('upgrade-pro-btn');
   const billingPortalButton = document.getElementById('billing-portal-btn');
   const logoutButton = document.getElementById('logout-btn');
+  const hasOwnerAccess = Boolean(currentUser && currentUser.ownerAccess);
 
   activePlan = currentUser && currentUser.plan === PLAN_PRO ? PLAN_PRO : PLAN_FREE;
-  planBadge.textContent = activePlan === PLAN_PRO ? 'PRO ACCESS' : 'FREE ACCESS';
+  planBadge.textContent = hasOwnerAccess
+    ? 'OWNER PRO ACCESS'
+    : (activePlan === PLAN_PRO ? 'PRO ACCESS' : 'FREE ACCESS');
   planBadge.className = activePlan === PLAN_PRO ? 'plan-badge plan-pro' : 'plan-badge plan-free';
 
   setAuthMessage(
     currentUser
-      ? `${currentUser.email} • ${activePlan === PLAN_PRO ? 'Pro active' : 'Free plan'}`
+      ? `${currentUser.email} • ${hasOwnerAccess ? 'Owner access active' : (activePlan === PLAN_PRO ? 'Pro active' : 'Free plan')}`
       : 'Not logged in'
   );
 
   if (checkoutButton) {
-    checkoutButton.disabled = !currentUser || activePlan === PLAN_PRO;
-    checkoutButton.textContent = activePlan === PLAN_PRO ? 'Pro Active' : `Upgrade to Pro (${PRO_MONTHLY_PRICE})`;
+    checkoutButton.disabled = !currentUser || activePlan === PLAN_PRO || hasOwnerAccess;
+    checkoutButton.textContent = hasOwnerAccess
+      ? 'Owner Access Active'
+      : (activePlan === PLAN_PRO ? 'Pro Active' : `Upgrade to Pro (${PRO_MONTHLY_PRICE})`);
   }
 
   if (billingPortalButton) {
