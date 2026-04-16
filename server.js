@@ -83,6 +83,8 @@ app.use('/api/auth/login', authLimiter);
 app.use('/api/auth/oauth/signin', authLimiter);
 app.use('/api/auth/session/restore', authLimiter);
 app.use('/api/auth/session/revoke', authLimiter);
+app.use('/api/auth/access-code/request', authLimiter);
+app.use('/api/auth/access-code/verify', authLimiter);
 app.use('/api/auth/stripe/create-checkout-session', checkoutLimiter);
 app.use('/api/auth/stripe/confirm-checkout-session', checkoutLimiter);
 app.use('/api/auth/stripe/create-customer-portal', checkoutLimiter);

@@ -75,6 +75,7 @@ Required env vars:
 - `STRIPE_SECRET_KEY`
 - `STRIPE_WEBHOOK_SECRET`
 - `APP_BASE_URL`
+- `OWNER_EMAIL` or `OWNER_EMAILS` (recommended for owner dashboard access visibility)
 
 Stripe pricing config:
 - Preferred: set `STRIPE_PRICE_ID` to a recurring monthly Stripe price.
@@ -84,6 +85,24 @@ Production hardening env vars:
 - `ALLOWED_ORIGINS` (comma-separated trusted origins; required in production)
 - `NODE_ENV=production`
 - `COMPLAINT_REVIEW_TOKEN` (optional but recommended; required to access complaint review/update endpoints safely)
+- `OWNER_PREVIEW_IN_DEV=0` (recommended default; avoid implicit owner elevation in dev unless intentionally testing)
+
+### Account access code recovery (email + Pro restore)
+- Request access code:
+  - `POST /api/auth/access-code/request` with `{ "email": "user@example.com", "purpose": "pro_recovery" }`
+- Verify access code:
+  - `POST /api/auth/access-code/verify` with `{ "email": "user@example.com", "code": "ABCDEFGH", "purpose": "pro_recovery", "remember": true }`
+
+Email delivery env vars for access codes:
+- `SMTP_HOST`
+- `SMTP_PORT` (default `587`)
+- `SMTP_SECURE` (`1` for SMTPS, else `0`)
+- `SMTP_USER`
+- `SMTP_PASS`
+- `SMTP_FROM` (from address)
+
+Preview fallback behavior:
+- If SMTP is not configured, access codes can still be generated in preview mode only when `ACCESS_CODE_PREVIEW_FALLBACK=1` (defaults to `1` in non-production, `0` in production).
 
 ## API Endpoints
 ### Public endpoints

@@ -81,6 +81,26 @@
           </div>
         </section>
 
+        <section class="pro-plan-box">
+          <h3>Lost account or Pro access?</h3>
+          <p class="small-note">Request your account code by email, then enter it to restore Pro access on your account.</p>
+          <form id="ai-access-code-request-form" class="row-form" novalidate>
+            <label>
+              Account email
+              <input id="ai-access-code-email" type="email" placeholder="email@domain.com" />
+            </label>
+            <button type="submit">Send my account code</button>
+          </form>
+          <form id="ai-access-code-verify-form" class="row-form" novalidate>
+            <label>
+              Account code
+              <input id="ai-access-code-input" type="text" maxlength="12" placeholder="AB12CD34" />
+            </label>
+            <button type="submit">Verify code + restore Pro</button>
+          </form>
+          <p class="small-note">Use the same email you signed up with.</p>
+        </section>
+
         <p id="ai-access-status" class="small-note"></p>
       </article>
     </main>

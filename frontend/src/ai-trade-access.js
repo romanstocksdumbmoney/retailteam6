@@ -127,6 +127,29 @@ async function socialSignIn(provider, email, options = {}) {
   applyAuthPayload(payload, email);
 }
 
+async function requestAccessCode(email, purpose = 'pro_recovery') {
+  return fetchJson('/api/auth/access-code/request', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email, purpose })
+  });
+}
+
+async function verifyAccessCodeAndRestore(email, code, options = {}) {
+  const payload = await fetchJson('/api/auth/access-code/verify', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      email,
+      code,
+      purpose: 'pro_recovery',
+      remember: options.remember !== false
+    })
+  });
+  applyAuthPayload(payload, email);
+  return payload;
+}
+
 function goToSocialAuthPage(provider, email, remember = true) {
   const normalizedProvider = String(provider || '').trim().toLowerCase();
   const normalizedEmail = normalizeEmailInput(email);
@@ -297,10 +320,14 @@ function setPasswordHint(targetId, password) {
 function setupForms() {
   const signupForm = document.getElementById('ai-access-signup-form');
   const loginForm = document.getElementById('ai-access-login-form');
+  const accessCodeRequestForm = document.getElementById('ai-access-code-request-form');
+  const accessCodeVerifyForm = document.getElementById('ai-access-code-verify-form');
   const socialButtons = Array.from(document.querySelectorAll('.oauth-btn'));
   const signupPasswordInput = document.getElementById('ai-access-signup-password');
   const loginRememberInput = document.getElementById('ai-access-login-remember');
   const signupRememberInput = document.getElementById('ai-access-signup-remember');
+  const accessCodeEmailInput = document.getElementById('ai-access-code-email');
+  const accessCodeInput = document.getElementById('ai-access-code-input');
   if (!signupForm || !loginForm) {
     return;
   }
@@ -379,6 +406,62 @@ function setupForms() {
       }, 1000);
     });
   });
+
+  if (accessCodeRequestForm instanceof HTMLFormElement) {
+    const requestCodeButton = accessCodeRequestForm.querySelector('button[type="submit"]');
+    accessCodeRequestForm.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      const email = normalizeEmailInput(accessCodeEmailInput?.value || '');
+      const idleLabel = requestCodeButton?.textContent || 'Send my account code';
+      try {
+        if (!isLikelyValidEmail(email)) {
+          throw new Error('Enter the same email used on your account.');
+        }
+        setButtonBusy(requestCodeButton, true, idleLabel, 'Sending code...');
+        const response = await requestAccessCode(email, 'pro_recovery');
+        const deliveryMode = String(response?.deliveryMode || '').trim().toLowerCase();
+        if (deliveryMode === 'preview' && response?.previewCode) {
+          setStatus(`Preview mode code: ${response.previewCode} (use it below).`);
+          return;
+        }
+        setStatus('If this email exists, a code was sent. Check inbox and spam.');
+      } catch (error) {
+        setStatus(error.message || 'Could not send account code.', true);
+      } finally {
+        setButtonBusy(requestCodeButton, false, idleLabel, 'Sending code...');
+      }
+    });
+  }
+
+  if (accessCodeVerifyForm instanceof HTMLFormElement) {
+    const verifyCodeButton = accessCodeVerifyForm.querySelector('button[type="submit"]');
+    accessCodeVerifyForm.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      const email = normalizeEmailInput(accessCodeEmailInput?.value || '');
+      const code = String(accessCodeInput?.value || '').trim().toUpperCase();
+      const idleLabel = verifyCodeButton?.textContent || 'Verify code + restore Pro';
+      try {
+        if (!isLikelyValidEmail(email)) {
+          throw new Error('Enter the account email first.');
+        }
+        if (!code || code.length < 6) {
+          throw new Error('Enter the full access code from email.');
+        }
+        setButtonBusy(verifyCodeButton, true, idleLabel, 'Verifying...');
+        const remember = (loginRememberInput instanceof HTMLInputElement && loginRememberInput.checked)
+          || (signupRememberInput instanceof HTMLInputElement && signupRememberInput.checked)
+          || (!(loginRememberInput instanceof HTMLInputElement) && !(signupRememberInput instanceof HTMLInputElement));
+        await verifyAccessCodeAndRestore(email, code, { remember });
+        await hydrateSessionUser(String(localStorage.getItem('dumbdollars_token') || '').trim());
+        setStatus('Code verified. Pro access restored. Redirecting...');
+        goToNextPath();
+      } catch (error) {
+        setStatus(error.message || 'Could not verify access code.', true);
+      } finally {
+        setButtonBusy(verifyCodeButton, false, idleLabel, 'Verifying...');
+      }
+    });
+  }
 }
 
 async function init() {

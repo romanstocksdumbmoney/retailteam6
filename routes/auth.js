@@ -6,6 +6,7 @@ const {
   normalizeAuthProvider,
   getUserById,
   sanitizeUser,
+  setUserPlanById,
   createRememberSessionForUser,
   restoreRememberSession,
   revokeRememberSession
@@ -23,6 +24,12 @@ const {
   getBillingPublicInfo,
   getBillingReadinessSnapshot
 } = require('../services/stripeService');
+const {
+  PURPOSE_PRO_RECOVERY,
+  issueAccessCode,
+  deliverAccessCode,
+  verifyAccessCode
+} = require('../services/accessCodeService');
 
 const router = express.Router();
 const PASSWORD_REQUIREMENT_MESSAGES = {
@@ -494,6 +501,119 @@ router.post('/session/revoke', (req, res) => {
   }
   revokeRememberSession(rememberToken);
   return res.json({ ok: true });
+});
+
+router.post('/access-code/request', async (req, res) => {
+  try {
+    const email = String(req.body?.email || '').trim().toLowerCase();
+    const purpose = String(req.body?.purpose || PURPOSE_PRO_RECOVERY).trim().toLowerCase();
+    if (!EMAIL_PATTERN.test(email)) {
+      return res.status(400).json({
+        error: 'invalid_email',
+        message: 'Enter a valid email address.'
+      });
+    }
+    const user = findUserByEmail(email);
+    // Return generic success for unknown emails to avoid account enumeration.
+    if (!user) {
+      return res.json({
+        ok: true,
+        message: 'If this email exists, a code was sent.'
+      });
+    }
+    const issued = issueAccessCode({ email, purpose });
+    const delivered = await deliverAccessCode({
+      email,
+      code: issued.code,
+      purpose: issued.purpose,
+      expiresAt: issued.expiresAt
+    });
+    return res.json({
+      ok: true,
+      message: delivered.mode === 'email'
+        ? 'Access code sent to your email.'
+        : 'Access code generated in preview mode.',
+      deliveryMode: delivered.mode,
+      previewCode: delivered.previewCode || null,
+      expiresAt: issued.expiresAt
+    });
+  } catch (error) {
+    const code = String(error.message || '').trim().toLowerCase();
+    if (code === 'request_cooldown') {
+      return res.status(429).json({
+        error: 'request_cooldown',
+        message: 'Please wait before requesting another code.'
+      });
+    }
+    if (code === 'email_delivery_not_configured') {
+      return res.status(503).json({
+        error: 'email_delivery_not_configured',
+        message: 'Email delivery is not configured yet. Set SMTP env vars.'
+      });
+    }
+    return res.status(400).json({
+      error: 'access_code_request_failed',
+      message: 'Could not create access code.'
+    });
+  }
+});
+
+router.post('/access-code/verify', (req, res) => {
+  const email = String(req.body?.email || '').trim().toLowerCase();
+  const code = String(req.body?.code || '').trim().toUpperCase();
+  const purpose = String(req.body?.purpose || PURPOSE_PRO_RECOVERY).trim().toLowerCase();
+  if (!EMAIL_PATTERN.test(email)) {
+    return res.status(400).json({
+      error: 'invalid_email',
+      message: 'Enter a valid email address.'
+    });
+  }
+  if (!code || code.length < 6) {
+    return res.status(400).json({
+      error: 'invalid_code',
+      message: 'Enter the full access code.'
+    });
+  }
+  const verified = verifyAccessCode({ email, code, purpose });
+  if (!verified.ok) {
+    const reason = String(verified.error || 'code_invalid');
+    const status = reason === 'too_many_attempts' ? 429 : 400;
+    const messageByReason = {
+      code_not_found: 'No valid code found for this email. Request a new code.',
+      code_expired: 'Code expired. Request a new code.',
+      code_invalid: 'Incorrect code. Try again.',
+      too_many_attempts: 'Too many failed attempts. Request a new code.'
+    };
+    return res.status(status).json({
+      error: reason,
+      message: messageByReason[reason] || 'Could not verify code.'
+    });
+  }
+  const user = findUserByEmail(email);
+  if (!user) {
+    return res.status(404).json({
+      error: 'account_not_found',
+      message: 'Account not found for this email.'
+    });
+  }
+  const finalUser = setUserPlanById(user.id, {
+    plan: 'pro',
+    stripeSubscriptionId: user.stripeSubscriptionId || null
+  }) || sanitizeUser({
+    ...user,
+    plan: 'pro',
+    subscriptionStatus: 'active'
+  });
+  const token = signAuthToken({ userId: finalUser.id, email: finalUser.email });
+  const remember = maybeCreateRememberSession(finalUser, req);
+  return res.json({
+    ok: true,
+    message: 'Access code verified. Pro access restored.',
+    token,
+    user: finalUser,
+    rememberToken: remember?.rememberToken || null,
+    rememberTokenExpiresAt: remember?.expiresAt || null
+  });
 });
 
 router.get('/me', authRequired, (req, res) => {

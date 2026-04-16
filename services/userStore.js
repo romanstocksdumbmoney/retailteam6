@@ -21,7 +21,7 @@ const OWNER_EMAILS = new Set(
     .map((entry) => normalizeEmail(entry))
     .filter(Boolean)
 );
-const OWNER_PREVIEW_IN_DEV = String(process.env.OWNER_PREVIEW_IN_DEV || '1').trim() === '1';
+const OWNER_PREVIEW_IN_DEV = String(process.env.OWNER_PREVIEW_IN_DEV || '0').trim() === '1';
 const DISPOSABLE_EMAIL_DOMAINS = new Set([
   'mailinator.com',
   'guerrillamail.com',
@@ -45,8 +45,7 @@ function hasOwnerAccessByEmail(email) {
   if (OWNER_EMAILS.has(normalizedEmail)) {
     return true;
   }
-  // In non-production environments, allow preview access by default so owners can test
-  // Pro-only areas without requiring a paid subscription on each test account.
+  // In non-production environments, allow preview access only when explicitly enabled.
   return !isProduction && OWNER_PREVIEW_IN_DEV;
 }
 
@@ -251,6 +250,14 @@ function sanitizeUser(user) {
   }
   sanitized.ownerAccess = ownerAccess;
   return sanitized;
+}
+
+function isUserOwnerById(userId) {
+  const user = findUserById(userId);
+  if (!user) {
+    return false;
+  }
+  return hasOwnerAccessByEmail(user.email);
 }
 
 function normalizeAuthProvider(provider) {
@@ -596,6 +603,7 @@ module.exports = {
   setUserPlanById,
   setUserPlanByCustomerId,
   setSubscriptionStatus,
+  isUserOwnerById,
   createRememberSessionForUser,
   restoreRememberSession,
   revokeRememberSession,
