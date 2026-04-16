@@ -314,6 +314,50 @@ body {
   color: #fde68a;
 }
 
+.pro-modules-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 0.65rem;
+}
+
+.pro-module-card {
+  border-radius: 10px;
+  border: 1px solid rgba(148, 163, 184, 0.36);
+  background: rgba(2, 6, 23, 0.72);
+  padding: 0.72rem;
+  display: grid;
+  gap: 0.45rem;
+}
+
+.pro-module-card h3 {
+  margin: 0;
+  font-size: 1rem;
+  color: #fde68a;
+}
+
+.pro-module-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  width: fit-content;
+  font-size: 0.74rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  padding: 0.2rem 0.45rem;
+  border-radius: 999px;
+  border: 1px solid rgba(250, 204, 21, 0.45);
+  color: #fde68a;
+  background: rgba(250, 204, 21, 0.12);
+}
+
+.pro-ideas-list {
+  margin: 0;
+  padding-left: 1.1rem;
+  display: grid;
+  gap: 0.42rem;
+}
+
 .simple-setup-progress {
   display: grid;
   gap: 0.6rem;

@@ -750,8 +750,7 @@ function setupQuickAccessHub() {
 
   if (showProButton instanceof HTMLButtonElement) {
     showProButton.addEventListener('click', () => {
-      showProModules();
-      setModuleSearchStatus('Pro modules opened. Pick Trend Trades, High IV, or Premium Spikes.');
+      window.location.href = '/pro-modules.html';
     });
   }
 
@@ -3075,16 +3074,47 @@ function setupAiSidebar() {
 
 function setupModuleDeepLinks() {
   const params = new URLSearchParams(window.location.search);
-  const moduleParam = String(params.get('module') || '').trim().toLowerCase();
-  const hash = String(window.location.hash || '').replace(/^#/, '').trim().toLowerCase();
-  const wantsPremiumSpikes = moduleParam === 'premium-spikes' || hash === 'premium-spikes';
-  if (!wantsPremiumSpikes) {
+  const moduleParam = String(params.get('module') || '').trim();
+  const hashParam = String(window.location.hash || '').replace(/^#/, '').trim();
+  const deepLinkTarget = moduleParam || hashParam;
+  if (!deepLinkTarget) {
     return;
   }
-  window.setTimeout(() => {
-    focusPremiumSpikesSection().catch((error) => {
-      console.error(error);
+
+  const resolveTarget = (rawTarget) => {
+    const normalizedTarget = normalizeModuleSearchTerm(rawTarget);
+    if (!normalizedTarget) {
+      return null;
+    }
+    const byKey = getModuleTargetByKey(normalizedTarget);
+    if (byKey) {
+      return byKey;
+    }
+    const bySelector = MODULE_NAV_TARGETS.find((target) => {
+      const selectorId = String(target.selector || '').replace(/^#/, '');
+      return normalizeModuleSearchTerm(selectorId) === normalizedTarget;
     });
+    if (bySelector) {
+      return bySelector;
+    }
+    return findBestModuleTarget(normalizedTarget);
+  };
+
+  window.setTimeout(() => {
+    const target = resolveTarget(deepLinkTarget);
+    if (!target) {
+      return;
+    }
+    const jumped = jumpToModule(target);
+    if (!jumped) {
+      return;
+    }
+    setModuleSearchStatus(`Opened ${target.label}.`);
+    if (normalizeModuleSearchTerm(target.key) === 'premium-spikes') {
+      focusPremiumSpikesSection().catch((error) => {
+        console.error(error);
+      });
+    }
   }, 180);
 }
 

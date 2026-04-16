@@ -13,6 +13,7 @@ async function build() {
 
   await fs.writeFile(path.join(buildDir, 'index.html'), stampedHtml, 'utf8');
   await fs.copyFile(path.join(srcDir, 'pro.html'), path.join(buildDir, 'pro.html'));
+  await fs.copyFile(path.join(srcDir, 'pro-modules.html'), path.join(buildDir, 'pro-modules.html'));
   await fs.copyFile(path.join(srcDir, 'payment.html'), path.join(buildDir, 'payment.html'));
   await fs.copyFile(path.join(srcDir, 'checkout.html'), path.join(buildDir, 'checkout.html'));
   await fs.copyFile(path.join(srcDir, 'ai-trade.html'), path.join(buildDir, 'ai-trade.html'));
