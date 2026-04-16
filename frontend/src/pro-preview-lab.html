@@ -19,9 +19,16 @@
         <section class="pro-plan-box">
           <h2>Preview status</h2>
           <p id="pro-preview-lab-status" class="small-note">Preview mode active: no Pro lock on this page.</p>
+          <div class="ai-bot-actions">
+            <a class="btn-secondary" href="#pro-idea-alerts">Alerts Center</a>
+            <a class="btn-secondary" href="#pro-idea-backtest">Backtest Lab</a>
+            <a class="btn-secondary" href="#pro-idea-watchlists">Watchlists + Rules</a>
+            <a class="btn-secondary" href="#pro-idea-heatmap">Session Heatmap</a>
+            <a class="btn-secondary" href="#pro-idea-journal">Trade Journal Sync</a>
+          </div>
         </section>
 
-        <section class="pro-plan-box">
+        <section id="pro-idea-alerts" class="pro-plan-box">
           <h2>1) Pro Alerts Center (Preview)</h2>
           <p class="small-note">Test how multi-channel alerts might look for premium spikes, IV breaks, and trend flips.</p>
           <form id="preview-alerts-form" class="row-form" novalidate>
@@ -51,7 +58,7 @@
           <div id="preview-alerts-feed" class="stack"></div>
         </section>
 
-        <section class="pro-plan-box">
+        <section id="pro-idea-backtest" class="pro-plan-box">
           <h2>2) Pro Backtest Lab (Preview)</h2>
           <p class="small-note">Quick mock replay to preview summary metrics and result cards.</p>
           <form id="preview-backtest-form" class="row-form" novalidate>
@@ -84,7 +91,7 @@
           <div id="preview-backtest-results" class="stack"></div>
         </section>
 
-        <section class="pro-plan-box">
+        <section id="pro-idea-watchlists" class="pro-plan-box">
           <h2>3) Pro Watchlists + Auto Rules (Preview)</h2>
           <p class="small-note">Preview custom watchlists with attachable if/then rules.</p>
           <form id="preview-watchlist-form" class="row-form" novalidate>
@@ -105,13 +112,13 @@
           <div id="preview-watchlists" class="stack"></div>
         </section>
 
-        <section class="pro-plan-box">
+        <section id="pro-idea-heatmap" class="pro-plan-box">
           <h2>4) Pro Session Heatmap (Preview)</h2>
           <p class="small-note">See a visual-style intensity preview for opening hour, midday, and power hour.</p>
           <div id="preview-heatmap" class="preview-heatmap-grid"></div>
         </section>
 
-        <section class="pro-plan-box">
+        <section id="pro-idea-journal" class="pro-plan-box">
           <h2>5) Pro Trade Journal Sync (Preview)</h2>
           <p class="small-note">Mock trade journal entry + AI-style coaching feedback preview.</p>
           <form id="preview-journal-form" class="row-form" novalidate>

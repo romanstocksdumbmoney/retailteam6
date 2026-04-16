@@ -349,6 +349,46 @@ function initPreviewLab() {
   initWatchlistForm(state);
   initJournalForm(state);
   setStatus('Preview mode active: no Pro lock on this page.');
+  focusRequestedFeature();
+}
+
+function focusRequestedFeature() {
+  const params = new URLSearchParams(window.location.search);
+  const queryFeature = String(params.get('feature') || '').trim().toLowerCase();
+  const hashFeature = String(window.location.hash || '').replace(/^#/, '').trim().toLowerCase();
+  const feature = queryFeature || hashFeature;
+  if (!feature) {
+    return;
+  }
+  const idByFeature = {
+    alerts: 'pro-idea-alerts',
+    backtest: 'pro-idea-backtest',
+    watchlists: 'pro-idea-watchlists',
+    heatmap: 'pro-idea-heatmap',
+    journal: 'pro-idea-journal',
+    'pro-idea-alerts': 'pro-idea-alerts',
+    'pro-idea-backtest': 'pro-idea-backtest',
+    'pro-idea-watchlists': 'pro-idea-watchlists',
+    'pro-idea-heatmap': 'pro-idea-heatmap',
+    'pro-idea-journal': 'pro-idea-journal'
+  };
+  const targetId = idByFeature[feature];
+  if (!targetId) {
+    return;
+  }
+  const target = document.getElementById(targetId);
+  if (!(target instanceof HTMLElement)) {
+    return;
+  }
+  window.setTimeout(() => {
+    target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    target.classList.remove('module-highlight');
+    void target.offsetWidth;
+    target.classList.add('module-highlight');
+    window.setTimeout(() => {
+      target.classList.remove('module-highlight');
+    }, 1500);
+  }, 120);
 }
 
 initPreviewLab();
