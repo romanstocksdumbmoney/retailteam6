@@ -457,6 +457,26 @@ body {
   color: #cbd5e1;
 }
 
+.preview-notify-grid {
+  display: grid;
+  gap: 0.55rem;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+}
+
+.preview-notify-inbox {
+  display: grid;
+  gap: 0.5rem;
+}
+
+.preview-notify-message {
+  margin: 0.3rem 0 0;
+  padding: 0.55rem;
+  border-radius: 8px;
+  border: 1px solid rgba(148, 163, 184, 0.34);
+  background: rgba(15, 23, 42, 0.72);
+  white-space: pre-wrap;
+}
+
 .preview-heatmap-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));

@@ -47,6 +47,12 @@ const {
   listComplaintTicketsForReview,
   updateComplaintTicketStatus
 } = require('../services/complaintStore');
+const {
+  getNotificationSettings,
+  saveNotificationSettings,
+  buildAndSendNotificationMessage,
+  listNotificationMessages
+} = require('../services/notificationBotService');
 const { createFundingCheckoutSession } = require('../services/stripeService');
 const { parseAuthToken } = require('../services/authService');
 const { getUserById } = require('../services/userStore');
@@ -1376,6 +1382,79 @@ router.patch('/copilot/complaints/:ticketId/status', requireComplaintReviewAcces
     return res.status(400).json({
       error: 'invalid_request',
       message: 'Could not update complaint ticket.'
+    });
+  }
+});
+
+router.get('/copilot/notifications/settings', requireSignedIn, (req, res) => {
+  const payload = getNotificationSettings(req.user);
+  return res.json(payload);
+});
+
+router.post('/copilot/notifications/settings', requireSignedIn, (req, res) => {
+  try {
+    const payload = saveNotificationSettings(req.user, req.body || {});
+    return res.json(payload);
+  } catch (error) {
+    const code = String(error.message || '');
+    if (code === 'invalid_notification_email') {
+      return res.status(400).json({
+        error: 'invalid_notification_email',
+        message: 'Please provide a valid contact email.'
+      });
+    }
+    if (code === 'invalid_phone_number') {
+      return res.status(400).json({
+        error: 'invalid_phone_number',
+        message: 'Please provide a valid phone number (8-20 digits, plus optional leading +).'
+      });
+    }
+    if (code === 'invalid_notification_topics') {
+      return res.status(400).json({
+        error: 'invalid_notification_topics',
+        message: 'Choose at least one valid topic for notifications.'
+      });
+    }
+    return res.status(400).json({
+      error: 'invalid_request',
+      message: 'Could not save notification contact settings.'
+    });
+  }
+});
+
+router.get('/copilot/notifications/messages', requireSignedIn, (req, res) => {
+  const limit = Number(req.query?.limit || 20);
+  const payload = listNotificationMessages(req.user, { limit });
+  return res.json(payload);
+});
+
+router.post('/copilot/notifications/send', requireSignedIn, (req, res) => {
+  try {
+    const payload = buildAndSendNotificationMessage(req.user, req.body || {});
+    return res.status(201).json(payload);
+  } catch (error) {
+    const code = String(error.message || '');
+    if (code === 'notification_settings_required') {
+      return res.status(400).json({
+        error: 'notification_settings_required',
+        message: 'Save your contact info first before sending notifications.'
+      });
+    }
+    if (code === 'invalid_notification_topic') {
+      return res.status(400).json({
+        error: 'invalid_notification_topic',
+        message: 'Pick a valid notification topic.'
+      });
+    }
+    if (code === 'invalid_notification_symbol') {
+      return res.status(400).json({
+        error: 'invalid_notification_symbol',
+        message: 'Use a valid ticker symbol for this notification.'
+      });
+    }
+    return res.status(400).json({
+      error: 'invalid_request',
+      message: 'Could not send notification message.'
     });
   }
 });

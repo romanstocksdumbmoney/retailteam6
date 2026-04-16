@@ -1,5 +1,32 @@
 const PREVIEW_LAB_STORAGE_KEY = 'dumbdollars_pro_preview_lab_v2';
 
+async function fetchJson(url, options = {}) {
+  const response = await fetch(url, options);
+  if (!response.ok) {
+    let body = {};
+    try {
+      body = await response.json();
+    } catch (_error) {
+      body = { message: 'Unknown API error' };
+    }
+    const error = new Error(body.message || `Request failed: ${response.status}`);
+    error.status = response.status;
+    error.body = body;
+    throw error;
+  }
+  return response.json();
+}
+
+function getAuthHeaders() {
+  const token = String(localStorage.getItem('dumbdollars_token') || '').trim();
+  if (!token) {
+    return {};
+  }
+  return {
+    authorization: `Bearer ${token}`
+  };
+}
+
 function readPreviewState() {
   try {
     const raw = localStorage.getItem(PREVIEW_LAB_STORAGE_KEY);
@@ -337,6 +364,208 @@ function initJournalForm(state) {
   });
 }
 
+function mapTopicInputToApiTopic(value) {
+  const normalized = String(value || '').trim().toLowerCase();
+  const map = {
+    'premium-spike': 'premium-spike',
+    'iv-break': 'iv-break',
+    'trend-flip': 'trend-flip',
+    'watchlist-rule': 'watchlist-rule',
+    'journal-coaching': 'journal-coaching',
+    'backtest-update': 'backtest-update',
+    'session-heatmap': 'session-heatmap'
+  };
+  return map[normalized] || '';
+}
+
+function parseTopicInputList(rawValue) {
+  const map = {
+    'premium-spike': 'premium-spike',
+    'premium-spikes': 'premium-spike',
+    'iv-break': 'iv-break',
+    'trend-flip': 'trend-flip',
+    'trend-trades': 'trend-flip',
+    'watchlist-rule': 'watchlist-rule',
+    'watchlist-rules': 'watchlist-rule',
+    'journal-coaching': 'journal-coaching',
+    'backtest-update': 'backtest-update',
+    'backtest-updates': 'backtest-update',
+    'session-heatmap': 'session-heatmap'
+  };
+  const tokens = String(rawValue || '')
+    .split(',')
+    .map((item) => String(item || '').trim().toLowerCase())
+    .filter(Boolean);
+  const normalized = [...new Set(tokens.map((token) => map[token]).filter(Boolean))];
+  return normalized;
+}
+
+function renderNotificationSettingsSummary(settings) {
+  const target = document.getElementById('preview-notify-settings-summary');
+  if (!target) {
+    return;
+  }
+  if (!settings) {
+    target.innerHTML = '<p class="preview-lab-empty">Save contact settings to enable notification delivery previews.</p>';
+    return;
+  }
+  const topics = Array.isArray(settings.topics) ? settings.topics : [];
+  const channels = Array.isArray(settings.channels) ? settings.channels : [];
+  target.innerHTML = `
+    <article class="stack-item">
+      <p><strong>Receiver:</strong> ${escapeHtml(settings.fullName || 'N/A')}</p>
+      <p><strong>Email:</strong> ${escapeHtml(settings.email || 'N/A')} ${settings.phone ? `• <strong>Phone:</strong> ${escapeHtml(settings.phone)}` : ''}</p>
+      <p><strong>Channels:</strong> ${escapeHtml(channels.join(', ') || 'email')}</p>
+      <p><strong>Topics:</strong> ${escapeHtml(topics.join(', ') || 'premium-spike')}</p>
+      ${settings.notes ? `<p class="small-note"><strong>Notes:</strong> ${escapeHtml(settings.notes)}</p>` : ''}
+    </article>
+  `;
+}
+
+function renderNotificationMessages(messages) {
+  const target = document.getElementById('preview-notify-messages');
+  if (!target) {
+    return;
+  }
+  if (!Array.isArray(messages) || messages.length === 0) {
+    target.innerHTML = '<p class="preview-lab-empty">No bot messages yet. Send one from the form above.</p>';
+    return;
+  }
+  target.innerHTML = messages
+    .slice(0, 20)
+    .map((message) => `
+      <article class="stack-item">
+        <p><strong>${escapeHtml(message.topicLabel || message.topic || 'Notification')}</strong> • ${escapeHtml(message.generatedAt || '')}</p>
+        <p class="small-note">To: ${escapeHtml(message.toEmail || 'N/A')}${message.toPhone ? ` • ${escapeHtml(message.toPhone)}` : ''} • Channels: ${escapeHtml((message.channels || []).join(', '))}</p>
+        <p class="preview-notify-message"><strong>${escapeHtml(message.subject || '')}</strong>\n${escapeHtml(message.body || '')}</p>
+      </article>
+    `)
+    .join('');
+}
+
+async function loadNotificationState() {
+  try {
+    const settingsPayload = await fetchJson('/api/market/copilot/notifications/settings', {
+      headers: getAuthHeaders()
+    });
+    const settings = settingsPayload?.settings || null;
+    renderNotificationSettingsSummary(settings);
+    if (settings) {
+      const fullNameInput = document.getElementById('preview-notify-fullname');
+      const emailInput = document.getElementById('preview-notify-email');
+      const phoneInput = document.getElementById('preview-notify-phone');
+      const topicInput = document.getElementById('preview-notify-topics');
+      const notesInput = document.getElementById('preview-notify-notes');
+      const channelInput = document.getElementById('preview-notify-channel');
+      if (fullNameInput instanceof HTMLInputElement) {
+        fullNameInput.value = settings.fullName || '';
+      }
+      if (emailInput instanceof HTMLInputElement) {
+        emailInput.value = settings.email || '';
+      }
+      if (phoneInput instanceof HTMLInputElement) {
+        phoneInput.value = settings.phone || '';
+      }
+      if (topicInput instanceof HTMLInputElement) {
+        topicInput.value = Array.isArray(settings.topics) ? settings.topics.join(',') : '';
+      }
+      if (notesInput instanceof HTMLInputElement) {
+        notesInput.value = settings.notes || '';
+      }
+      if (channelInput instanceof HTMLSelectElement) {
+        const channels = Array.isArray(settings.channels) ? settings.channels : [];
+        if (channels.includes('email') && channels.includes('sms')) {
+          channelInput.value = 'both';
+        } else if (channels.includes('sms')) {
+          channelInput.value = 'sms';
+        } else {
+          channelInput.value = 'email';
+        }
+      }
+    }
+  } catch (_error) {
+    renderNotificationSettingsSummary(null);
+  }
+  try {
+    const messagesPayload = await fetchJson('/api/market/copilot/notifications/messages?limit=20', {
+      headers: getAuthHeaders()
+    });
+    renderNotificationMessages(messagesPayload?.messages || []);
+  } catch (_error) {
+    renderNotificationMessages([]);
+  }
+}
+
+function initNotificationForms() {
+  const settingsForm = document.getElementById('preview-notification-settings-form');
+  const sendForm = document.getElementById('preview-notification-send-form');
+
+  if (settingsForm instanceof HTMLFormElement) {
+    settingsForm.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      const fullName = String(document.getElementById('preview-notify-name')?.value || '').trim();
+      const email = String(document.getElementById('preview-notify-email')?.value || '').trim().toLowerCase();
+      const phone = String(document.getElementById('preview-notify-phone')?.value || '').trim();
+      const channel = String(document.getElementById('preview-notify-channel')?.value || 'email').trim().toLowerCase();
+      const notes = String(document.getElementById('preview-notify-notes')?.value || '').trim();
+      const topicsRaw = String(document.getElementById('preview-notify-topics')?.value || '').trim();
+      const topics = parseTopicInputList(topicsRaw);
+      const channels = channel === 'both' ? ['email', 'sms'] : [channel];
+      try {
+        await fetchJson('/api/market/copilot/notifications/settings', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            ...getAuthHeaders()
+          },
+          body: JSON.stringify({
+            fullName,
+            email,
+            phone,
+            channels,
+            topics,
+            notes
+          })
+        });
+        setStatus('Contact info saved. Notification receiver is active.');
+        await loadNotificationState();
+      } catch (error) {
+        setStatus(error.message || 'Could not save notification settings.', true);
+      }
+    });
+  }
+
+  if (sendForm instanceof HTMLFormElement) {
+    sendForm.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      const topic = mapTopicInputToApiTopic(document.getElementById('preview-notify-send-topic')?.value || '');
+      const symbol = String(document.getElementById('preview-notify-send-symbol')?.value || '').trim().toUpperCase();
+      const detail = String(document.getElementById('preview-notify-send-note')?.value || '').trim();
+      try {
+        if (!topic) {
+          throw new Error('Pick a valid notification topic before sending.');
+        }
+        await fetchJson('/api/market/copilot/notifications/send', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            ...getAuthHeaders()
+          },
+          body: JSON.stringify({
+            topic,
+            symbol,
+            detail
+          })
+        });
+        setStatus('Notification bot sent a structured message to your receiver inbox.');
+        await loadNotificationState();
+      } catch (error) {
+        setStatus(error.message || 'Could not send notification bot message.', true);
+      }
+    });
+  }
+}
+
 function initPreviewLab() {
   const state = readPreviewState();
   renderAlerts(state);
@@ -348,7 +577,11 @@ function initPreviewLab() {
   initBacktestForm();
   initWatchlistForm(state);
   initJournalForm(state);
+  initNotificationForms();
   setStatus('Preview mode active: no Pro lock on this page.');
+  loadNotificationState().catch((_error) => {
+    // UI gracefully handles missing session or empty state.
+  });
   focusRequestedFeature();
 }
 
@@ -361,16 +594,22 @@ function focusRequestedFeature() {
     return;
   }
   const idByFeature = {
+    notifications: 'pro-idea-notifications',
     alerts: 'pro-idea-alerts',
     backtest: 'pro-idea-backtest',
     watchlists: 'pro-idea-watchlists',
     heatmap: 'pro-idea-heatmap',
     journal: 'pro-idea-journal',
+    'pro-idea-notifications': 'pro-idea-notifications',
     'pro-idea-alerts': 'pro-idea-alerts',
     'pro-idea-backtest': 'pro-idea-backtest',
     'pro-idea-watchlists': 'pro-idea-watchlists',
     'pro-idea-heatmap': 'pro-idea-heatmap',
-    'pro-idea-journal': 'pro-idea-journal'
+    'pro-idea-journal': 'pro-idea-journal',
+    receiver: 'pro-idea-notifications',
+    intake: 'pro-idea-notifications',
+    contact: 'pro-idea-notifications',
+    'notification-receiver': 'pro-idea-notifications'
   };
   const targetId = idByFeature[feature];
   if (!targetId) {

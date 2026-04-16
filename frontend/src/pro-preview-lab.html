@@ -20,12 +20,72 @@
           <h2>Preview status</h2>
           <p id="pro-preview-lab-status" class="small-note">Preview mode active: no Pro lock on this page.</p>
           <div class="ai-bot-actions">
+            <a class="btn-secondary" href="#pro-idea-notifications">Notification Receiver</a>
             <a class="btn-secondary" href="#pro-idea-alerts">Alerts Center</a>
             <a class="btn-secondary" href="#pro-idea-backtest">Backtest Lab</a>
             <a class="btn-secondary" href="#pro-idea-watchlists">Watchlists + Rules</a>
             <a class="btn-secondary" href="#pro-idea-heatmap">Session Heatmap</a>
             <a class="btn-secondary" href="#pro-idea-journal">Trade Journal Sync</a>
           </div>
+        </section>
+
+        <section id="pro-idea-notifications" class="pro-plan-box">
+          <h2>0) Notification Receiver + Contact Intake (Live Preview)</h2>
+          <p class="small-note">Enter your contact info and topics once. Then the connected bot sends structured messages based on exactly what you submit.</p>
+          <form id="preview-notification-settings-form" class="row-form" novalidate>
+            <label>
+              Full name
+              <input id="preview-notify-name" type="text" placeholder="Your full name" />
+            </label>
+            <label>
+              Contact email
+              <input id="preview-notify-email" type="email" placeholder="you@domain.com" />
+            </label>
+            <label>
+              Phone number
+              <input id="preview-notify-phone" type="text" placeholder="+15551234567" />
+            </label>
+            <label>
+              Preferred channel
+              <select id="preview-notify-channel">
+                <option value="email" selected>Email</option>
+                <option value="sms">SMS</option>
+                <option value="both">Email + SMS</option>
+              </select>
+            </label>
+            <label>
+              Topics (comma separated)
+              <input id="preview-notify-topics" type="text" value="premium-spike,iv-break,trend-flip" />
+            </label>
+            <label>
+              Notes (optional)
+              <input id="preview-notify-notes" type="text" placeholder="Anything important for notifications" />
+            </label>
+            <button type="submit">Save Contact Info</button>
+          </form>
+          <form id="preview-notification-send-form" class="row-form" novalidate>
+            <label>
+              Topic
+              <select id="preview-notify-send-topic">
+                <option value="premium-spike" selected>Premium Spike</option>
+                <option value="iv-break">IV Break</option>
+                <option value="trend-flip">Trend Flip</option>
+                <option value="watchlist-rule">Watchlist Rule Trigger</option>
+                <option value="journal-coaching">Journal Coaching</option>
+              </select>
+            </label>
+            <label>
+              Symbol
+              <input id="preview-notify-send-symbol" type="text" maxlength="10" value="NVDA" />
+            </label>
+            <label>
+              Context note
+              <input id="preview-notify-send-note" type="text" placeholder="What happened and why this matters" />
+            </label>
+            <button type="submit">Send Bot Message</button>
+          </form>
+          <div id="preview-notify-settings-summary" class="stack"></div>
+          <div id="preview-notify-messages" class="stack"></div>
         </section>
 
         <section id="pro-idea-alerts" class="pro-plan-box">
