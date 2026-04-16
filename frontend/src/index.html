@@ -58,11 +58,6 @@
           <p class="small-note">Use these simple shortcuts if the dashboard feels crowded.</p>
           <div class="quick-access-grid">
             <article class="quick-access-item">
-              <h3>Set up AI trading</h3>
-              <p class="small-note">Best for new users.</p>
-              <a class="instant-ai-primary-link" href="/ai-simple-setup.html">Open Easy AI Setup</a>
-            </article>
-            <article class="quick-access-item">
               <h3>Connect or fix broker</h3>
               <p class="small-note">Run bridge test and resolve checklist.</p>
               <a class="btn-secondary instant-connect-broker-link" href="/brokerage-onboarding.html">Open Broker Connect</a>
@@ -103,6 +98,13 @@
             >
               Open Hands-Free Trading Control
             </a>
+            <a
+              id="handsfree-broker-signup-button"
+              class="btn-secondary instant-connect-broker-link"
+              href="/ai-broker-direct-setup.html?broker=alpaca&entry=handsfree"
+            >
+              Open API Broker Sign-Up
+            </a>
             <button
               id="handsfree-auto-guide-button"
               class="btn-secondary"
@@ -129,109 +131,6 @@
               </a>
             </li>
           </ol>
-        </section>
-        <section id="instant-ai-launchpad" class="instant-ai-launch-card" aria-labelledby="instant-ai-launch-title">
-          <div class="section-header">
-            <h2 id="instant-ai-launch-title">AI Trade Instantly</h2>
-            <span class="chip">1-Click Start</span>
-          </div>
-          <p class="small-note">Use this first if the dashboard feels crowded. It opens the easiest path with clear steps.</p>
-          <div class="instant-ai-launch-actions">
-            <a
-              id="instant-ai-trade-button"
-              class="instant-ai-primary-btn instant-ai-primary-link"
-              href="/ai-broker-direct-setup.html?broker=alpaca&entry=instant"
-            >
-              AI Trade Instantly
-            </a>
-          </div>
-          <div class="instant-ai-broker-row">
-            <label for="instant-broker-select">Connect broker AI can trade with</label>
-            <select id="instant-broker-select" aria-label="Choose broker for AI connect">
-              <option value="alpaca" selected>Alpaca (recommended)</option>
-              <option value="interactive-brokers">Interactive Brokers</option>
-              <option value="tradestation">TradeStation</option>
-              <option value="robinhood">Robinhood</option>
-              <option value="webull">Webull</option>
-            </select>
-            <a
-              id="instant-connect-broker-button"
-              class="btn-secondary instant-connect-broker-link"
-              href="/ai-broker-direct-setup.html?broker=alpaca&entry=instant"
-            >
-              Connect Broker
-            </a>
-          </div>
-          <p id="instant-ai-launch-status" class="small-note">Recommended for API-first automation: Alpaca.</p>
-        </section>
-        <section class="start-here-card" aria-labelledby="start-here-title">
-          <div class="section-header">
-            <h2 id="start-here-title">Start Here (Guided)</h2>
-            <span class="chip">Fast Path</span>
-          </div>
-          <p class="small-note">
-            <a class="open-link" href="/ai-simple-setup.html">
-              Set up Trading account with ai
-            </a>
-          </p>
-          <p class="small-note">Use this path if you want AI trading quickly without getting lost.</p>
-          <div class="start-here-grid">
-            <a
-              id="start-here-signin-link"
-              class="start-here-link"
-              data-start-step="signin"
-              href="/ai-trade-access.html?next=%2Fai-simple-setup.html"
-            >
-              <strong>1) Sign in</strong>
-              <span>Create/login first</span>
-            </a>
-            <a
-              id="start-here-ai-setup-link"
-              class="start-here-link"
-              data-start-step="ai-setup"
-              href="/ai-simple-setup.html"
-            >
-              <strong>2) AI Setup</strong>
-              <span>Open live AI account guide</span>
-            </a>
-            <a id="start-here-funding-link" class="start-here-link" data-start-step="funding" href="/ai-bot-funding.html">
-              <strong>3) Live Funding</strong>
-              <span>Enable live mode + funded capital</span>
-            </a>
-            <a id="start-here-broker-link" class="start-here-link" data-start-step="broker" href="/brokerage-onboarding.html">
-              <strong>4) Broker Connect (Live API)</strong>
-              <span>Run bridge test until it passes</span>
-            </a>
-            <a id="start-here-account-link" class="start-here-link" data-start-step="account" href="/ai-bot-account.html">
-              <strong>5) Hands-Free Control</strong>
-              <span>Start autonomous AI trading</span>
-            </a>
-          </div>
-        </section>
-        <section class="start-here-card" aria-labelledby="api-broker-title">
-          <div class="section-header">
-            <h2 id="api-broker-title">Open Brokerage Account (API-ready)</h2>
-            <span class="chip">AI Runs Account</span>
-          </div>
-          <p class="small-note">Open an account with API support, then continue in Easy Setup mode.</p>
-          <div class="start-here-grid">
-            <a class="start-here-link" href="/ai-simple-setup.html">
-              <strong>Alpaca</strong>
-              <span>Recommended API-first broker path</span>
-            </a>
-            <a class="start-here-link" href="/ai-simple-setup.html">
-              <strong>TradeStation</strong>
-              <span>Alternative API-focused brokerage path</span>
-            </a>
-            <a class="start-here-link" href="/ai-simple-setup.html">
-              <strong>Interactive Brokers</strong>
-              <span>Alternative advanced API workflow</span>
-            </a>
-          </div>
-          <div class="ai-bot-actions">
-            <a id="open-api-broker-live-setup" class="instant-ai-primary-link" href="/ai-simple-setup.html?entry=api-broker-section">Open Easy Setup Page</a>
-            <a id="open-api-broker-onboarding" class="btn-secondary instant-connect-broker-link" href="/brokerage-onboarding.html?broker=alpaca&entry=api-broker-section">Open Broker Connect</a>
-          </div>
         </section>
         <section id="dashboard-organizer" class="dashboard-organizer-card" aria-labelledby="dashboard-organizer-title">
           <div class="section-header">
