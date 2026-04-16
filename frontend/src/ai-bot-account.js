@@ -64,6 +64,16 @@ async function requestWithAuthRetry(url, options = {}) {
   }
 }
 
+const SETUP_PROGRESS_AUTOPILOT_STARTED_KEY = 'dumbdollars_setup_autopilot_started_at';
+
+function markAutopilotProgress() {
+  try {
+    localStorage.setItem(SETUP_PROGRESS_AUTOPILOT_STARTED_KEY, new Date().toISOString());
+  } catch (_error) {
+    // Ignore storage failures.
+  }
+}
+
 function setStatus(text, isError = false) {
   const node = document.getElementById('ai-account-status');
   if (!node) {
@@ -363,6 +373,9 @@ async function loadAccountView() {
   const payload = await requestWithAuthRetry('/api/market/auto-trader/account-view', {
     method: 'GET'
   });
+  if (payload?.execution?.autopilot?.active) {
+    markAutopilotProgress();
+  }
   renderAccountSnapshot(payload);
   renderOpenPositions(payload.openPositions || []);
   renderExecutionCenter(payload.execution || null);
@@ -417,6 +430,7 @@ function setupActions() {
           },
           body: JSON.stringify({ intervalMs: 30000 })
         });
+        markAutopilotProgress();
         await loadAccountView();
         setStatus('Hands-free AI trading is ON. AI will run and place broker orders automatically.');
       } catch (error) {

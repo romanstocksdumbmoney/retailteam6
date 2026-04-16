@@ -64,6 +64,21 @@ async function requestWithAuthRetry(url, options = {}) {
   }
 }
 
+const SETUP_PROGRESS_KEYS = Object.freeze({
+  liveFundedAt: 'dumbdollars_setup_live_funded_at'
+});
+
+function markSetupProgress(storageKey) {
+  if (!storageKey) {
+    return;
+  }
+  try {
+    localStorage.setItem(storageKey, new Date().toISOString());
+  } catch (_error) {
+    // Ignore storage failures.
+  }
+}
+
 function setStatus(text, isError = false) {
   const node = document.getElementById('ai-funding-status');
   if (!node) {
@@ -218,6 +233,11 @@ async function loadFundingProfile() {
   const payload = await requestWithAuthRetry('/api/market/auto-trader/funding-profile', {
     method: 'GET'
   });
+  const live = payload?.liveFunding || {};
+  const mode = String(payload?.tradingMode || 'paper').trim().toLowerCase();
+  if (mode === 'live' && Number(live.fundedUsd || 0) > 0) {
+    markSetupProgress(SETUP_PROGRESS_KEYS.liveFundedAt);
+  }
   renderFundingSummary(payload);
   updateLivePurchaseUI(payload);
   return payload;
@@ -477,6 +497,7 @@ function setupForm() {
       setStatus('Funding account and enabling live mode...');
       await enableLiveModeAndFund();
       await loadFundingProfile();
+      markSetupProgress(SETUP_PROGRESS_KEYS.liveFundedAt);
       setStatus('Live funding profile saved. Live mode is enabled.');
     } catch (error) {
       setStatus(error.message || 'Could not save funding profile.', true);

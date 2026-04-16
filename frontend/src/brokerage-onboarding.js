@@ -5,6 +5,21 @@ const BROKER_OPENING_LINKS = {
   'interactive-brokers': 'https://www.interactivebrokers.com/en/accounts/open-account-country-list.php',
   tradestation: 'https://www.tradestation.com/'
 };
+const SETUP_PROGRESS_KEYS = Object.freeze({
+  brokerConnectedAt: 'dumbdollars_setup_broker_connected_at',
+  brokerTestPassedAt: 'dumbdollars_setup_broker_test_passed_at'
+});
+
+function markSetupProgress(storageKey) {
+  if (!storageKey) {
+    return;
+  }
+  try {
+    localStorage.setItem(storageKey, new Date().toISOString());
+  } catch (_error) {
+    // Ignore storage failures.
+  }
+}
 
 function getStoredToken() {
   return String(localStorage.getItem('dumbdollars_token') || '').trim();
@@ -410,6 +425,12 @@ async function loadBrokerGuide() {
   const guide = await requestWithAuthRetry(`/api/market/auto-trader/broker-connect/steps?broker=${encodeURIComponent(broker)}`, {
     method: 'GET'
   });
+  if (guide?.current?.isConnected) {
+    markSetupProgress(SETUP_PROGRESS_KEYS.brokerConnectedAt);
+  }
+  if (guide?.current?.lastTestResult?.bridgeReady || guide?.current?.lastTestResult?.readyForTrading) {
+    markSetupProgress(SETUP_PROGRESS_KEYS.brokerTestPassedAt);
+  }
   renderSelectedBrokerSummary(guide);
   renderSetupSteps(guide.steps || []);
   renderConnectionStatus(guide);
@@ -459,6 +480,7 @@ async function connectBrokerBridge() {
   if (otpInput instanceof HTMLInputElement) {
     otpInput.value = '';
   }
+  markSetupProgress(SETUP_PROGRESS_KEYS.brokerConnectedAt);
   return response;
 }
 
@@ -473,6 +495,9 @@ async function runConnectionTest() {
     })
   });
   renderTestResults(response);
+  if (response?.bridgeReady || response?.readyForTrading) {
+    markSetupProgress(SETUP_PROGRESS_KEYS.brokerTestPassedAt);
+  }
   return response;
 }
 

@@ -68,6 +68,15 @@ async function requestWithAuthRetry(url, options = {}) {
 let currentControlLink = '';
 let activeQuickProfile = 'balanced';
 let activeStrategyTemplate = 'momentum-breakout';
+const SETUP_PROGRESS_BOT_CONFIGURED_KEY = 'dumbdollars_setup_bot_configured_at';
+
+function markBotConfiguredProgress() {
+  try {
+    localStorage.setItem(SETUP_PROGRESS_BOT_CONFIGURED_KEY, new Date().toISOString());
+  } catch (_error) {
+    // Ignore storage failures.
+  }
+}
 
 const QUICK_SETUP_PROFILES = Object.freeze({
   conservative: {
@@ -675,6 +684,9 @@ function renderState(payload) {
   applyConfigToForm(payload.config || {});
   updateQuickProfileUi(inferQuickProfileFromForm());
   updateStrategyTemplateUi(inferStrategyTemplateFromForm());
+  if (payload?.configured) {
+    markBotConfiguredProgress();
+  }
 }
 
 async function loadBotState() {
@@ -720,6 +732,7 @@ async function saveBotConfig() {
     body: JSON.stringify(payload)
   });
   renderState(saved);
+  markBotConfiguredProgress();
   return saved;
 }
 

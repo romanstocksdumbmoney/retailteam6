@@ -65,6 +65,36 @@ async function requestWithAuthRetry(url, options = {}) {
   }
 }
 
+const SETUP_PROGRESS_KEYS = Object.freeze({
+  botConfiguredAt: 'dumbdollars_setup_bot_configured_at',
+  liveFundedAt: 'dumbdollars_setup_live_funded_at',
+  brokerConnectedAt: 'dumbdollars_setup_broker_connected_at',
+  brokerTestPassedAt: 'dumbdollars_setup_broker_test_passed_at',
+  autopilotStartedAt: 'dumbdollars_setup_autopilot_started_at'
+});
+
+function markSetupProgress(storageKey) {
+  if (!storageKey) {
+    return;
+  }
+  try {
+    localStorage.setItem(storageKey, new Date().toISOString());
+  } catch (_error) {
+    // Ignore storage failures.
+  }
+}
+
+function hasSetupProgress(storageKey) {
+  if (!storageKey) {
+    return false;
+  }
+  try {
+    return Boolean(String(localStorage.getItem(storageKey) || '').trim());
+  } catch (_error) {
+    return false;
+  }
+}
+
 function setStatus(text, isError = false) {
   const node = document.getElementById('ai-simple-setup-status');
   if (!node) {
@@ -106,12 +136,12 @@ function findStepDoneByKey(allSteps, key) {
 
 function calculateSimpleFlow(accountView) {
   const rawSetupSteps = Array.isArray(accountView?.execution?.setup?.steps) ? accountView.execution.setup.steps : [];
-  const configured = Boolean(accountView?.bot?.configured);
+  const configured = Boolean(accountView?.bot?.configured) || hasSetupProgress(SETUP_PROGRESS_KEYS.botConfiguredAt);
   const liveMode = String(accountView?.bot?.tradingMode || 'paper').trim().toLowerCase() === 'live';
-  const funded = Number(accountView?.account?.fundedUsd || 0) > 0;
-  const brokerConnected = Boolean(accountView?.execution?.brokerConnection?.isConnected);
-  const testReady = findStepDoneByKey(rawSetupSteps, 'test-connection');
-  const autopilotActive = Boolean(accountView?.execution?.autopilot?.active);
+  const funded = Number(accountView?.account?.fundedUsd || 0) > 0 || hasSetupProgress(SETUP_PROGRESS_KEYS.liveFundedAt);
+  const brokerConnected = Boolean(accountView?.execution?.brokerConnection?.isConnected) || hasSetupProgress(SETUP_PROGRESS_KEYS.brokerConnectedAt);
+  const testReady = findStepDoneByKey(rawSetupSteps, 'test-connection') || hasSetupProgress(SETUP_PROGRESS_KEYS.brokerTestPassedAt);
+  const autopilotActive = Boolean(accountView?.execution?.autopilot?.active) || hasSetupProgress(SETUP_PROGRESS_KEYS.autopilotStartedAt);
 
   const steps = [
     {
@@ -160,6 +190,25 @@ function calculateSimpleFlow(accountView) {
   return { steps, nextStep };
 }
 
+function syncProgressMarkersFromServer(accountView) {
+  const rawSetupSteps = Array.isArray(accountView?.execution?.setup?.steps) ? accountView.execution.setup.steps : [];
+  if (Boolean(accountView?.bot?.configured)) {
+    markSetupProgress(SETUP_PROGRESS_KEYS.botConfiguredAt);
+  }
+  if (String(accountView?.bot?.tradingMode || 'paper').trim().toLowerCase() === 'live' && Number(accountView?.account?.fundedUsd || 0) > 0) {
+    markSetupProgress(SETUP_PROGRESS_KEYS.liveFundedAt);
+  }
+  if (Boolean(accountView?.execution?.brokerConnection?.isConnected)) {
+    markSetupProgress(SETUP_PROGRESS_KEYS.brokerConnectedAt);
+  }
+  if (findStepDoneByKey(rawSetupSteps, 'test-connection')) {
+    markSetupProgress(SETUP_PROGRESS_KEYS.brokerTestPassedAt);
+  }
+  if (Boolean(accountView?.execution?.autopilot?.active)) {
+    markSetupProgress(SETUP_PROGRESS_KEYS.autopilotStartedAt);
+  }
+}
+
 function setNextButton(nextStep) {
   const button = document.getElementById('ai-simple-next-button');
   if (!(button instanceof HTMLButtonElement)) {
@@ -199,8 +248,11 @@ function wantsAutoGuideFromQuery() {
 async function loadSimpleProgress() {
   const token = getStoredToken() || await tryRestoreSession();
   if (!token) {
+    const returnPath = wantsAutoGuideFromQuery()
+      ? '/ai-simple-setup.html?guide=1'
+      : '/ai-simple-setup.html';
     const signInStep = {
-      href: '/ai-trade-access.html?next=%2Fai-simple-setup.html',
+      href: `/ai-trade-access.html?next=${encodeURIComponent(returnPath)}`,
       actionLabel: 'Sign in to continue',
       title: 'Sign in first'
     };
@@ -234,6 +286,7 @@ async function loadSimpleProgress() {
   const accountView = await requestWithAuthRetry('/api/market/auto-trader/account-view', {
     method: 'GET'
   });
+  syncProgressMarkersFromServer(accountView);
   const flow = calculateSimpleFlow(accountView);
   renderSteps(flow.steps);
   setNextButton(flow.nextStep);
@@ -245,10 +298,67 @@ async function loadSimpleProgress() {
   return flow.nextStep;
 }
 
+function normalizeRouteFromInput(rawInput) {
+  const value = String(rawInput || '').trim();
+  if (!value) {
+    return '';
+  }
+  if (value.startsWith('/')) {
+    return value;
+  }
+  const normalizedText = value.toLowerCase();
+  const keywordRoutes = [
+    { route: '/ai-simple-setup.html', keys: ['easy setup', 'simple setup', 'setup'] },
+    { route: '/ai-bot-trader.html', keys: ['bot', 'ai bot', 'trader', 'risk'] },
+    { route: '/ai-bot-funding.html', keys: ['fund', 'funding', 'live mode', 'deposit'] },
+    { route: '/brokerage-onboarding.html', keys: ['broker', 'bridge', 'api key', 'connect'] },
+    { route: '/ai-bot-account.html', keys: ['account control', 'autopilot', 'hands-free', 'ai account'] },
+    { route: '/ai-implementation-steps.html', keys: ['implementation', 'learn ai', 'guide'] }
+  ];
+  const keywordMatch = keywordRoutes.find((row) => row.keys.some((key) => normalizedText.includes(key)));
+  if (keywordMatch) {
+    return keywordMatch.route;
+  }
+  try {
+    const parsed = new URL(value);
+    const host = String(parsed.host || '').trim().toLowerCase();
+    const currentHost = String(window.location.host || '').trim().toLowerCase();
+    if (host && currentHost && host === currentHost) {
+      return `${parsed.pathname || '/'}${parsed.search || ''}${parsed.hash || ''}`;
+    }
+  } catch (_error) {
+    // Not a valid URL; fall through.
+  }
+  return '';
+}
+
+function resolveSetupLinkInput(rawInput) {
+  const route = normalizeRouteFromInput(rawInput);
+  if (!route) {
+    return '';
+  }
+  const allowPrefixes = [
+    '/ai-simple-setup',
+    '/ai-live-account-setup',
+    '/ai-bot-trader',
+    '/ai-bot-funding',
+    '/brokerage-onboarding',
+    '/ai-bot-account',
+    '/ai-implementation-steps',
+    '/ai-broker-direct-setup',
+    '/ai-trade-access'
+  ];
+  const basePath = route.split('?')[0].split('#')[0];
+  const allowed = allowPrefixes.some((prefix) => basePath.startsWith(prefix));
+  return allowed ? route : '';
+}
+
 function setupActions() {
   const nextButton = document.getElementById('ai-simple-next-button');
   const refreshButton = document.getElementById('ai-simple-refresh-button');
   const guideButton = document.getElementById('ai-simple-guide-button');
+  const linkForm = document.getElementById('ai-simple-link-form');
+  const linkInput = document.getElementById('ai-simple-link-input');
   let activeNextStep = null;
   const autoGuideRequested = wantsAutoGuideFromQuery();
   let autoGuideHandled = false;
@@ -309,6 +419,19 @@ function setupActions() {
   if (refreshButton instanceof HTMLButtonElement) {
     refreshButton.addEventListener('click', async () => {
       await refresh();
+    });
+  }
+
+  if (linkForm instanceof HTMLFormElement && linkInput instanceof HTMLInputElement) {
+    linkForm.addEventListener('submit', (event) => {
+      event.preventDefault();
+      const route = resolveSetupLinkInput(linkInput.value);
+      if (!route) {
+        setStatus('Could not recognize that setup link. Try a page like /brokerage-onboarding.html or text like "broker connect".', true);
+        return;
+      }
+      setStatus('Opening setup link...');
+      window.location.href = route;
     });
   }
 
