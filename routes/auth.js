@@ -55,6 +55,7 @@ const LOGIN_EMAIL_IP_FAILURE_LIMIT = 8;
 const LOGIN_LOCKOUT_MS = 15 * 60 * 1000;
 const loginFailuresByEmail = new Map();
 const loginFailuresByEmailAndIp = new Map();
+const ACCESS_CODE_ALLOW_FREE_UPGRADE = String(process.env.ACCESS_CODE_ALLOW_FREE_UPGRADE || '0').trim() === '1';
 
 function nowMs() {
   return Date.now();
@@ -209,6 +210,23 @@ function authRequired(req, res, next) {
 
   req.user = user;
   return next();
+}
+
+function canUseProRecoveryCode(userRecord) {
+  if (!userRecord) {
+    return false;
+  }
+  if (ACCESS_CODE_ALLOW_FREE_UPGRADE) {
+    return true;
+  }
+  const sanitized = sanitizeUser(userRecord);
+  const normalizedStatus = String(sanitized.subscriptionStatus || '').trim().toLowerCase();
+  return Boolean(
+    sanitized.ownerAccess
+    || sanitized.plan === 'pro'
+    || normalizedStatus === 'active'
+    || normalizedStatus === 'trialing'
+  );
 }
 
 router.get('/billing-info', (_req, res) => {
@@ -521,6 +539,12 @@ router.post('/access-code/request', async (req, res) => {
         message: 'If this email exists, a code was sent.'
       });
     }
+    if (!canUseProRecoveryCode(user)) {
+      return res.status(403).json({
+        error: 'pro_recovery_not_eligible',
+        message: 'Access code recovery is available for existing Pro accounts only.'
+      });
+    }
     const issued = issueAccessCode({ email, purpose });
     const delivered = await deliverAccessCode({
       email,
@@ -594,6 +618,12 @@ router.post('/access-code/verify', (req, res) => {
     return res.status(404).json({
       error: 'account_not_found',
       message: 'Account not found for this email.'
+    });
+  }
+  if (!canUseProRecoveryCode(user)) {
+    return res.status(403).json({
+      error: 'pro_recovery_not_eligible',
+      message: 'This account is not eligible for Pro recovery code restore.'
     });
   }
   const finalUser = setUserPlanById(user.id, {

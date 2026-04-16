@@ -92,6 +92,9 @@ Production hardening env vars:
   - `POST /api/auth/access-code/request` with `{ "email": "user@example.com", "purpose": "pro_recovery" }`
 - Verify access code:
   - `POST /api/auth/access-code/verify` with `{ "email": "user@example.com", "code": "ABCDEFGH", "purpose": "pro_recovery", "remember": true }`
+- Eligibility:
+  - By default, this recovery flow is for existing Pro/owner-eligible accounts.
+  - Free accounts cannot self-upgrade through this code flow unless explicitly enabled.
 
 Email delivery env vars for access codes:
 - `SMTP_HOST`
@@ -103,6 +106,7 @@ Email delivery env vars for access codes:
 
 Preview fallback behavior:
 - If SMTP is not configured, access codes can still be generated in preview mode only when `ACCESS_CODE_PREVIEW_FALLBACK=1` (defaults to `1` in non-production, `0` in production).
+- `ACCESS_CODE_ALLOW_FREE_UPGRADE=0` should stay disabled for normal operation (set to `1` only for intentional temporary testing).
 
 ## API Endpoints
 ### Public endpoints
