@@ -1,0 +1,151 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>DumbDollars Pro Preview Lab</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body class="pro-page-body">
+    <main class="pro-page-shell">
+      <article class="pro-page-card card" role="main" aria-labelledby="pro-preview-title">
+        <a class="open-link" href="/pro-modules.html">Back to All Pro Modules</a>
+        <div class="pro-plan-logo-wrap" aria-hidden="true">
+          <img class="pro-plan-logo-image" src="./logo-mark.svg" alt="" />
+        </div>
+        <h1 id="pro-preview-title">Pro Preview Lab</h1>
+        <p class="pro-plan-subtitle">Full visual preview for upcoming Pro features. Everything here is open for testing right now.</p>
+
+        <section class="pro-plan-box">
+          <h2>Preview status</h2>
+          <p id="pro-preview-lab-status" class="small-note">Preview mode active: no Pro lock on this page.</p>
+        </section>
+
+        <section class="pro-plan-box">
+          <h2>1) Pro Alerts Center (Preview)</h2>
+          <p class="small-note">Test how multi-channel alerts might look for premium spikes, IV breaks, and trend flips.</p>
+          <form id="preview-alerts-form" class="row-form" novalidate>
+            <label>
+              Alert type
+              <select id="preview-alert-type">
+                <option value="premium-spike">Premium Spike</option>
+                <option value="iv-break">IV Break</option>
+                <option value="trend-flip">Trend Flip</option>
+              </select>
+            </label>
+            <label>
+              Symbol
+              <input id="preview-alert-symbol" type="text" maxlength="10" placeholder="NVDA" value="NVDA" />
+            </label>
+            <label>
+              Channels
+              <select id="preview-alert-channels">
+                <option value="email">Email</option>
+                <option value="push">Push</option>
+                <option value="sms">SMS</option>
+                <option value="all" selected>Email + Push + SMS</option>
+              </select>
+            </label>
+            <button type="submit">Create Preview Alert</button>
+          </form>
+          <div id="preview-alerts-feed" class="stack"></div>
+        </section>
+
+        <section class="pro-plan-box">
+          <h2>2) Pro Backtest Lab (Preview)</h2>
+          <p class="small-note">Quick mock replay to preview summary metrics and result cards.</p>
+          <form id="preview-backtest-form" class="row-form" novalidate>
+            <label>
+              Strategy
+              <select id="preview-backtest-strategy">
+                <option value="trend-following" selected>Trend Following</option>
+                <option value="mean-reversion">Mean Reversion</option>
+                <option value="momentum-breakout">Momentum Breakout</option>
+              </select>
+            </label>
+            <label>
+              Lookback
+              <select id="preview-backtest-window">
+                <option value="3m">3 months</option>
+                <option value="6m" selected>6 months</option>
+                <option value="12m">12 months</option>
+              </select>
+            </label>
+            <label>
+              Universe
+              <select id="preview-backtest-universe">
+                <option value="large-cap" selected>Large cap</option>
+                <option value="etfs">ETFs</option>
+                <option value="tech-focus">Tech focus</option>
+              </select>
+            </label>
+            <button type="submit">Run Preview Backtest</button>
+          </form>
+          <div id="preview-backtest-results" class="stack"></div>
+        </section>
+
+        <section class="pro-plan-box">
+          <h2>3) Pro Watchlists + Auto Rules (Preview)</h2>
+          <p class="small-note">Preview custom watchlists with attachable if/then rules.</p>
+          <form id="preview-watchlist-form" class="row-form" novalidate>
+            <label>
+              Watchlist name
+              <input id="preview-watchlist-name" type="text" value="Momentum Radar" placeholder="Momentum Radar" />
+            </label>
+            <label>
+              Symbols (comma separated)
+              <input id="preview-watchlist-symbols" type="text" value="NVDA, AAPL, TSLA, META" />
+            </label>
+            <label>
+              Auto rule
+              <input id="preview-watchlist-rule" type="text" value="If IV rank > 70 and premium spike > $2M, alert me" />
+            </label>
+            <button type="submit">Save Preview Watchlist</button>
+          </form>
+          <div id="preview-watchlists" class="stack"></div>
+        </section>
+
+        <section class="pro-plan-box">
+          <h2>4) Pro Session Heatmap (Preview)</h2>
+          <p class="small-note">See a visual-style intensity preview for opening hour, midday, and power hour.</p>
+          <div id="preview-heatmap" class="preview-heatmap-grid"></div>
+        </section>
+
+        <section class="pro-plan-box">
+          <h2>5) Pro Trade Journal Sync (Preview)</h2>
+          <p class="small-note">Mock trade journal entry + AI-style coaching feedback preview.</p>
+          <form id="preview-journal-form" class="row-form" novalidate>
+            <label>
+              Symbol
+              <input id="preview-journal-symbol" type="text" value="AAPL" maxlength="10" />
+            </label>
+            <label>
+              Side
+              <select id="preview-journal-side">
+                <option value="long" selected>Long</option>
+                <option value="short">Short</option>
+              </select>
+            </label>
+            <label>
+              Result %
+              <input id="preview-journal-result" type="number" step="0.1" value="2.8" />
+            </label>
+            <label>
+              Notes
+              <input id="preview-journal-notes" type="text" value="Entered on clean breakout; exited near first resistance." />
+            </label>
+            <button type="submit">Add Preview Journal Trade</button>
+          </form>
+          <div id="preview-journal-entries" class="stack"></div>
+        </section>
+
+        <section class="ai-bot-actions">
+          <a class="btn-secondary" href="/pro-modules.html">Back to Pro Modules</a>
+          <a class="btn-secondary" href="/">Back to Dashboard</a>
+        </section>
+      </article>
+    </main>
+    <script src="./pro-preview-lab.js"></script>
+    <script src="./ai-copilot-widget.js"></script>
+  </body>
+</html>

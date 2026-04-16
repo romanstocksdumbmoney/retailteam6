@@ -358,6 +358,124 @@ body {
   gap: 0.42rem;
 }
 
+.preview-lab-status {
+  margin-top: 0.55rem;
+}
+
+.preview-lab-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  gap: 0.72rem;
+}
+
+.preview-lab-card {
+  border-radius: 10px;
+  border: 1px solid rgba(148, 163, 184, 0.36);
+  background: rgba(2, 6, 23, 0.72);
+  padding: 0.72rem;
+  display: grid;
+  gap: 0.5rem;
+}
+
+.preview-lab-card h3 {
+  margin: 0;
+  color: #fde68a;
+  font-size: 1rem;
+}
+
+.preview-lab-inline {
+  display: flex;
+  gap: 0.45rem;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.preview-lab-chip {
+  display: inline-flex;
+  align-items: center;
+  width: fit-content;
+  padding: 0.2rem 0.44rem;
+  border-radius: 999px;
+  border: 1px solid rgba(148, 163, 184, 0.42);
+  background: rgba(15, 23, 42, 0.75);
+  color: #e2e8f0;
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}
+
+.preview-lab-chip--good {
+  border-color: rgba(16, 185, 129, 0.5);
+  color: #86efac;
+  background: rgba(16, 185, 129, 0.14);
+}
+
+.preview-lab-chip--warn {
+  border-color: rgba(245, 158, 11, 0.54);
+  color: #fde68a;
+  background: rgba(245, 158, 11, 0.14);
+}
+
+.preview-lab-chip--risk {
+  border-color: rgba(248, 113, 113, 0.56);
+  color: #fecaca;
+  background: rgba(248, 113, 113, 0.14);
+}
+
+.preview-lab-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.preview-lab-table th,
+.preview-lab-table td {
+  border-bottom: 1px solid rgba(148, 163, 184, 0.26);
+  padding: 0.32rem 0.2rem;
+  text-align: left;
+  font-size: 0.85rem;
+}
+
+.preview-lab-table th {
+  font-size: 0.74rem;
+  color: #cbd5e1;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}
+
+.preview-lab-list {
+  margin: 0;
+  padding-left: 1.05rem;
+  display: grid;
+  gap: 0.34rem;
+}
+
+.preview-lab-empty {
+  border: 1px dashed rgba(148, 163, 184, 0.42);
+  border-radius: 8px;
+  padding: 0.52rem;
+  color: #cbd5e1;
+}
+
+.preview-heatmap-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+  gap: 0.55rem;
+}
+
+.preview-heatmap-cell {
+  border-radius: 9px;
+  border: 1px solid rgba(148, 163, 184, 0.34);
+  background: rgba(15, 23, 42, 0.72);
+  padding: 0.56rem;
+}
+
+.preview-heatmap-cell h4 {
+  margin: 0 0 0.3rem;
+  color: #fef08a;
+  font-size: 0.95rem;
+}
+
 .simple-setup-progress {
   display: grid;
   gap: 0.6rem;
