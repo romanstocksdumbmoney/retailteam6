@@ -1397,6 +1397,12 @@ router.post('/copilot/notifications/settings', requireSignedIn, (req, res) => {
     return res.json(payload);
   } catch (error) {
     const code = String(error.message || '');
+    if (code === 'invalid_contact_name') {
+      return res.status(400).json({
+        error: 'invalid_contact_name',
+        message: 'Please enter your full name for notification receiver setup.'
+      });
+    }
     if (code === 'invalid_notification_email') {
       return res.status(400).json({
         error: 'invalid_notification_email',
@@ -1428,9 +1434,9 @@ router.get('/copilot/notifications/messages', requireSignedIn, (req, res) => {
   return res.json(payload);
 });
 
-router.post('/copilot/notifications/send', requireSignedIn, (req, res) => {
+router.post('/copilot/notifications/send', requireSignedIn, async (req, res) => {
   try {
-    const payload = buildAndSendNotificationMessage(req.user, req.body || {});
+    const payload = await buildAndSendNotificationMessage(req.user, req.body || {});
     return res.status(201).json(payload);
   } catch (error) {
     const code = String(error.message || '');
@@ -1446,10 +1452,23 @@ router.post('/copilot/notifications/send', requireSignedIn, (req, res) => {
         message: 'Pick a valid notification topic.'
       });
     }
+    if (code === 'topic_not_enabled_for_contact') {
+      return res.status(400).json({
+        error: 'topic_not_enabled_for_contact',
+        message: 'This topic is not enabled in your contact settings. Update topics first.'
+      });
+    }
     if (code === 'invalid_notification_symbol') {
       return res.status(400).json({
         error: 'invalid_notification_symbol',
         message: 'Use a valid ticker symbol for this notification.'
+      });
+    }
+    if (code === 'notification_delivery_failed') {
+      return res.status(502).json({
+        error: 'notification_delivery_failed',
+        message: 'Notification could not be delivered by any real provider. Check SMTP/Twilio configuration.',
+        attempts: Array.isArray(error.deliveryAttempts) ? error.deliveryAttempts : []
       });
     }
     return res.status(400).json({

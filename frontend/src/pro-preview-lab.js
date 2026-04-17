@@ -433,13 +433,21 @@ function renderNotificationMessages(messages) {
   }
   target.innerHTML = messages
     .slice(0, 20)
-    .map((message) => `
-      <article class="stack-item">
-        <p><strong>${escapeHtml(message.topicLabel || message.topic || 'Notification')}</strong> • ${escapeHtml(message.generatedAt || '')}</p>
-        <p class="small-note">To: ${escapeHtml(message.toEmail || 'N/A')}${message.toPhone ? ` • ${escapeHtml(message.toPhone)}` : ''} • Channels: ${escapeHtml((message.channels || []).join(', '))}</p>
-        <p class="preview-notify-message"><strong>${escapeHtml(message.subject || '')}</strong>\n${escapeHtml(message.body || '')}</p>
-      </article>
-    `)
+    .map((message) => {
+      const attempts = Array.isArray(message.delivery?.attempts) ? message.delivery.attempts : [];
+      const sentCount = Number(message.delivery?.sentCount || 0);
+      const deliveryText = attempts.length
+        ? attempts.map((attempt) => `${attempt.channel}:${attempt.status}${attempt.detail ? ` (${attempt.detail})` : ''}`).join(' • ')
+        : 'No delivery metadata';
+      return `
+        <article class="stack-item">
+          <p><strong>${escapeHtml(message.topicLabel || message.topic || 'Notification')}</strong> • ${escapeHtml(message.generatedAt || '')}</p>
+          <p class="small-note">To: ${escapeHtml(message.toEmail || 'N/A')}${message.toPhone ? ` • ${escapeHtml(message.toPhone)}` : ''} • Channels: ${escapeHtml((message.channels || []).join(', '))}</p>
+          <p class="small-note"><strong>Delivery:</strong> ${escapeHtml(deliveryText)} • sent=${sentCount}</p>
+          <p class="preview-notify-message"><strong>${escapeHtml(message.subject || '')}</strong>\n${escapeHtml(message.body || '')}</p>
+        </article>
+      `;
+    })
     .join('');
 }
 
@@ -451,7 +459,7 @@ async function loadNotificationState() {
     const settings = settingsPayload?.settings || null;
     renderNotificationSettingsSummary(settings);
     if (settings) {
-      const fullNameInput = document.getElementById('preview-notify-fullname');
+      const fullNameInput = document.getElementById('preview-notify-name');
       const emailInput = document.getElementById('preview-notify-email');
       const phoneInput = document.getElementById('preview-notify-phone');
       const topicInput = document.getElementById('preview-notify-topics');
@@ -545,7 +553,7 @@ function initNotificationForms() {
         if (!topic) {
           throw new Error('Pick a valid notification topic before sending.');
         }
-        await fetchJson('/api/market/copilot/notifications/send', {
+        const response = await fetchJson('/api/market/copilot/notifications/send', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -557,9 +565,23 @@ function initNotificationForms() {
             detail
           })
         });
-        setStatus('Notification bot sent a structured message to your receiver inbox.');
+        const attempts = Array.isArray(response?.delivery?.attempts) ? response.delivery.attempts : [];
+        const sentChannels = attempts
+          .filter((attempt) => String(attempt?.status || '') === 'sent')
+          .map((attempt) => String(attempt.channel || ''));
+        if (sentChannels.length) {
+          setStatus(`Notification sent in real life via: ${sentChannels.join(', ')}.`);
+        } else {
+          setStatus('Notification was created, but no real channel reported sent.', true);
+        }
         await loadNotificationState();
       } catch (error) {
+        const attempts = Array.isArray(error?.body?.attempts) ? error.body.attempts : [];
+        if (attempts.length) {
+          const summary = attempts.map((attempt) => `${attempt.channel}:${attempt.status}`).join(' • ');
+          setStatus(`Delivery failed. Attempts: ${summary}`, true);
+          return;
+        }
         setStatus(error.message || 'Could not send notification bot message.', true);
       }
     });

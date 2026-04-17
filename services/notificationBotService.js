@@ -1,4 +1,6 @@
 const crypto = require('crypto');
+const nodemailer = require('nodemailer');
+const twilio = require('twilio');
 
 const SETTINGS_BY_USER_ID = new Map();
 const MESSAGES_BY_USER_ID = new Map();
@@ -31,6 +33,27 @@ const TOPICS_REQUIRING_SYMBOL = new Set([
   'session-heatmap'
 ]);
 
+const REQUIRE_REAL_DELIVERY = String(
+  process.env.NOTIFICATION_REQUIRE_REAL_DELIVERY || '1'
+).trim() === '1';
+const EMAIL_HOST = String(process.env.NOTIFY_SMTP_HOST || process.env.SMTP_HOST || '').trim();
+const EMAIL_PORT = Number.parseInt(
+  String(process.env.NOTIFY_SMTP_PORT || process.env.SMTP_PORT || '587'),
+  10
+) || 587;
+const EMAIL_SECURE = String(process.env.NOTIFY_SMTP_SECURE || process.env.SMTP_SECURE || '0').trim() === '1';
+const EMAIL_USER = String(process.env.NOTIFY_SMTP_USER || process.env.SMTP_USER || '').trim();
+const EMAIL_PASS = String(process.env.NOTIFY_SMTP_PASS || process.env.SMTP_PASS || '').trim();
+const EMAIL_FROM = String(
+  process.env.NOTIFY_SMTP_FROM || process.env.SMTP_FROM || 'DumbDollars Notifications <no-reply@dumbdollars.local>'
+).trim();
+const TWILIO_ACCOUNT_SID = String(process.env.TWILIO_ACCOUNT_SID || process.env.NOTIFY_TWILIO_ACCOUNT_SID || '').trim();
+const TWILIO_AUTH_TOKEN = String(process.env.TWILIO_AUTH_TOKEN || process.env.NOTIFY_TWILIO_AUTH_TOKEN || '').trim();
+const TWILIO_FROM_NUMBER = String(process.env.TWILIO_FROM_NUMBER || process.env.NOTIFY_TWILIO_FROM_NUMBER || '').trim();
+
+let smtpTransport = null;
+let twilioClient = null;
+
 function safeText(value, maxLen) {
   return String(value || '').trim().slice(0, maxLen);
 }
@@ -62,6 +85,18 @@ function isLikelyEmail(value) {
 function isLikelyPhone(value) {
   const digits = String(value || '').replace(/\D/g, '');
   return digits.length >= 8 && digits.length <= 15;
+}
+
+function formatPhoneForDelivery(value) {
+  const normalized = normalizePhone(value);
+  if (!normalized) {
+    return '';
+  }
+  if (normalized.startsWith('+')) {
+    return normalized;
+  }
+  const digits = normalized.replace(/\D/g, '');
+  return digits ? `+${digits}` : '';
 }
 
 function normalizeTopic(value) {
@@ -108,6 +143,36 @@ function formatTopicLabel(topic) {
   return TOPIC_LABELS[topic] || safeText(topic, 60);
 }
 
+function getSmtpTransport() {
+  if (smtpTransport) {
+    return smtpTransport;
+  }
+  if (!EMAIL_HOST || !EMAIL_USER || !EMAIL_PASS) {
+    return null;
+  }
+  smtpTransport = nodemailer.createTransport({
+    host: EMAIL_HOST,
+    port: EMAIL_PORT,
+    secure: EMAIL_SECURE,
+    auth: {
+      user: EMAIL_USER,
+      pass: EMAIL_PASS
+    }
+  });
+  return smtpTransport;
+}
+
+function getTwilioClient() {
+  if (twilioClient) {
+    return twilioClient;
+  }
+  if (!TWILIO_ACCOUNT_SID || !TWILIO_AUTH_TOKEN || !TWILIO_FROM_NUMBER) {
+    return null;
+  }
+  twilioClient = twilio(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN);
+  return twilioClient;
+}
+
 function sanitizeSettings(record) {
   return {
     id: record.id,
@@ -119,6 +184,16 @@ function sanitizeSettings(record) {
     notes: record.notes || null,
     createdAt: record.createdAt,
     updatedAt: record.updatedAt
+  };
+}
+
+function sanitizeDeliveryAttempt(attempt) {
+  return {
+    channel: attempt.channel,
+    status: attempt.status,
+    provider: attempt.provider || null,
+    detail: attempt.detail || null,
+    providerMessageId: attempt.providerMessageId || null
   };
 }
 
@@ -136,6 +211,12 @@ function sanitizeMessage(message) {
     source: {
       symbol: message.source?.symbol || null,
       detail: message.source?.detail || null
+    },
+    delivery: {
+      sentCount: Number(message.delivery?.sentCount || 0),
+      attempts: Array.isArray(message.delivery?.attempts)
+        ? message.delivery.attempts.map((attempt) => sanitizeDeliveryAttempt(attempt))
+        : []
     }
   };
 }
@@ -249,6 +330,107 @@ function buildStructuredMessage(topic, context = {}) {
   }
 }
 
+async function deliverEmail(settings, message) {
+  if (!settings.email) {
+    return {
+      channel: 'email',
+      status: 'failed',
+      provider: 'smtp',
+      detail: 'contact_email_missing',
+      providerMessageId: null
+    };
+  }
+  const transport = getSmtpTransport();
+  if (!transport) {
+    return {
+      channel: 'email',
+      status: 'failed',
+      provider: 'smtp',
+      detail: 'smtp_not_configured',
+      providerMessageId: null
+    };
+  }
+  try {
+    const result = await transport.sendMail({
+      from: EMAIL_FROM,
+      to: settings.email,
+      subject: message.subject,
+      text: message.body
+    });
+    return {
+      channel: 'email',
+      status: 'sent',
+      provider: 'smtp',
+      detail: null,
+      providerMessageId: String(result?.messageId || '')
+    };
+  } catch (error) {
+    return {
+      channel: 'email',
+      status: 'failed',
+      provider: 'smtp',
+      detail: safeText(error?.message || 'smtp_send_failed', 180),
+      providerMessageId: null
+    };
+  }
+}
+
+async function deliverSms(settings, message) {
+  const destination = formatPhoneForDelivery(settings.phone);
+  if (!destination) {
+    return {
+      channel: 'sms',
+      status: 'failed',
+      provider: 'twilio',
+      detail: 'phone_missing_or_invalid',
+      providerMessageId: null
+    };
+  }
+  const client = getTwilioClient();
+  if (!client) {
+    return {
+      channel: 'sms',
+      status: 'failed',
+      provider: 'twilio',
+      detail: 'twilio_not_configured',
+      providerMessageId: null
+    };
+  }
+  const compactBody = `${message.subject}\n${message.body}`.slice(0, 1200);
+  try {
+    const result = await client.messages.create({
+      body: compactBody,
+      from: TWILIO_FROM_NUMBER,
+      to: destination
+    });
+    return {
+      channel: 'sms',
+      status: 'sent',
+      provider: 'twilio',
+      detail: null,
+      providerMessageId: String(result?.sid || '')
+    };
+  } catch (error) {
+    return {
+      channel: 'sms',
+      status: 'failed',
+      provider: 'twilio',
+      detail: safeText(error?.message || 'twilio_send_failed', 180),
+      providerMessageId: null
+    };
+  }
+}
+
+async function deliverPush(message) {
+  return {
+    channel: 'push',
+    status: 'failed',
+    provider: 'push',
+    detail: 'push_provider_not_configured',
+    providerMessageId: null
+  };
+}
+
 function listNotificationMessages(user, options = {}) {
   if (!user?.id) {
     return { total: 0, messages: [] };
@@ -269,7 +451,7 @@ function listNotificationMessages(user, options = {}) {
   };
 }
 
-function buildAndSendNotificationMessage(user, input = {}) {
+async function buildAndSendNotificationMessage(user, input = {}) {
   if (!user?.id) {
     throw new Error('unauthorized');
   }
@@ -304,8 +486,34 @@ function buildAndSendNotificationMessage(user, input = {}) {
     source: {
       symbol: symbol || null,
       detail
+    },
+    delivery: {
+      sentCount: 0,
+      attempts: []
     }
   };
+  const attempts = [];
+  for (const channel of settings.channels) {
+    // eslint-disable-next-line no-await-in-loop
+    const attempt = channel === 'email'
+      ? await deliverEmail(settings, message)
+      : (channel === 'sms'
+        ? await deliverSms(settings, message)
+        : await deliverPush(message));
+    attempts.push(attempt);
+  }
+  const sentCount = attempts.filter((attempt) => attempt.status === 'sent').length;
+  message.delivery = {
+    sentCount,
+    attempts
+  };
+
+  if (sentCount === 0 && REQUIRE_REAL_DELIVERY) {
+    const error = new Error('notification_delivery_failed');
+    error.deliveryAttempts = attempts.map((attempt) => sanitizeDeliveryAttempt(attempt));
+    throw error;
+  }
+
   const queue = Array.isArray(MESSAGES_BY_USER_ID.get(user.id))
     ? MESSAGES_BY_USER_ID.get(user.id)
     : [];
@@ -318,8 +526,8 @@ function buildAndSendNotificationMessage(user, input = {}) {
     settings: sanitizeSettings(settings),
     message: sanitizeMessage(message),
     delivery: {
-      mode: 'simulated',
-      channels: [...settings.channels]
+      sentCount,
+      attempts: attempts.map((attempt) => sanitizeDeliveryAttempt(attempt))
     }
   };
 }

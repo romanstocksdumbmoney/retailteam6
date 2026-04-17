@@ -136,6 +136,26 @@ Access control:
 - If `COMPLAINT_REVIEW_TOKEN` is set, send it in `x-complaint-review-token` header.
 - If `COMPLAINT_REVIEW_TOKEN` is not set, Pro signed-in users can access review endpoints (dev fallback).
 
+### Notification receiver + bot delivery endpoints
+- `GET /api/market/copilot/notifications/settings` (auth required)
+- `POST /api/market/copilot/notifications/settings` (auth required)
+- `GET /api/market/copilot/notifications/messages?limit=20` (auth required)
+- `POST /api/market/copilot/notifications/send` (auth required)
+
+Real delivery env vars:
+- `NOTIFICATION_REQUIRE_REAL_DELIVERY=1` (default) -> send call fails unless at least one channel actually sends
+- Email channel via SMTP:
+  - `NOTIFY_SMTP_HOST` (or fallback `SMTP_HOST`)
+  - `NOTIFY_SMTP_PORT` (or fallback `SMTP_PORT`)
+  - `NOTIFY_SMTP_SECURE` (or fallback `SMTP_SECURE`)
+  - `NOTIFY_SMTP_USER` (or fallback `SMTP_USER`)
+  - `NOTIFY_SMTP_PASS` (or fallback `SMTP_PASS`)
+  - `NOTIFY_SMTP_FROM` (or fallback `SMTP_FROM`)
+- SMS channel via Twilio:
+  - `TWILIO_ACCOUNT_SID`
+  - `TWILIO_AUTH_TOKEN`
+  - `TWILIO_FROM_NUMBER`
+
 ## Frontend scripts
 From the `frontend` directory:
 - `npm run build` - writes `frontend/build/index.html`, `app.js`, and `styles.css`
