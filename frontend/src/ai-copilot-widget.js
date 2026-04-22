@@ -120,8 +120,8 @@ function buildRouteSuggestion(input, pathname) {
 
   const routes = [
     {
-      href: '/ai-bot-funding.html',
-      label: 'Live AI Account Setup',
+      href: '/ai-live-account-setup.html',
+      label: 'Live AI Setup',
       keywords: ['live account', 'open live account', 'live ai', 'ai will run', 'run ai on my account', 'hands-free live', 'ai run it']
     },
     {
@@ -143,6 +143,11 @@ function buildRouteSuggestion(input, pathname) {
       href: '/ai-simple-setup.html',
       label: 'Easy AI Setup',
       keywords: ['guided', 'set up trading account', 'setup trading account', 'ai setup guide', 'start here ai', 'open brokerage account', 'broker account with api', 'good api keys']
+    },
+    {
+      href: '/ai-broker-direct-setup.html',
+      label: 'Direct Broker Signup + Auto AI',
+      keywords: ['direct broker', 'auto implement', 'auto ai', 'broker signup']
     },
     {
       href: '/ai-bot-funding.html',
@@ -312,8 +317,8 @@ function getAiCopilotContext(pathname) {
     },
     '/ai-bot-account.html': {
       pageTitle: 'AI brokerage account',
-      nextHref: '/brokerage-onboarding.html',
-      nextLabel: 'Open broker setup checklist',
+      nextHref: '/ai-bot-account.html#ai-account-start-autopilot',
+      nextLabel: 'Next: Start Hands-Free AI Trading',
       starterTips: [
         'Run cycle to generate proposals, then choose trades in the approval inbox.',
         'Use "Take Selected Trades" to submit only checked proposals.',
@@ -323,7 +328,7 @@ function getAiCopilotContext(pathname) {
     '/brokerage-onboarding.html': {
       pageTitle: 'Broker connection',
       nextHref: '/ai-bot-account.html',
-      nextLabel: 'Back to account execution view',
+      nextLabel: 'Next: Open AI account execution view',
       starterTips: [
         'Broker sign-up and KYC are user-completed steps and cannot be automated.',
         'Save credentials, run connection test, and resolve pending checklist steps.',
@@ -372,8 +377,8 @@ function getAiCopilotContext(pathname) {
     },
     '/checkout.html': {
       pageTitle: 'Checkout',
-      nextHref: '/payment.html',
-      nextLabel: 'Back to payment review',
+      nextHref: '/checkout.html#checkout-open-stripe',
+      nextLabel: 'Next: Open Secure Stripe Checkout',
       starterTips: [
         'This is the final step before hosted checkout.',
         'After purchase, return to dashboard and AI pages.',
@@ -470,6 +475,16 @@ function getAiCopilotContext(pathname) {
 
 function buildQuickNav(pathname) {
   const page = normalizePathname(pathname);
+  const tradeSetupFlowPages = new Set([
+    '/ai-bot-trader.html',
+    '/ai-bot-funding.html',
+    '/brokerage-onboarding.html',
+    '/ai-bot-account.html',
+    '/ai-simple-setup.html',
+    '/ai-live-account-setup.html',
+    '/ai-broker-direct-setup.html',
+    '/ai-implementation-steps.html'
+  ]);
   const tradeFlow = [
     { href: '/ai-bot-trader.html', label: '1) Setup AI' },
     { href: '/ai-bot-funding.html', label: '2) Funding/Test' },
@@ -482,7 +497,7 @@ function buildQuickNav(pathname) {
     { href: '/ai-analyzer.html', label: 'AI Analyzer' },
     { href: '/pro.html', label: 'Pro' }
   ];
-  const links = page.startsWith('/ai-bot') || page === '/brokerage-onboarding.html'
+  const links = tradeSetupFlowPages.has(page)
     ? tradeFlow
     : core;
   if (page === '/ai-bot-funding-payment.html') {
@@ -770,6 +785,24 @@ function mountAiCopilotWidget() {
     }
     handleQuestion(question);
     input.value = '';
+  });
+
+  window.addEventListener('dumbdollars:copilot-open', (event) => {
+    const detail = event?.detail || {};
+    const prompt = String(detail.prompt || '').trim();
+    const message = String(detail.message || '').trim();
+    const route = detail.route && typeof detail.route === 'object' ? detail.route : null;
+    openPanel();
+    if (message) {
+      appendMessage('assistant', message);
+    }
+    if (route?.href && route?.label && !prompt) {
+      appendRouteLink(route);
+      maybeRedirectToRoute(route);
+    }
+    if (prompt) {
+      handleQuestion(prompt);
+    }
   });
 
   quickActions.addEventListener('click', (event) => {

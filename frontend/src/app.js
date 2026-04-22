@@ -235,6 +235,7 @@ function clearCheckoutQueryParams() {
 }
 
 async function handleCheckoutReturn() {
+  const checkoutSearch = `${window.location.pathname || '/'}${window.location.search || ''}${window.location.hash || ''}`;
   const checkoutState = String(new URLSearchParams(window.location.search).get('checkout') || '')
     .trim()
     .toLowerCase();
@@ -263,7 +264,9 @@ async function handleCheckoutReturn() {
     const restored = await restoreAuthSessionFromRememberToken();
     if (!restored || !authToken) {
       setAuthMessage('Please sign in again to finish activating Pro after checkout.', true);
-      clearCheckoutQueryParams();
+      if (typeof window.redirectToSignIn === 'function') {
+        window.redirectToSignIn(checkoutSearch);
+      }
       return;
     }
   }
@@ -295,6 +298,10 @@ async function handleCheckoutReturn() {
     }
   } catch (error) {
     setAuthMessage(error.message || 'Could not verify checkout session. Please try again.', true);
+    if (Number(error?.status || 0) === 401 && typeof window.redirectToSignIn === 'function') {
+      window.redirectToSignIn(checkoutSearch);
+      return;
+    }
     clearCheckoutQueryParams();
   }
 }

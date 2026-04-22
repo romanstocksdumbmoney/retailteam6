@@ -55,11 +55,12 @@ function setStatus(text, isError = false) {
 }
 
 function showSignInNeeded(message = 'Please log in to use AI Analyzer.') {
+  const nextPath = `${window.location.pathname || '/ai-analyzer.html'}${window.location.search || ''}${window.location.hash || ''}`;
   if (typeof window.showSignInCallout === 'function') {
     window.showSignInCallout({
       statusElementId: 'ai-analyzer-status',
       message,
-      nextPath: '/ai-analyzer.html',
+      nextPath,
       linkLabel: 'Sign in to continue'
     });
     return;

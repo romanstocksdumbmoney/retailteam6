@@ -85,11 +85,12 @@ function setStatus(text, isError = false) {
 }
 
 function showSignInNeeded(message = 'Please log in first to connect paper trading.') {
+  const nextPath = `${window.location.pathname || '/ai-bot-paper-connect.html'}${window.location.search || ''}${window.location.hash || ''}`;
   if (typeof window.showSignInCallout === 'function') {
     window.showSignInCallout({
       statusElementId: 'paper-connect-status',
       message,
-      nextPath: '/ai-bot-paper-connect.html',
+      nextPath,
       linkLabel: 'Sign in to continue'
     });
     return;

@@ -104,11 +104,12 @@ function setTestStatus(text, isError = false) {
 }
 
 function showSignInNeeded(message = 'Please sign in to configure funding.') {
+  const currentPath = `${window.location.pathname || '/ai-bot-funding.html'}${window.location.search || ''}${window.location.hash || ''}`;
   if (typeof window.showSignInCallout === 'function') {
     window.showSignInCallout({
       statusElementId: 'ai-funding-status',
       message,
-      nextPath: '/ai-bot-funding.html',
+      nextPath: currentPath,
       linkLabel: 'Sign in to continue'
     });
     return;

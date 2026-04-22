@@ -137,9 +137,6 @@ async function startSecureCheckout() {
     if (!session || !session.url || !isSecureCheckoutUrl(session.url)) {
       throw new Error('Could not verify secure Stripe checkout URL.');
     }
-    if (typeof window.rememberCheckoutReturnPath === 'function') {
-      window.rememberCheckoutReturnPath('/checkout.html');
-    }
     window.location.href = session.url;
   } catch (error) {
     setStatus(normalizeCheckoutErrorMessage(error), true);

@@ -81,11 +81,12 @@ function setStatus(text, isError = false) {
 }
 
 function showSignInNeeded(message = 'Please log in to continue with funding payment.') {
+  const nextPath = `${window.location.pathname || '/ai-bot-funding-payment.html'}${window.location.search || ''}${window.location.hash || ''}`;
   if (typeof window.showSignInCallout === 'function') {
     window.showSignInCallout({
       statusElementId: 'ai-funding-payment-status',
       message,
-      nextPath: '/ai-bot-funding-payment.html',
+      nextPath,
       linkLabel: 'Sign in to continue'
     });
     return;

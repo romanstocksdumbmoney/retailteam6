@@ -205,11 +205,12 @@ function setStatus(text, isError = false) {
 }
 
 function showSignInNeeded(message = 'Please log in to use AI Bot Trader.') {
+  const nextPath = `${window.location.pathname || '/ai-bot-trader.html'}${window.location.search || ''}${window.location.hash || ''}`;
   if (typeof window.showSignInCallout === 'function') {
     window.showSignInCallout({
       statusElementId: 'ai-bot-status',
       message,
-      nextPath: '/ai-bot-trader.html',
+      nextPath,
       linkLabel: 'Sign in to continue'
     });
     return;

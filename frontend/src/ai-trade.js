@@ -48,11 +48,12 @@ function setStatus(text, isError = false) {
 }
 
 function showSignInNeeded(message = 'Please log in to use AI Trade.') {
+  const nextPath = `${window.location.pathname || '/ai-trade.html'}${window.location.search || ''}${window.location.hash || ''}`;
   if (typeof window.showSignInCallout === 'function') {
     window.showSignInCallout({
       statusElementId: 'ai-trade-status',
       message,
-      nextPath: '/ai-trade.html',
+      nextPath,
       linkLabel: 'Sign in to continue'
     });
     return;

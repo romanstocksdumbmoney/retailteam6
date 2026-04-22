@@ -87,11 +87,12 @@ function setStatus(text, isError = false) {
 }
 
 function showSignInNeeded(message = 'Please log in to view the AI brokerage account.') {
+  const nextPath = `${window.location.pathname || '/ai-bot-account.html'}${window.location.search || ''}${window.location.hash || ''}`;
   if (typeof window.showSignInCallout === 'function') {
     window.showSignInCallout({
       statusElementId: 'ai-account-status',
       message,
-      nextPath: '/ai-bot-account.html',
+      nextPath,
       linkLabel: 'Sign in to continue'
     });
     return;

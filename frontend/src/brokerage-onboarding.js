@@ -117,11 +117,12 @@ function setStatus(text, isError = false) {
 }
 
 function showSignInNeeded(message = 'Please log in first to connect AI broker bridge.') {
+  const nextPath = `${window.location.pathname || '/brokerage-onboarding.html'}${window.location.search || ''}${window.location.hash || ''}`;
   if (typeof window.showSignInCallout === 'function') {
     window.showSignInCallout({
       statusElementId: 'brokerage-onboarding-status-top',
       message,
-      nextPath: '/brokerage-onboarding.html',
+      nextPath,
       linkLabel: 'Sign in to continue'
     });
     return;
@@ -589,7 +590,11 @@ function setupForm() {
   }
 
   const rememberedBroker = String(localStorage.getItem('dumbdollars_selected_broker') || '').trim().toLowerCase();
-  if (rememberedBroker && BROKER_OPENING_LINKS[rememberedBroker]) {
+  const brokerFromQuery = String(new URLSearchParams(window.location.search).get('broker') || '').trim().toLowerCase();
+  if (brokerFromQuery && BROKER_OPENING_LINKS[brokerFromQuery]) {
+    select.value = brokerFromQuery;
+    localStorage.setItem('dumbdollars_selected_broker', brokerFromQuery);
+  } else if (rememberedBroker && BROKER_OPENING_LINKS[rememberedBroker]) {
     select.value = rememberedBroker;
   }
 
@@ -734,6 +739,19 @@ function setupForm() {
   }
 }
 
+async function runAutostartFlowIfRequested() {
+  const autostart = String(new URLSearchParams(window.location.search).get('autostart') || '').trim().toLowerCase();
+  if (!(autostart === '1' || autostart === 'true' || autostart === 'yes')) {
+    return;
+  }
+  const form = document.getElementById('broker-connect-form');
+  if (form instanceof HTMLElement) {
+    form.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+  await loadBrokerGuide().catch(() => {});
+  setStatus('Autostart enabled. Continue in the broker connect form, then run connection test.');
+}
+
 function init() {
   if (!getStoredToken()) {
     tryRestoreSession().catch(() => {});
@@ -743,6 +761,7 @@ function init() {
   setStatus('Broker connection page ready.');
   setupForm();
   renderConnectionMethodFields();
+  runAutostartFlowIfRequested().catch(() => {});
 }
 
 init();

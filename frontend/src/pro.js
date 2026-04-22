@@ -148,6 +148,7 @@ function clearCheckoutQueryParams() {
 
 async function handleCheckoutReturn() {
   await restoreSessionIfNeededSafe();
+  const checkoutSearch = `${window.location.pathname || '/pro.html'}${window.location.search || ''}${window.location.hash || ''}`;
   const params = new URLSearchParams(window.location.search);
   const checkoutState = String(params.get('checkout') || '').trim().toLowerCase();
   if (!checkoutState) {
@@ -171,8 +172,19 @@ async function handleCheckoutReturn() {
   }
   const token = localStorage.getItem('dumbdollars_token') || '';
   if (!token) {
-    setStatus('Please log in again to finalize Pro activation.', true);
-    clearCheckoutQueryParams();
+    if (typeof window.showSignInCallout === 'function') {
+      window.showSignInCallout({
+        statusElementId: 'pro-page-status',
+        message: 'Please sign in again to finalize Pro activation.',
+        nextPath: checkoutSearch,
+        linkLabel: 'Sign in to continue'
+      });
+    } else {
+      setStatus('Please log in again to finalize Pro activation.', true);
+    }
+    if (typeof window.redirectToSignIn === 'function') {
+      window.redirectToSignIn(checkoutSearch);
+    }
     return;
   }
 
@@ -198,17 +210,41 @@ async function handleCheckoutReturn() {
     window.location.href = '/';
   } catch (error) {
     setStatus(error.message || 'Could not verify checkout session.', true);
+    if (Number(error?.status || 0) === 401) {
+      if (typeof window.showSignInCallout === 'function') {
+        window.showSignInCallout({
+          statusElementId: 'pro-page-status',
+          message: 'Please sign in again to finalize Pro activation.',
+          nextPath: checkoutSearch,
+          linkLabel: 'Sign in to continue'
+        });
+      }
+      if (typeof window.redirectToSignIn === 'function') {
+        window.redirectToSignIn(checkoutSearch);
+      }
+      return;
+    }
     clearCheckoutQueryParams();
   }
 }
 
 async function openPaymentPage() {
   await restoreSessionIfNeededSafe();
+  const checkoutSearch = `${window.location.pathname || '/pro.html'}${window.location.search || ''}${window.location.hash || ''}`;
   const token = typeof window.getStoredAuthToken === 'function'
     ? window.getStoredAuthToken()
     : (localStorage.getItem('dumbdollars_token') || '');
   if (!token) {
-    setStatus('Login required before secure checkout.', true);
+    if (typeof window.showSignInCallout === 'function') {
+      window.showSignInCallout({
+        statusElementId: 'pro-page-status',
+        message: 'Login required before secure checkout.',
+        nextPath: checkoutSearch,
+        linkLabel: 'Sign in to continue'
+      });
+    } else {
+      setStatus('Login required before secure checkout.', true);
+    }
     return;
   }
   rememberCheckoutReturnPath(getSafeCurrentPath());

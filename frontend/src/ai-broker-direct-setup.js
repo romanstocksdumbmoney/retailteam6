@@ -27,7 +27,7 @@ function showSignInNeeded(message = 'Sign in first so AI setup can be saved to y
     window.showSignInCallout({
       statusElementId: 'direct-broker-status',
       message,
-      nextPath: '/ai-broker-direct-setup.html',
+      nextPath: `${window.location.pathname || '/ai-broker-direct-setup.html'}${window.location.search || ''}${window.location.hash || ''}`,
       linkLabel: 'Sign in to continue'
     });
     return;

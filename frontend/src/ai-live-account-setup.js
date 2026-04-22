@@ -11,11 +11,12 @@ function setStatus(text, isError = false) {
 }
 
 function showSignInNeeded(message = 'Please sign in first so setup can be saved to your account.') {
+  const nextPath = `${window.location.pathname || '/ai-live-account-setup.html'}${window.location.search || ''}${window.location.hash || ''}`;
   if (typeof window.showSignInCallout === 'function') {
     window.showSignInCallout({
       statusElementId: 'ai-live-setup-status',
       message,
-      nextPath: '/ai-live-account-setup.html',
+      nextPath,
       linkLabel: 'Sign in to continue'
     });
     return;

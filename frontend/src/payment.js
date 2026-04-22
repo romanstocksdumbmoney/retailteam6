@@ -34,6 +34,9 @@ function setStatus(text, isError = false) {
   if (!statusNode) {
     return;
   }
+  if (typeof window.clearSignInCallout === 'function') {
+    window.clearSignInCallout('payment-status');
+  }
   statusNode.textContent = text;
   statusNode.className = isError ? 'small-note auth-error' : 'small-note';
 }
@@ -109,6 +112,7 @@ async function handleCheckoutReturn() {
   if (typeof window.restoreSessionIfNeeded === 'function') {
     await window.restoreSessionIfNeeded();
   }
+  const checkoutSearch = `${window.location.pathname || '/payment.html'}${window.location.search || ''}${window.location.hash || ''}`;
   const params = new URLSearchParams(window.location.search);
   const checkoutState = String(params.get('checkout') || '').trim().toLowerCase();
   if (!checkoutState) {
@@ -135,7 +139,17 @@ async function handleCheckoutReturn() {
     : (localStorage.getItem('dumbdollars_token') || '');
   if (!token) {
     setStatus('Please log in again to finalize Pro activation.', true);
-    clearCheckoutQueryParams();
+    if (typeof window.showSignInCallout === 'function') {
+      window.showSignInCallout({
+        statusElementId: 'payment-status',
+        message: 'Please sign in again to finalize Pro activation.',
+        nextPath: checkoutSearch,
+        linkLabel: 'Sign in to continue'
+      });
+    }
+    if (typeof window.redirectToSignIn === 'function') {
+      window.redirectToSignIn(checkoutSearch);
+    }
     return;
   }
 
@@ -167,6 +181,20 @@ async function handleCheckoutReturn() {
     window.location.href = '/';
   } catch (error) {
     setStatus(error.message || 'Could not verify checkout session.', true);
+    if (Number(error?.status || 0) === 401) {
+      if (typeof window.showSignInCallout === 'function') {
+        window.showSignInCallout({
+          statusElementId: 'payment-status',
+          message: 'Please sign in again to finalize Pro activation.',
+          nextPath: checkoutSearch,
+          linkLabel: 'Sign in to continue'
+        });
+      }
+      if (typeof window.redirectToSignIn === 'function') {
+        window.redirectToSignIn(checkoutSearch);
+      }
+      return;
+    }
     clearCheckoutQueryParams();
   }
 }

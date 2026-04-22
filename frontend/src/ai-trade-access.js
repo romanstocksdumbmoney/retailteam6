@@ -18,7 +18,8 @@ const REMEMBER_TOKEN_STORAGE_KEY = 'dumbdollars_remember_token';
 const DEFAULT_NEXT_PATH = '/ai-trade.html';
 
 function setStatus(text, isError = false) {
-  const node = document.getElementById('ai-trade-access-status');
+  const node = document.getElementById('ai-access-status')
+    || document.getElementById('ai-trade-access-status');
   if (!node) {
     return;
   }
