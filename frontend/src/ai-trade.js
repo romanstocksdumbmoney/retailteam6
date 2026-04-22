@@ -40,14 +40,33 @@ function setStatus(text, isError = false) {
   if (!node) {
     return;
   }
+  if (typeof window.clearSignInCallout === 'function') {
+    window.clearSignInCallout('ai-trade-status');
+  }
   node.textContent = text;
   node.className = isError ? 'small-note auth-error' : 'small-note';
+}
+
+function showSignInNeeded(message = 'Please log in to use AI Trade.') {
+  if (typeof window.showSignInCallout === 'function') {
+    window.showSignInCallout({
+      statusElementId: 'ai-trade-status',
+      message,
+      nextPath: '/ai-trade.html',
+      linkLabel: 'Sign in to continue'
+    });
+    return;
+  }
+  setStatus(message, true);
 }
 
 function setQueueStatus(text, isError = false) {
   const node = document.getElementById('ai-trade-queue-status');
   if (!node) {
     return;
+  }
+  if (typeof window.clearSignInCallout === 'function') {
+    window.clearSignInCallout('ai-trade-queue-status');
   }
   node.textContent = text;
   node.className = isError ? 'small-note auth-error' : 'small-note';
@@ -241,6 +260,7 @@ function setupAiTradeForm() {
         token = localStorage.getItem('dumbdollars_token') || '';
       }
       if (!token) {
+        showSignInNeeded('Please log in to use AI Trade.');
         throw new Error('Please log in to use AI Trade.');
       }
 
@@ -287,6 +307,9 @@ function setupAiTradeForm() {
 async function init() {
   if (!localStorage.getItem('dumbdollars_token')) {
     await tryRestoreSession();
+  }
+  if (!localStorage.getItem('dumbdollars_token')) {
+    showSignInNeeded('Please log in to use AI Trade.');
   }
   setupAiTradeForm();
 }

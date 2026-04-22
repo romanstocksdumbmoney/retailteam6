@@ -73,8 +73,24 @@ function setStatus(text, isError = false) {
   if (!node) {
     return;
   }
+  if (typeof window.clearSignInCallout === 'function') {
+    window.clearSignInCallout('ai-funding-payment-status');
+  }
   node.textContent = text;
   node.className = isError ? 'small-note auth-error' : 'small-note';
+}
+
+function showSignInNeeded(message = 'Please log in to continue with funding payment.') {
+  if (typeof window.showSignInCallout === 'function') {
+    window.showSignInCallout({
+      statusElementId: 'ai-funding-payment-status',
+      message,
+      nextPath: '/ai-bot-funding-payment.html',
+      linkLabel: 'Sign in to continue'
+    });
+    return;
+  }
+  setStatus(message, true);
 }
 
 function buildPaymentReference() {
@@ -138,6 +154,9 @@ async function startFundingPaymentCheckout() {
 
   if (!session?.url) {
     throw new Error('Could not open secure funding checkout.');
+  }
+  if (typeof window.rememberCheckoutReturnPath === 'function') {
+    window.rememberCheckoutReturnPath('/ai-bot-funding-payment.html');
   }
   window.location.href = session.url;
 }
@@ -254,7 +273,7 @@ async function init() {
     await tryRestoreSession();
   }
   if (!getStoredToken()) {
-    setStatus('Please log in to continue with funding payment.', true);
+    showSignInNeeded('Please log in to continue with funding payment.');
     return;
   }
 
@@ -263,7 +282,7 @@ async function init() {
       method: 'GET'
     });
   } catch (_error) {
-    setStatus('Please log in to continue with funding payment.', true);
+    showSignInNeeded('Please log in to continue with funding payment.');
     return;
   }
 

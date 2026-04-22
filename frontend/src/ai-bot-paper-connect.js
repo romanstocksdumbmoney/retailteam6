@@ -77,8 +77,24 @@ function setStatus(text, isError = false) {
   if (!node) {
     return;
   }
+  if (typeof window.clearSignInCallout === 'function') {
+    window.clearSignInCallout('paper-connect-status');
+  }
   node.textContent = text;
   node.className = isError ? 'small-note auth-error' : 'small-note';
+}
+
+function showSignInNeeded(message = 'Please log in first to connect paper trading.') {
+  if (typeof window.showSignInCallout === 'function') {
+    window.showSignInCallout({
+      statusElementId: 'paper-connect-status',
+      message,
+      nextPath: '/ai-bot-paper-connect.html',
+      linkLabel: 'Sign in to continue'
+    });
+    return;
+  }
+  setStatus(message, true);
 }
 
 function parseQueryDefaults() {
@@ -226,7 +242,7 @@ function setupActions() {
 async function init() {
   const token = getStoredToken() || await tryRestoreSession();
   if (!token) {
-    setStatus('Please log in first to connect paper trading.', true);
+    showSignInNeeded('Please log in first to connect paper trading.');
     return;
   }
   hydrateFormFromQuery();
@@ -235,6 +251,10 @@ async function init() {
     await loadProfile();
     setStatus('Paper trading connect page ready.');
   } catch (error) {
+    if (error?.status === 401) {
+      showSignInNeeded('Please log in first to connect paper trading.');
+      return;
+    }
     setStatus(error.message || 'Could not load paper trading profile.', true);
   }
 }

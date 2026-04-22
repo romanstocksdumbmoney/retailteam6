@@ -6,6 +6,25 @@ function normalizePathname(pathname) {
   return raw.startsWith('/') ? raw : `/${raw}`;
 }
 
+function normalizePathnameFromHref(href) {
+  try {
+    const url = new URL(String(href || ''), window.location.origin);
+    return normalizePathname(url.pathname);
+  } catch (_error) {
+    return normalizePathname(href);
+  }
+}
+
+function isChatbotAuditEnabled() {
+  try {
+    const params = new URLSearchParams(window.location.search || '');
+    const value = String(params.get('chatbotReview') || params.get('chatbotAudit') || '').trim().toLowerCase();
+    return value === '1' || value === 'true' || value === 'yes' || value === 'on';
+  } catch (_error) {
+    return false;
+  }
+}
+
 const AUTH_TOKEN_STORAGE_KEY = 'dumbdollars_token';
 const LAST_COMPLAINT_TICKET_KEY = 'dumbdollars_last_complaint_ticket';
 
@@ -501,7 +520,7 @@ function mountAiQuickNav() {
     <h3>Quick AI Navigation</h3>
     <div class="ai-page-quick-nav-links">
       ${links.map((link) => {
-        const active = pathname === normalizePathname(link.href);
+        const active = pathname === normalizePathnameFromHref(link.href);
         return `<a class="${active ? 'ai-page-quick-link ai-page-quick-link--active' : 'ai-page-quick-link'}" href="${link.href}">${link.label}</a>`;
       }).join('')}
     </div>
@@ -543,14 +562,16 @@ function mountAiCopilotWidget() {
       <div class="ai-copilot-feed" id="ai-copilot-feed"></div>
       <div class="ai-copilot-actions">
         <a class="open-link" href="${context.nextHref}">${context.nextLabel}</a>
-        <a class="open-link" href="/ai-bot-funding.html">Open Live AI Account</a>
+        ${normalizePathnameFromHref(context.nextHref) !== '/ai-bot-funding.html'
+          ? '<a class="open-link" href="/ai-bot-funding.html">Open Funding + Test Area</a>'
+          : ''}
       </div>
       <div class="ai-copilot-quick-actions" id="ai-copilot-quick-actions">
-        <button type="button" class="ai-copilot-quick-btn" data-copilot-prompt="Open AI live account setup guide">AI Setup Guide</button>
-        <button type="button" class="ai-copilot-quick-btn" data-copilot-prompt="Open live AI account setup">Open Live AI Account</button>
-        <button type="button" class="ai-copilot-quick-btn" data-copilot-prompt="Open stock scanner and outlook tools">Stock Tools</button>
-        <button type="button" class="ai-copilot-quick-btn" data-copilot-prompt="Open broker connection setup">Broker Connect</button>
-        <button type="button" class="ai-copilot-quick-btn" data-copilot-prompt="Open checkout page">Checkout</button>
+        <a class="ai-copilot-quick-btn ai-copilot-quick-link" href="/ai-simple-setup.html">Easy AI Setup</a>
+        <a class="ai-copilot-quick-btn ai-copilot-quick-link" href="/ai-bot-funding.html">Funding + Test Area</a>
+        <a class="ai-copilot-quick-btn ai-copilot-quick-link" href="/brokerage-onboarding.html">Broker Connect</a>
+        <a class="ai-copilot-quick-btn ai-copilot-quick-link" href="/pro-modules.html">Pro Modules</a>
+        <a class="ai-copilot-quick-btn ai-copilot-quick-link" href="/checkout.html">Checkout</a>
       </div>
       <form id="ai-copilot-form" class="ai-copilot-form" novalidate>
         <label for="ai-copilot-input" class="small-note">Ask for help</label>
@@ -593,7 +614,7 @@ function mountAiCopilotWidget() {
   const reportContact = document.getElementById('ai-copilot-report-contact');
   const quickActions = document.getElementById('ai-copilot-quick-actions');
 
-  if (!fab || !panel || !closeButton || !form || !input || !feed || !health || !reportToggle || !reportForm || !reportCategory || !reportMessage || !reportContact) {
+  if (!fab || !panel || !closeButton || !form || !input || !feed || !health || !reportToggle || !reportForm || !reportCategory || !reportMessage || !reportContact || !quickActions) {
     return;
   }
 
@@ -664,6 +685,16 @@ function mountAiCopilotWidget() {
   context.starterTips.forEach((tip, index) => {
     appendMessage('assistant', index === 0 ? `Hi, I can help here. ${tip}` : tip);
   });
+  if (isChatbotAuditEnabled()) {
+    appendMessage(
+      'assistant',
+      'Chatbot review mode is enabled. You can ask other chatbots to evaluate navigation and share recommendations here.'
+    );
+    appendMessage(
+      'assistant',
+      'Recommended prompt: "Review this page for navigation clarity, dead ends, and missing next-step actions. Return top 5 fixes."'
+    );
+  }
   const liveAutoHintPages = new Set(['/ai-bot-trader.html', '/ai-bot-funding.html', '/ai-bot-account.html', '/brokerage-onboarding.html']);
   if (liveAutoHintPages.has(pathname)) {
     appendMessage('assistant', 'To make AI trade for you: turn on "hands-free live execution", connect broker bridge, run the bridge test, and keep live funding mode active.');
@@ -741,23 +772,17 @@ function mountAiCopilotWidget() {
     input.value = '';
   });
 
-  if (quickActions) {
-    quickActions.addEventListener('click', (event) => {
-      const target = event.target;
-      if (!(target instanceof HTMLElement)) {
-        return;
-      }
-      const button = target.closest('button[data-copilot-prompt]');
-      if (!(button instanceof HTMLButtonElement)) {
-        return;
-      }
-      const prompt = String(button.dataset.copilotPrompt || '').trim();
-      if (!prompt) {
-        return;
-      }
-      handleQuestion(prompt);
-    });
-  }
+  quickActions.addEventListener('click', (event) => {
+    const target = event.target;
+    if (!(target instanceof HTMLAnchorElement)) {
+      return;
+    }
+    const quickLink = target.closest('.ai-copilot-quick-link');
+    if (!(quickLink instanceof HTMLAnchorElement)) {
+      return;
+    }
+    closePanel();
+  });
 
   reportToggle.addEventListener('click', () => {
     const opening = reportForm.hidden;

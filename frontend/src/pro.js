@@ -42,6 +42,42 @@ function setStatus(text, isError = false) {
   statusNode.className = isError ? 'small-note auth-error' : 'small-note';
 }
 
+function getSafeCurrentPath() {
+  const path = `${window.location.pathname || '/pro.html'}${window.location.search || ''}${window.location.hash || ''}`;
+  if (!path.startsWith('/') || path.startsWith('//')) {
+    return '/pro.html';
+  }
+  return path;
+}
+
+function rememberCheckoutReturnPath(path) {
+  if (typeof window.rememberCheckoutReturnPath === 'function') {
+    window.rememberCheckoutReturnPath(path);
+    return;
+  }
+  try {
+    sessionStorage.setItem('dumbdollars_return_after_checkout', path);
+  } catch (_error) {
+    // Ignore storage failures.
+  }
+}
+
+function consumeCheckoutReturnPath() {
+  if (typeof window.consumeCheckoutReturnPath === 'function') {
+    return window.consumeCheckoutReturnPath();
+  }
+  try {
+    const value = String(sessionStorage.getItem('dumbdollars_return_after_checkout') || '').trim();
+    sessionStorage.removeItem('dumbdollars_return_after_checkout');
+    if (!value.startsWith('/') || value.startsWith('//')) {
+      return '';
+    }
+    return value;
+  } catch (_error) {
+    return '';
+  }
+}
+
 function normalizeCheckoutErrorMessage(error) {
   const rawMessage = String(error?.message || '').trim();
   const rawErrorCode = String(error?.body?.error || '').trim().toLowerCase();
@@ -154,6 +190,11 @@ async function handleCheckoutReturn() {
     }
     setStatus('Payment confirmed. Pro access is now active.');
     clearCheckoutQueryParams();
+    const returnPath = consumeCheckoutReturnPath();
+    if (returnPath && returnPath !== window.location.pathname) {
+      window.location.href = returnPath;
+      return;
+    }
     window.location.href = '/';
   } catch (error) {
     setStatus(error.message || 'Could not verify checkout session.', true);
@@ -170,6 +211,7 @@ async function openPaymentPage() {
     setStatus('Login required before secure checkout.', true);
     return;
   }
+  rememberCheckoutReturnPath(getSafeCurrentPath());
   setStatus('Opening payment page...');
   window.location.href = '/payment.html';
 }

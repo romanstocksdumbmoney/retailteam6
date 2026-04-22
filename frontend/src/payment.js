@@ -38,6 +38,31 @@ function setStatus(text, isError = false) {
   statusNode.className = isError ? 'small-note auth-error' : 'small-note';
 }
 
+function getSafeCurrentPath() {
+  if (typeof window.getCurrentAppPath === 'function') {
+    return window.getCurrentAppPath();
+  }
+  const path = `${window.location.pathname || '/payment.html'}${window.location.search || ''}${window.location.hash || ''}`;
+  if (!path.startsWith('/') || path.startsWith('//')) {
+    return '/payment.html';
+  }
+  return path;
+}
+
+function rememberCheckoutReturnPath(path) {
+  if (typeof window.rememberCheckoutReturnPath === 'function') {
+    window.rememberCheckoutReturnPath(path);
+    return;
+  }
+}
+
+function consumeCheckoutReturnPath() {
+  if (typeof window.consumeCheckoutReturnPath === 'function') {
+    return window.consumeCheckoutReturnPath();
+  }
+  return '';
+}
+
 function normalizeCheckoutErrorMessage(error) {
   const rawMessage = String(error?.message || '').trim();
   const rawErrorCode = String(error?.body?.error || '').trim().toLowerCase();
@@ -132,6 +157,13 @@ async function handleCheckoutReturn() {
     }
     setStatus('Payment confirmed. Pro access is now active.');
     clearCheckoutQueryParams();
+    const returnPath = typeof window.consumeCheckoutReturnPath === 'function'
+      ? window.consumeCheckoutReturnPath()
+      : '';
+    if (returnPath && returnPath !== window.location.pathname) {
+      window.location.href = returnPath;
+      return;
+    }
     window.location.href = '/';
   } catch (error) {
     setStatus(error.message || 'Could not verify checkout session.', true);
@@ -264,6 +296,9 @@ function openFinalCheckoutStep() {
   if (!token) {
     setStatus('Login required before secure checkout.', true);
     return;
+  }
+  if (typeof window.rememberCheckoutReturnPath === 'function') {
+    window.rememberCheckoutReturnPath(getSafeCurrentPath());
   }
   setStatus('Opening final checkout step...');
   window.location.href = '/checkout.html';

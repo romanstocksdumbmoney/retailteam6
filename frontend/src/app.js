@@ -26,6 +26,7 @@ const SAVED_EMAIL_KEY = 'dumbdollars_saved_email';
 const REMEMBER_TOKEN_STORAGE_KEY = 'dumbdollars_remember_token';
 const PREMIUM_SPIKE_PROOF_STORAGE_KEY = 'dumbdollars_premium_spike_proofs_v1';
 const FALLBACK_AI_DISCOVERY_LINK = 'https://x.com';
+const CHECKOUT_RETURN_PATH_STORAGE_KEY = 'dumbdollars_return_after_checkout';
 let restoreSessionInFlight = false;
 const MODULE_NAV_TARGETS = Object.freeze([
   {
@@ -37,7 +38,7 @@ const MODULE_NAV_TARGETS = Object.freeze([
   },
   {
     key: 'earnings-gambling',
-    label: 'Earnings Gambling',
+    label: 'Earnings Calendar',
     panel: 'main',
     selector: '#earnings-module',
     aliases: ['earnings', 'earnings board', 'earnings calendar', 'gambling']
@@ -1183,6 +1184,14 @@ function openProPlanScreen() {
   const targetUrl = '/payment.html';
   if (window.location.pathname.endsWith('/payment.html')) {
     return;
+  }
+  try {
+    sessionStorage.setItem(
+      CHECKOUT_RETURN_PATH_STORAGE_KEY,
+      `${window.location.pathname || '/'}${window.location.search || ''}${window.location.hash || ''}`
+    );
+  } catch (_error) {
+    // Ignore sessionStorage failures in restrictive browser contexts.
   }
   window.location.href = targetUrl;
 }
@@ -2761,6 +2770,14 @@ function setupAuthForms() {
 
       try {
         closeBillingCard();
+        try {
+          sessionStorage.setItem(
+            CHECKOUT_RETURN_PATH_STORAGE_KEY,
+            `${window.location.pathname || '/'}${window.location.search || ''}${window.location.hash || ''}`
+          );
+        } catch (_error) {
+          // Ignore sessionStorage failures in restrictive browser contexts.
+        }
         window.location.href = '/payment.html';
       } catch (error) {
         setAuthMessage(normalizeCheckoutErrorMessage(error), true);

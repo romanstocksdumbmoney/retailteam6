@@ -3,8 +3,24 @@ function setStatus(text, isError = false) {
   if (!node) {
     return;
   }
+  if (typeof window.clearSignInCallout === 'function') {
+    window.clearSignInCallout('ai-live-setup-status');
+  }
   node.textContent = text;
   node.className = isError ? 'small-note auth-error' : 'small-note';
+}
+
+function showSignInNeeded(message = 'Please sign in first so setup can be saved to your account.') {
+  if (typeof window.showSignInCallout === 'function') {
+    window.showSignInCallout({
+      statusElementId: 'ai-live-setup-status',
+      message,
+      nextPath: '/ai-live-account-setup.html',
+      linkLabel: 'Sign in to continue'
+    });
+    return;
+  }
+  setStatus(message, true);
 }
 
 function openBrokerConnectWithBroker(broker) {
@@ -76,9 +92,18 @@ function setupActions() {
   }
 }
 
-function init() {
+async function init() {
   setupActions();
+  if (typeof window.restoreSessionIfNeeded === 'function') {
+    await window.restoreSessionIfNeeded();
+  }
+  if (!localStorage.getItem('dumbdollars_token')) {
+    showSignInNeeded('Sign in first so AI setup can be saved to your account.');
+    return;
+  }
   setStatus('Use this checklist top-to-bottom to get AI trading on your account. For fastest flow, use Direct Broker Signup + Auto AI Setup.');
 }
 
-init();
+init().catch(() => {
+  setStatus('Could not initialize AI live setup page.', true);
+});

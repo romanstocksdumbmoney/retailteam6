@@ -79,8 +79,24 @@ function setStatus(text, isError = false) {
   if (!node) {
     return;
   }
+  if (typeof window.clearSignInCallout === 'function') {
+    window.clearSignInCallout('ai-account-status');
+  }
   node.textContent = text;
   node.className = isError ? 'small-note auth-error' : 'small-note';
+}
+
+function showSignInNeeded(message = 'Please log in to view the AI brokerage account.') {
+  if (typeof window.showSignInCallout === 'function') {
+    window.showSignInCallout({
+      statusElementId: 'ai-account-status',
+      message,
+      nextPath: '/ai-bot-account.html',
+      linkLabel: 'Sign in to continue'
+    });
+    return;
+  }
+  setStatus(message, true);
 }
 
 function fmtUsd(value) {
@@ -466,7 +482,7 @@ function setupActions() {
 async function init() {
   const token = getStoredToken() || await tryRestoreSession();
   if (!token) {
-    setStatus('Please log in to view the AI brokerage account.', true);
+    showSignInNeeded('Please log in to view the AI brokerage account.');
     return;
   }
   setupActions();
@@ -474,6 +490,10 @@ async function init() {
     await loadAccountView();
     setStatus('AI brokerage account view ready.');
   } catch (error) {
+    if (error?.status === 401) {
+      showSignInNeeded('Please log in to view the AI brokerage account.');
+      return;
+    }
     setStatus(error.message || 'Could not load AI brokerage account view.', true);
   }
 }

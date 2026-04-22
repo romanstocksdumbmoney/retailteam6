@@ -9,7 +9,7 @@
   <body class="payment-page-body">
     <main class="ai-trade-page-shell">
       <article class="ai-trade-page-card card" role="main" aria-labelledby="brokerage-onboarding-title">
-        <a class="open-link" href="/ai-bot-funding.html">Back to Funding + Test Area</a>
+        <a id="brokerage-back-link" class="open-link" href="/ai-bot-funding.html">Back to Funding + Test Area</a>
         <div class="pro-plan-logo-wrap" aria-hidden="true">
           <img class="pro-plan-logo-image" src="./logo-mark.svg" alt="" />
         </div>
@@ -43,7 +43,7 @@
             <button id="brokerage-open-account" type="submit">Open Broker Signup</button>
             <button id="brokerage-connect-robinhood-existing" class="btn-secondary" type="button">One-Click Robinhood AI Connect</button>
             <button id="brokerage-copy-link" class="btn-secondary" type="button">Copy Broker Signup Link</button>
-            <button id="brokerage-go-funding" class="btn-secondary" type="button">Continue to Live Funding Setup</button>
+            <button id="brokerage-go-funding" class="btn-secondary" type="button">Continue to AI Account View</button>
           </div>
         </form>
 
@@ -138,6 +138,9 @@
         <section class="ai-trade-consensus">
           <h3>Connection Test Results</h3>
           <div id="broker-connection-test-results" class="stack"></div>
+          <div class="ai-bot-actions">
+            <a id="brokerage-next-account-view" class="btn-secondary hidden" href="/ai-bot-account.html">Next: Open AI Account View</a>
+          </div>
         </section>
 
         <section class="ai-trade-consensus">

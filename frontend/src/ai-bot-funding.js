@@ -84,6 +84,9 @@ function setStatus(text, isError = false) {
   if (!node) {
     return;
   }
+  if (typeof window.clearSignInCallout === 'function') {
+    window.clearSignInCallout('ai-funding-status');
+  }
   node.textContent = text;
   node.className = isError ? 'small-note auth-error' : 'small-note';
 }
@@ -93,8 +96,24 @@ function setTestStatus(text, isError = false) {
   if (!node) {
     return;
   }
+  if (typeof window.clearSignInCallout === 'function') {
+    window.clearSignInCallout('ai-test-status');
+  }
   node.textContent = text;
   node.className = isError ? 'small-note auth-error' : 'small-note';
+}
+
+function showSignInNeeded(message = 'Please sign in to configure funding.') {
+  if (typeof window.showSignInCallout === 'function') {
+    window.showSignInCallout({
+      statusElementId: 'ai-funding-status',
+      message,
+      nextPath: '/ai-bot-funding.html',
+      linkLabel: 'Sign in to continue'
+    });
+    return;
+  }
+  setStatus(message, true);
 }
 
 function fmtUsd(value) {
@@ -246,6 +265,7 @@ async function loadFundingProfile() {
 async function buyLiveFundingAccess() {
   const token = getStoredToken();
   if (!token) {
+    showSignInNeeded('Please sign in first to start Live Funding checkout.');
     throw new Error('Please log in first.');
   }
   const session = await requestWithAuthRetry('/api/auth/stripe/create-checkout-session', {
@@ -259,6 +279,9 @@ async function buyLiveFundingAccess() {
   });
   if (!session?.url) {
     throw new Error('Could not create checkout session.');
+  }
+  if (typeof window.rememberCheckoutReturnPath === 'function') {
+    window.rememberCheckoutReturnPath('/ai-bot-funding.html');
   }
   setFundingToken(`pending_${Date.now()}`);
   window.location.href = session.url;
@@ -514,7 +537,7 @@ async function init() {
     await tryRestoreSession();
   }
   if (!getStoredToken()) {
-    setStatus('Please log in to configure funding.', true);
+    showSignInNeeded('Please sign in to configure funding.');
     return;
   }
   setupForm();

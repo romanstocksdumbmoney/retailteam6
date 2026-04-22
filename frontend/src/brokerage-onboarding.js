@@ -116,6 +116,62 @@ function setStatus(text, isError = false) {
   });
 }
 
+function showSignInNeeded(message = 'Please log in first to connect AI broker bridge.') {
+  if (typeof window.showSignInCallout === 'function') {
+    window.showSignInCallout({
+      statusElementId: 'brokerage-onboarding-status-top',
+      message,
+      nextPath: '/brokerage-onboarding.html',
+      linkLabel: 'Sign in to continue'
+    });
+    return;
+  }
+  setStatus(message, true);
+}
+
+function getBackLinkTarget() {
+  const from = String(new URLSearchParams(window.location.search).get('from') || '').trim().toLowerCase();
+  if (from === 'live-setup') {
+    return '/ai-live-account-setup.html';
+  }
+  if (from === 'direct-signup') {
+    return '/ai-broker-direct-setup.html';
+  }
+  return '/ai-bot-funding.html';
+}
+
+function getNextLinkTarget() {
+  return '/ai-bot-account.html';
+}
+
+function updateBackLinkByFlow() {
+  const backLink = document.getElementById('brokerage-back-link');
+  if (!(backLink instanceof HTMLAnchorElement)) {
+    return;
+  }
+  const target = getBackLinkTarget();
+  backLink.href = target;
+  if (target === '/ai-live-account-setup.html') {
+    backLink.textContent = 'Back to AI Live Setup';
+    return;
+  }
+  if (target === '/ai-broker-direct-setup.html') {
+    backLink.textContent = 'Back to Direct Broker Signup';
+    return;
+  }
+  backLink.textContent = 'Back to Funding + Test Area';
+}
+
+function renderNextStepAction() {
+  const nextButton = document.getElementById('brokerage-next-account-view');
+  if (!(nextButton instanceof HTMLAnchorElement)) {
+    return;
+  }
+  const nextPath = getNextLinkTarget();
+  nextButton.href = nextPath;
+  nextButton.classList.remove('hidden');
+}
+
 function getSelectedBroker() {
   const select = document.getElementById('brokerage-picker-select');
   if (!(select instanceof HTMLSelectElement)) {
@@ -151,7 +207,7 @@ async function runOneClickRobinhoodAiConnect() {
     await tryRestoreSession();
   }
   if (!getStoredToken()) {
-    setStatus('Please log in first, then use One-Click Robinhood AI Connect.', true);
+    showSignInNeeded('Please log in first, then use One-Click Robinhood AI Connect.');
     return;
   }
   const accountIdInput = document.getElementById('broker-connect-account-id');
@@ -414,7 +470,7 @@ async function loadBrokerGuide() {
     await tryRestoreSession();
   }
   if (!getStoredToken()) {
-    setStatus('Please log in first to connect AI broker bridge.', true);
+    showSignInNeeded('Please log in first to connect AI broker bridge.');
     renderSelectedBrokerSummary(null);
     renderSetupSteps([]);
     renderConnectionStatus(null);
@@ -613,7 +669,7 @@ function setupForm() {
 
   if (continueButton instanceof HTMLButtonElement) {
     continueButton.addEventListener('click', () => {
-      window.location.href = '/ai-bot-funding.html';
+      window.location.href = '/ai-bot-account.html';
     });
   }
 
@@ -682,6 +738,8 @@ function init() {
   if (!getStoredToken()) {
     tryRestoreSession().catch(() => {});
   }
+  updateBackLinkByFlow();
+  renderNextStepAction();
   setStatus('Broker connection page ready.');
   setupForm();
   renderConnectionMethodFields();

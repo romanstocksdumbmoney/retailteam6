@@ -197,8 +197,24 @@ function setStatus(text, isError = false) {
   if (!statusNode) {
     return;
   }
+  if (typeof window.clearSignInCallout === 'function') {
+    window.clearSignInCallout('ai-bot-status');
+  }
   statusNode.textContent = text;
   statusNode.className = isError ? 'small-note auth-error' : 'small-note';
+}
+
+function showSignInNeeded(message = 'Please log in to use AI Bot Trader.') {
+  if (typeof window.showSignInCallout === 'function') {
+    window.showSignInCallout({
+      statusElementId: 'ai-bot-status',
+      message,
+      nextPath: '/ai-bot-trader.html',
+      linkLabel: 'Sign in to continue'
+    });
+    return;
+  }
+  setStatus(message, true);
 }
 
 function fmtUsd(value) {
@@ -956,7 +972,7 @@ async function init() {
     await tryRestoreSession();
   }
   if (!getStoredToken()) {
-    setStatus('Please log in to use AI Bot Trader.', true);
+    showSignInNeeded('Please log in to use AI Bot Trader.');
     return;
   }
   setupForm();
@@ -965,7 +981,7 @@ async function init() {
     setStatus('AI Bot Trader ready.');
   } catch (error) {
     if (error.status === 401) {
-      setStatus('Please log in to use AI Bot Trader.', true);
+      showSignInNeeded('Please log in to use AI Bot Trader.');
       return;
     }
     if (error.status === 404) {

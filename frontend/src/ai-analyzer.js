@@ -47,8 +47,24 @@ function setStatus(text, isError = false) {
   if (!node) {
     return;
   }
+  if (typeof window.clearSignInCallout === 'function') {
+    window.clearSignInCallout('ai-analyzer-status');
+  }
   node.textContent = text;
   node.className = isError ? 'small-note auth-error' : 'small-note';
+}
+
+function showSignInNeeded(message = 'Please log in to use AI Analyzer.') {
+  if (typeof window.showSignInCallout === 'function') {
+    window.showSignInCallout({
+      statusElementId: 'ai-analyzer-status',
+      message,
+      nextPath: '/ai-analyzer.html',
+      linkLabel: 'Sign in to continue'
+    });
+    return;
+  }
+  setStatus(message, true);
 }
 
 function fileToDataUrl(file) {
@@ -191,6 +207,7 @@ function setupAiAnalyzerForm() {
     try {
       const hasSession = await ensureSessionReady();
       if (!hasSession) {
+        showSignInNeeded('Please log in to use AI Analyzer.');
         throw new Error('Please log in to use AI Analyzer.');
       }
       const file = imageInput.files?.[0];
@@ -240,4 +257,14 @@ function setupAiAnalyzerForm() {
   });
 }
 
-setupAiAnalyzerForm();
+async function init() {
+  const hasSession = await ensureSessionReady();
+  if (!hasSession) {
+    showSignInNeeded('Please log in to use AI Analyzer.');
+  }
+  setupAiAnalyzerForm();
+}
+
+init().catch(() => {
+  setupAiAnalyzerForm();
+});

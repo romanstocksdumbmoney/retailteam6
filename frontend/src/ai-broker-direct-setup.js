@@ -15,8 +15,24 @@ function setStatus(text, isError = false) {
   if (!node) {
     return;
   }
+  if (typeof window.clearSignInCallout === 'function') {
+    window.clearSignInCallout('direct-broker-status');
+  }
   node.textContent = text;
   node.className = isError ? 'small-note auth-error' : 'small-note';
+}
+
+function showSignInNeeded(message = 'Sign in first so AI setup can be saved to your account.') {
+  if (typeof window.showSignInCallout === 'function') {
+    window.showSignInCallout({
+      statusElementId: 'direct-broker-status',
+      message,
+      nextPath: '/ai-broker-direct-setup.html',
+      linkLabel: 'Sign in to continue'
+    });
+    return;
+  }
+  setStatus(message, true);
 }
 
 async function fetchJson(url, options = {}) {
@@ -117,8 +133,7 @@ async function autoImplementAiForBroker() {
   const broker = getSelectedBroker();
   const token = await ensureAuthSession();
   if (!token) {
-    setStatus('Please sign in first. Redirecting to sign in...', true);
-    window.location.href = '/ai-trade-access.html?next=%2Fai-broker-direct-setup.html';
+    showSignInNeeded('Please sign in first to auto-implement AI setup.');
     return;
   }
 
@@ -221,7 +236,7 @@ async function init() {
     setStatus('Signed in. Open broker signup, then click "I finished signup - Auto Implement AI".');
     return;
   }
-  setStatus('Sign in first so AI setup can be saved to your account.', true);
+  showSignInNeeded('Sign in first so AI setup can be saved to your account.');
 }
 
 init();
