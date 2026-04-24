@@ -162,7 +162,7 @@ function buildRouteSuggestion(input, pathname) {
     {
       href: '/ai-trade.html',
       label: 'AI Trade',
-      keywords: ['ai trade', 'chart upload', 'trade setup', 'analyze chart']
+      keywords: ['ai trade', 'chart upload', 'trade setup', 'analyze chart', 'order setup', 'limit order', 'stop loss', 'take profit', 'bracket order', 'screenshot order']
     },
     {
       href: '/ai-analyzer.html',
@@ -583,6 +583,7 @@ function mountAiCopilotWidget() {
       </div>
       <div class="ai-copilot-quick-actions" id="ai-copilot-quick-actions">
         <a class="ai-copilot-quick-btn ai-copilot-quick-link" href="/ai-simple-setup.html">Easy AI Setup</a>
+        <a class="ai-copilot-quick-btn ai-copilot-quick-link" href="/ai-trade.html#ai-order-setup-title">Order Setup Assistant</a>
         <a class="ai-copilot-quick-btn ai-copilot-quick-link" href="/ai-bot-funding.html">Funding + Test Area</a>
         <a class="ai-copilot-quick-btn ai-copilot-quick-link" href="/brokerage-onboarding.html">Broker Connect</a>
         <a class="ai-copilot-quick-btn ai-copilot-quick-link" href="/pro-modules.html">Pro Modules</a>

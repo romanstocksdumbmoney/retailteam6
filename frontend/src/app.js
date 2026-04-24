@@ -128,6 +128,13 @@ const MODULE_NAV_TARGETS = Object.freeze([
     aliases: ['chart upload', 'ai trade', 'ai trading', 'trading ai']
   },
   {
+    key: 'order-setup-assistant',
+    label: 'Screenshot Order Setup Assistant',
+    panel: 'sidebar',
+    selector: '#ai-trade-section',
+    aliases: ['order setup', 'limit order', 'stop loss', 'take profit', 'screenshot order', 'bracket order', 'order assistant']
+  },
+  {
     key: 'ai-auto-trader',
     label: 'AI Trading Bot (Auto Trader)',
     panel: 'sidebar',
@@ -665,7 +672,7 @@ function setupModuleNavigation() {
   }
 
   if (quickLinks) {
-    const quickKeys = ['stock-outlook', 'earnings-gambling', 'trend-trades', 'premium-spikes', 'ai-trade', 'ai-auto-trader'];
+    const quickKeys = ['stock-outlook', 'earnings-gambling', 'trend-trades', 'premium-spikes', 'ai-trade', 'order-setup-assistant', 'ai-auto-trader'];
     quickLinks.innerHTML = quickKeys
       .map((key) => {
         const target = getModuleTargetByKey(key);
@@ -720,6 +727,7 @@ function setupModuleNavigation() {
 function setupQuickAccessHub() {
   const searchButton = document.getElementById('quick-access-open-search');
   const showProButton = document.getElementById('quick-access-show-pro');
+  const orderSetupButton = document.getElementById('quick-access-open-order-setup');
   const openTrendTradesButton = document.getElementById('quick-access-open-trend-trades');
   const openPremiumSpikesButton = document.getElementById('quick-access-open-premium-spikes');
   if (!(searchButton instanceof HTMLButtonElement)) {
@@ -759,6 +767,12 @@ function setupQuickAccessHub() {
   if (showProButton instanceof HTMLButtonElement) {
     showProButton.addEventListener('click', () => {
       window.location.href = '/pro-modules.html';
+    });
+  }
+
+  if (orderSetupButton instanceof HTMLButtonElement) {
+    orderSetupButton.addEventListener('click', () => {
+      window.location.href = '/ai-trade.html#ai-order-setup-title';
     });
   }
 
