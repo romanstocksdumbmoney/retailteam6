@@ -131,7 +131,7 @@ const MODULE_NAV_TARGETS = Object.freeze([
     key: 'order-setup-assistant',
     label: 'Screenshot Order Setup Assistant',
     panel: 'sidebar',
-    selector: '#ai-trade-section',
+    selector: '#ai-order-setup-section',
     aliases: ['order setup', 'limit order', 'stop loss', 'take profit', 'screenshot order', 'bracket order', 'order assistant']
   },
   {
@@ -900,7 +900,7 @@ function setupDashboardOrganization() {
     } else if (target.panel === 'sidebar') {
       const selector = String(target.selector || '').trim();
       const proSelectors = new Set(['#trend-trades-section', '#high-iv-section', '#premium-spikes-section']);
-      const aiSelectors = new Set(['#ai-trade-section', '#ai-auto-trader-section', '#ai-analyzer-section', '#ai-implementation-section']);
+      const aiSelectors = new Set(['#ai-trade-section', '#ai-order-setup-section', '#ai-auto-trader-section', '#ai-analyzer-section', '#ai-implementation-section']);
       const requiredDropdownId = proSelectors.has(selector)
         ? 'sidebar-pro-dropdown'
         : (aiSelectors.has(selector) ? 'sidebar-ai-dropdown' : 'sidebar-core-dropdown');
@@ -1541,6 +1541,16 @@ function openAiTradeEntryPage() {
     return;
   }
   const next = encodeURIComponent('/ai-trade.html');
+  window.location.href = `/ai-trade-access.html?next=${next}`;
+}
+
+function openAiOrderSetupAssistantPage() {
+  const hasStoredToken = Boolean(authToken || localStorage.getItem('dumbdollars_token'));
+  if (currentUser || hasStoredToken) {
+    window.location.href = '/ai-trade.html#ai-order-setup-title';
+    return;
+  }
+  const next = encodeURIComponent('/ai-trade.html#ai-order-setup-title');
   window.location.href = `/ai-trade-access.html?next=${next}`;
 }
 
@@ -2874,6 +2884,7 @@ function setupAiSidebar() {
   const insiderTradesPageButton = document.getElementById('open-insider-trades-page');
   const portfoliosPageButton = document.getElementById('open-portfolios-page');
   const aiTradeButton = document.getElementById('open-ai-trade');
+  const orderSetupAssistantButton = document.getElementById('open-order-setup-assistant');
   const autoTraderButton = document.getElementById('open-ai-auto-trader');
   const liveBrokerageButton = document.getElementById('open-live-brokerage-account');
   const aiImplementationStepsButton = document.getElementById('open-ai-implementation-steps');
@@ -2915,6 +2926,12 @@ function setupAiSidebar() {
   if (aiTradeButton) {
     aiTradeButton.addEventListener('click', () => {
       openAiTradeEntryPage();
+    });
+  }
+
+  if (orderSetupAssistantButton) {
+    orderSetupAssistantButton.addEventListener('click', () => {
+      openAiOrderSetupAssistantPage();
     });
   }
 
