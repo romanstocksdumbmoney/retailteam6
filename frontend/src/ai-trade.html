@@ -49,6 +49,66 @@
           <img id="ai-trade-preview" class="ai-trade-preview" alt="Uploaded chart preview" />
         </div>
 
+        <section class="ai-trade-consensus" aria-labelledby="ai-order-setup-title">
+          <h3 id="ai-order-setup-title">Screenshot Order Setup Assistant</h3>
+          <p class="small-note">Upload your order screenshot, set risk/reward percentages, and AI gives exact entry/stop/take-profit numbers and setup steps.</p>
+          <form id="ai-order-setup-form" class="pro-plan-box ai-trade-form" novalidate>
+            <div class="ai-trade-form-grid">
+              <label>
+                Ticker
+                <input id="ai-order-symbol" type="text" maxlength="10" placeholder="NVDA" required />
+              </label>
+              <label>
+                Side
+                <select id="ai-order-side">
+                  <option value="long" selected>Long</option>
+                  <option value="short">Short</option>
+                </select>
+              </label>
+              <label>
+                Planned Entry Price
+                <input id="ai-order-entry-price" type="number" min="0.01" step="0.01" placeholder="100.00" required />
+              </label>
+              <label>
+                Max Loss %
+                <input id="ai-order-loss-pct" type="number" min="0.01" max="60" step="0.01" value="1.5" required />
+              </label>
+              <label>
+                Target Gain %
+                <input id="ai-order-gain-pct" type="number" min="0.01" max="300" step="0.01" value="3" required />
+              </label>
+              <label>
+                Stop Buffer % (optional)
+                <input id="ai-order-stop-buffer-pct" type="number" min="0" max="5" step="0.01" value="0.15" />
+              </label>
+              <label>
+                Shares (optional)
+                <input id="ai-order-position-size" type="number" min="0" step="1" placeholder="100" />
+              </label>
+              <label class="field-full ai-trade-upload">
+                Order Setup Screenshot
+                <input id="ai-order-image" type="file" accept="image/*" required />
+              </label>
+            </div>
+            <button id="ai-order-setup-submit" type="submit">Build My Limit + Stop Setup</button>
+          </form>
+          <p id="ai-order-setup-status" class="small-note"></p>
+          <div id="ai-order-preview-wrap" class="ai-trade-preview-wrap hidden">
+            <img id="ai-order-preview" class="ai-trade-preview" alt="Uploaded order screenshot preview" />
+          </div>
+          <section id="ai-order-setup-results" class="ai-trade-results hidden">
+            <article id="ai-order-setup-summary" class="ai-trade-consensus"></article>
+            <article class="ai-trade-consensus">
+              <h3>Exact Setup Numbers</h3>
+              <div id="ai-order-setup-levels" class="ai-order-levels-grid"></div>
+            </article>
+            <article class="ai-trade-consensus">
+              <h3>How to set it up</h3>
+              <ol id="ai-order-setup-steps" class="detail-list"></ol>
+            </article>
+          </section>
+        </section>
+
         <section id="ai-trade-results" class="ai-trade-results hidden">
           <div id="ai-trade-summary"></div>
 

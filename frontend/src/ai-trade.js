@@ -104,6 +104,18 @@ function fmtUsd(value) {
   return `$${Number(value || 0).toFixed(2)}`;
 }
 
+function fmtPct(value) {
+  return `${Number(value || 0).toFixed(2)}%`;
+}
+
+function formatShareCount(value) {
+  const numeric = Number(value || 0);
+  if (!Number.isFinite(numeric) || numeric <= 0) {
+    return 'N/A';
+  }
+  return Math.trunc(numeric).toLocaleString();
+}
+
 let latestAnalysis = null;
 
 function renderVotes(votes) {
@@ -166,6 +178,176 @@ function renderResult(payload) {
   resultsSection.classList.remove('hidden');
   latestAnalysis = payload;
   setQueueStatus('AI setup ready. Send this setup to the live queue if you want the bot to use it.');
+}
+
+function setOrderSetupStatus(text, isError = false) {
+  const node = document.getElementById('ai-order-setup-status');
+  if (!node) {
+    return;
+  }
+  if (typeof window.clearSignInCallout === 'function') {
+    window.clearSignInCallout('ai-order-setup-status');
+  }
+  node.textContent = text;
+  node.className = isError ? 'small-note auth-error' : 'small-note';
+}
+
+function renderOrderSetupPreview(file) {
+  const wrap = document.getElementById('ai-order-preview-wrap');
+  const target = document.getElementById('ai-order-preview');
+  if (!target || !wrap) {
+    return;
+  }
+  target.src = URL.createObjectURL(file);
+  wrap.classList.remove('hidden');
+}
+
+function renderOrderSetupResult(payload) {
+  const results = document.getElementById('ai-order-setup-results');
+  const summary = document.getElementById('ai-order-setup-summary');
+  const levels = document.getElementById('ai-order-setup-levels');
+  const steps = document.getElementById('ai-order-setup-steps');
+  if (!results || !summary || !levels || !steps) {
+    return;
+  }
+  const sideLabel = String(payload?.side || 'long').toUpperCase();
+  const ticker = String(payload?.ticker || 'N/A');
+  const guidance = String(payload?.aiGuidance || '').trim();
+  const percentages = payload?.percentages || {};
+  const orderLevels = payload?.levels || {};
+  const tradeMath = payload?.tradeMath || {};
+  summary.innerHTML = `
+    <h3>${ticker} • ${sideLabel} order setup</h3>
+    <p>${guidance}</p>
+    <p class="small-note"><strong>Loss:</strong> ${fmtPct(percentages.lossPct)} • <strong>Gain:</strong> ${fmtPct(percentages.gainPct)} • <strong>Stop buffer:</strong> ${fmtPct(percentages.stopBufferPct || 0)}</p>
+    <p class="small-note"><strong>Risk/Reward:</strong> ${(Number(tradeMath.riskRewardRatio || 0)).toFixed(2)}x</p>
+  `;
+  levels.innerHTML = `
+    <article class="ai-order-level-card">
+      <h4>Entry Limit</h4>
+      <p>${fmtUsd(orderLevels.entryLimit)}</p>
+    </article>
+    <article class="ai-order-level-card">
+      <h4>Stop Trigger</h4>
+      <p>${fmtUsd(orderLevels.stopTrigger)}</p>
+    </article>
+    <article class="ai-order-level-card">
+      <h4>Stop Limit</h4>
+      <p>${fmtUsd(orderLevels.stopLimit)}</p>
+    </article>
+    <article class="ai-order-level-card">
+      <h4>Take Profit Limit</h4>
+      <p>${fmtUsd(orderLevels.takeProfitLimit)}</p>
+    </article>
+    <article class="ai-order-level-card">
+      <h4>Risk / Share</h4>
+      <p>${fmtUsd(tradeMath.riskPerShare)}</p>
+    </article>
+    <article class="ai-order-level-card">
+      <h4>Reward / Share</h4>
+      <p>${fmtUsd(tradeMath.rewardPerShare)}</p>
+    </article>
+    <article class="ai-order-level-card">
+      <h4>Max Loss USD</h4>
+      <p>${fmtUsd(tradeMath.maxLossUsd)}</p>
+    </article>
+    <article class="ai-order-level-card">
+      <h4>Target Gain USD</h4>
+      <p>${fmtUsd(tradeMath.targetGainUsd)}</p>
+    </article>
+    <article class="ai-order-level-card">
+      <h4>Shares</h4>
+      <p>${formatShareCount(tradeMath.shares)}</p>
+    </article>
+  `;
+  const setupSteps = Array.isArray(payload?.setupSteps) ? payload.setupSteps : [];
+  steps.innerHTML = setupSteps.map((step) => `<li>${step}</li>`).join('');
+  if (!setupSteps.length) {
+    steps.innerHTML = '<li>No setup steps returned.</li>';
+  }
+  results.classList.remove('hidden');
+}
+
+function setupOrderSetupAssistant() {
+  const form = document.getElementById('ai-order-setup-form');
+  const imageInput = document.getElementById('ai-order-image');
+  if (!(form instanceof HTMLFormElement) || !(imageInput instanceof HTMLInputElement)) {
+    return;
+  }
+  imageInput.addEventListener('change', () => {
+    const file = imageInput.files?.[0];
+    if (!file) {
+      return;
+    }
+    if (!getImageMimeType(file).startsWith('image/')) {
+      setOrderSetupStatus('Please upload a valid order screenshot image.', true);
+      return;
+    }
+    renderOrderSetupPreview(file);
+  });
+
+  form.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    const submitButton = document.getElementById('ai-order-setup-submit');
+    try {
+      const file = imageInput.files?.[0];
+      if (!file) {
+        throw new Error('Please upload an order screenshot first.');
+      }
+      let token = String(localStorage.getItem('dumbdollars_token') || '').trim();
+      if (!token) {
+        await tryRestoreSession();
+        token = String(localStorage.getItem('dumbdollars_token') || '').trim();
+      }
+      if (!token) {
+        showSignInNeeded('Please log in to use order setup assistant.');
+        throw new Error('Please log in to use order setup assistant.');
+      }
+      const symbol = String(document.getElementById('ai-order-symbol')?.value || '').trim().toUpperCase() || 'SPY';
+      const side = String(document.getElementById('ai-order-side')?.value || 'long').trim().toLowerCase();
+      const entryPrice = Number(document.getElementById('ai-order-entry-price')?.value || 0);
+      const lossPct = Number(document.getElementById('ai-order-loss-pct')?.value || 0);
+      const gainPct = Number(document.getElementById('ai-order-gain-pct')?.value || 0);
+      const stopBufferPct = Number(document.getElementById('ai-order-stop-buffer-pct')?.value || 0);
+      const positionSize = Number(document.getElementById('ai-order-position-size')?.value || 0);
+      const imageDataUrl = await fileToDataUrl(file);
+      if (submitButton instanceof HTMLButtonElement) {
+        submitButton.disabled = true;
+      }
+      setOrderSetupStatus('Building exact limit + stop setup from your screenshot...');
+      const payload = await fetchJson('/api/market/ai-trade/order-setup', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...getAuthHeaders()
+        },
+        body: JSON.stringify({
+          symbol,
+          side,
+          entryPrice,
+          lossPct,
+          gainPct,
+          stopBufferPct,
+          positionSize,
+          imageDataUrl,
+          imageName: file.name,
+          imageSize: file.size
+        })
+      });
+      const results = document.getElementById('ai-order-setup-results');
+      if (results instanceof HTMLElement) {
+        results.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }
+      renderOrderSetupResult(payload);
+      setOrderSetupStatus('Order setup ready. Copy the exact numbers into your broker ticket.');
+    } catch (error) {
+      setOrderSetupStatus(error.message || 'Could not build order setup.', true);
+    } finally {
+      if (submitButton instanceof HTMLButtonElement) {
+        submitButton.disabled = false;
+      }
+    }
+  });
 }
 
 async function queueLatestAnalysisForLiveExecution() {
@@ -311,10 +493,13 @@ async function init() {
   }
   if (!localStorage.getItem('dumbdollars_token')) {
     showSignInNeeded('Please log in to use AI Trade.');
+    setOrderSetupStatus('Please log in to use order setup assistant.', true);
   }
   setupAiTradeForm();
+  setupOrderSetupAssistant();
 }
 
 init().catch(() => {
   setupAiTradeForm();
+  setupOrderSetupAssistant();
 });

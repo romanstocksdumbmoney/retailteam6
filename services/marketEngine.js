@@ -3371,6 +3371,148 @@ function analyzeAiTradePattern({
   };
 }
 
+function normalizeTradeSide(rawSide) {
+  const side = String(rawSide || 'long').trim().toLowerCase();
+  return side === 'short' ? 'short' : 'long';
+}
+
+function analyzeAiOrderSetupAssistant({
+  symbol = 'SPY',
+  side = 'long',
+  entryPrice = 0,
+  lossPct = 1,
+  gainPct = 2,
+  stopBufferPct = 0,
+  positionSize = 0,
+  imageDataUrl = '',
+  imageName = '',
+  imageSize = 0,
+  imageHash = ''
+} = {}) {
+  const normalizedSymbol = normalizeSymbol(symbol);
+  const normalizedSide = normalizeTradeSide(side);
+  const normalizedImageDataUrl = String(imageDataUrl || '').trim();
+  const normalizedImageName = String(imageName || '').trim();
+  let normalizedImageHash = String(imageHash || '').trim();
+  let normalizedImageSize = Number.isFinite(Number(imageSize)) ? Math.max(0, Math.trunc(Number(imageSize))) : 0;
+
+  if (!normalizedImageDataUrl && !normalizedImageHash) {
+    throw new Error('missing_image');
+  }
+
+  let imageMeta = null;
+  if (normalizedImageDataUrl) {
+    imageMeta = parseImageDataUrlMeta(normalizedImageDataUrl);
+    if (!imageMeta) {
+      throw new Error('invalid_image');
+    }
+    if (!normalizedImageSize) {
+      normalizedImageSize = estimateBase64Bytes(imageMeta.base64Payload);
+    }
+    if (!normalizedImageHash) {
+      normalizedImageHash = buildImageFingerprint(normalizedImageDataUrl);
+    }
+  }
+
+  const parsedEntry = Number(entryPrice);
+  if (!Number.isFinite(parsedEntry) || parsedEntry <= 0) {
+    throw new Error('invalid_entry_price');
+  }
+  const parsedLossPct = Number(lossPct);
+  if (!Number.isFinite(parsedLossPct) || parsedLossPct <= 0 || parsedLossPct > 60) {
+    throw new Error('invalid_loss_pct');
+  }
+  const parsedGainPct = Number(gainPct);
+  if (!Number.isFinite(parsedGainPct) || parsedGainPct <= 0 || parsedGainPct > 300) {
+    throw new Error('invalid_gain_pct');
+  }
+  const parsedStopBufferPct = Number(stopBufferPct || 0);
+  if (!Number.isFinite(parsedStopBufferPct) || parsedStopBufferPct < 0 || parsedStopBufferPct > 5) {
+    throw new Error('invalid_stop_buffer_pct');
+  }
+
+  const parsedPositionSize = Number(positionSize || 0);
+  if (!Number.isFinite(parsedPositionSize) || parsedPositionSize < 0 || parsedPositionSize > 10_000_000) {
+    throw new Error('invalid_position_size');
+  }
+
+  const entry = roundPrice(parsedEntry);
+  const lossFraction = parsedLossPct / 100;
+  const gainFraction = parsedGainPct / 100;
+  const stopBufferFraction = parsedStopBufferPct / 100;
+
+  const stopLoss = normalizedSide === 'long'
+    ? roundPrice(entry * (1 - lossFraction))
+    : roundPrice(entry * (1 + lossFraction));
+  const takeProfit = normalizedSide === 'long'
+    ? roundPrice(entry * (1 + gainFraction))
+    : roundPrice(entry * (1 - gainFraction));
+  const stopLimit = parsedStopBufferPct > 0
+    ? (normalizedSide === 'long'
+      ? roundPrice(stopLoss * (1 - stopBufferFraction))
+      : roundPrice(stopLoss * (1 + stopBufferFraction)))
+    : stopLoss;
+
+  const riskPerShare = roundPrice(Math.abs(entry - stopLoss));
+  const rewardPerShare = roundPrice(Math.abs(takeProfit - entry));
+  const riskRewardRatio = roundPrice(rewardPerShare / Math.max(riskPerShare, 0.0001));
+  const shares = parsedPositionSize > 0 ? Math.trunc(parsedPositionSize) : 0;
+  const maxLossUsd = shares > 0 ? roundPrice(shares * riskPerShare) : 0;
+  const targetGainUsd = shares > 0 ? roundPrice(shares * rewardPerShare) : 0;
+
+  const entryOrderSide = normalizedSide === 'long' ? 'Buy' : 'Sell Short';
+  const exitOrderSide = normalizedSide === 'long' ? 'Sell' : 'Buy to Cover';
+  const stopLabel = parsedStopBufferPct > 0 ? 'stop-limit' : 'stop-market';
+
+  const setupSteps = [
+    `Open your broker order ticket for ${normalizedSymbol}.`,
+    `Set the entry as a ${entryOrderSide} LIMIT at $${entry.toFixed(2)}.`,
+    `Set take-profit as ${exitOrderSide} LIMIT at $${takeProfit.toFixed(2)} (+${parsedGainPct.toFixed(2)}%).`,
+    parsedStopBufferPct > 0
+      ? `Set stop as ${exitOrderSide} ${stopLabel}: stop trigger $${stopLoss.toFixed(2)}, stop limit $${stopLimit.toFixed(2)}.`
+      : `Set stop as ${exitOrderSide} STOP at $${stopLoss.toFixed(2)} (-${parsedLossPct.toFixed(2)}%).`,
+    shares > 0
+      ? `Use quantity ${shares} shares (max loss about $${maxLossUsd.toFixed(2)}, target gain about $${targetGainUsd.toFixed(2)}).`
+      : 'Set quantity based on your account risk cap (example: 1% of account equity).',
+    'Confirm the bracket order, verify prices one more time, and submit.'
+  ];
+
+  const resolvedImageName = normalizedImageName
+    || `uploaded-order-setup.${getImageFileExtension(imageMeta?.mimeType)}`;
+
+  return {
+    generatedAt: new Date().toISOString(),
+    ticker: normalizedSymbol,
+    side: normalizedSide,
+    image: {
+      name: resolvedImageName,
+      sizeBytes: normalizedImageSize,
+      fingerprint: normalizedImageHash ? `${normalizedImageHash.slice(0, 16)}...` : 'not_provided'
+    },
+    percentages: {
+      lossPct: Number(parsedLossPct.toFixed(2)),
+      gainPct: Number(parsedGainPct.toFixed(2)),
+      stopBufferPct: Number(parsedStopBufferPct.toFixed(2))
+    },
+    levels: {
+      entryLimit: entry,
+      stopTrigger: stopLoss,
+      stopLimit,
+      takeProfitLimit: takeProfit
+    },
+    tradeMath: {
+      riskPerShare,
+      rewardPerShare,
+      riskRewardRatio,
+      shares,
+      maxLossUsd,
+      targetGainUsd
+    },
+    aiGuidance: `AI setup ready: place ${entryOrderSide} limit at $${entry.toFixed(2)}, protect with ${exitOrderSide} ${stopLabel}, and target $${takeProfit.toFixed(2)} for a ${riskRewardRatio.toFixed(2)}x reward/risk plan.`,
+    setupSteps
+  };
+}
+
 function buildAiAnalyzerReview(model, score, direction, timeframe, symbol) {
   const isPositive = score >= 60;
   if (isPositive) {
@@ -3621,5 +3763,6 @@ module.exports = {
   getWildTakes,
   validateTickerSymbol,
   analyzeAiTradePattern,
-  analyzeAiTradeScreenshot
+  analyzeAiTradeScreenshot,
+  analyzeAiOrderSetupAssistant
 };

@@ -141,6 +141,7 @@ Access control:
 - `POST /api/market/copilot/notifications/settings` (auth required)
 - `GET /api/market/copilot/notifications/messages?limit=20` (auth required)
 - `POST /api/market/copilot/notifications/send` (auth required)
+- `POST /api/market/ai-trade/order-setup` (auth required) — upload order screenshot + entry/loss/gain percentages and get exact limit/stop/take-profit numbers with step-by-step setup guidance
 
 Real delivery env vars:
 - `NOTIFICATION_REQUIRE_REAL_DELIVERY=1` (default) -> send call fails unless at least one channel actually sends

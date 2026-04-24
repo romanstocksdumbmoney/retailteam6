@@ -16,6 +16,7 @@ const {
   getWildTakes,
   analyzeAiTradePattern,
   analyzeAiTradeScreenshot,
+  analyzeAiOrderSetupAssistant,
   validateTickerSymbol
 } = require('../services/marketEngine');
 const {
@@ -610,6 +611,85 @@ router.post('/ai-analyzer/analyze', requireSignedIn, (req, res) => {
     return res.status(400).json({
       error: 'invalid_request',
       message: 'Could not analyze this trade screenshot.'
+    });
+  }
+});
+
+router.post('/ai-trade/order-setup', requireSignedIn, (req, res) => {
+  try {
+    const imageDataUrl = String(req.body?.imageDataUrl || '');
+    const symbol = String(req.body?.symbol || '');
+    const side = String(req.body?.side || '');
+    const entryPrice = Number(req.body?.entryPrice || 0);
+    const lossPct = Number(req.body?.lossPct || 0);
+    const gainPct = Number(req.body?.gainPct || 0);
+    const stopBufferPct = Number(req.body?.stopBufferPct || 0);
+    const positionSize = Number(req.body?.positionSize || 0);
+    const payload = analyzeAiOrderSetupAssistant({
+      imageDataUrl,
+      symbol,
+      side,
+      entryPrice,
+      lossPct,
+      gainPct,
+      stopBufferPct,
+      positionSize,
+      imageName: req.body?.imageName,
+      imageSize: req.body?.imageSize,
+      imageHash: req.body?.imageHash
+    });
+    return res.json({
+      ...payload,
+      dataNature: 'simulated',
+      sourceDisclosure: 'Order setup assistant outputs model-generated planning guidance for research/testing.'
+    });
+  } catch (error) {
+    const code = String(error.message || '');
+    if (code === 'missing_image') {
+      return res.status(400).json({
+        error: 'missing_image',
+        message: 'Please upload a screenshot to generate order setup levels.'
+      });
+    }
+    if (code === 'invalid_image') {
+      return res.status(400).json({
+        error: 'invalid_image',
+        message: 'Screenshot format is invalid. Use PNG/JPG/WEBP/GIF/BMP.'
+      });
+    }
+    if (code === 'invalid_entry_price') {
+      return res.status(400).json({
+        error: 'invalid_entry_price',
+        message: 'Entry price must be a positive number.'
+      });
+    }
+    if (code === 'invalid_loss_pct') {
+      return res.status(400).json({
+        error: 'invalid_loss_pct',
+        message: 'Loss percent must be between 0.01 and 60.'
+      });
+    }
+    if (code === 'invalid_gain_pct') {
+      return res.status(400).json({
+        error: 'invalid_gain_pct',
+        message: 'Gain percent must be between 0.01 and 300.'
+      });
+    }
+    if (code === 'invalid_stop_buffer_pct') {
+      return res.status(400).json({
+        error: 'invalid_stop_buffer_pct',
+        message: 'Stop buffer percent must be between 0 and 5.'
+      });
+    }
+    if (code === 'invalid_position_size') {
+      return res.status(400).json({
+        error: 'invalid_position_size',
+        message: 'Position size must be between 0 and 10000000 shares.'
+      });
+    }
+    return res.status(400).json({
+      error: 'invalid_request',
+      message: 'Could not build order setup guidance from this screenshot.'
     });
   }
 });

@@ -168,6 +168,31 @@ body {
   grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
 }
 
+.ai-order-levels-grid {
+  display: grid;
+  gap: 0.6rem;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+}
+
+.ai-order-level-card {
+  border: 1px solid rgba(148, 163, 184, 0.34);
+  border-radius: 10px;
+  background: rgba(2, 6, 23, 0.78);
+  padding: 0.6rem;
+}
+
+.ai-order-level-card h4 {
+  margin: 0;
+  color: #fde68a;
+  font-size: 0.88rem;
+}
+
+.ai-order-level-card p {
+  margin: 0.25rem 0 0;
+  font-size: 1rem;
+  font-weight: 700;
+}
+
 .ai-trade-vote {
   border: 1px solid rgba(148, 163, 184, 0.34);
   border-radius: 10px;
