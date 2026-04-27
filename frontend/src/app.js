@@ -702,10 +702,8 @@ function jumpToModule(target) {
       parentDropdown.open = true;
     }
     openSidebarMenu();
-    window.setTimeout(() => {
-      element.scrollIntoView({ behavior: 'smooth', block: 'start' });
-      highlightModuleElement(element);
-    }, 90);
+    element.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    highlightModuleElement(element);
   } else {
     closeSidebarMenu();
     element.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -788,6 +786,9 @@ function setupQuickAccessHub() {
   const orderSetupButton = document.getElementById('quick-access-open-order-setup');
   const openTrendTradesButton = document.getElementById('quick-access-open-trend-trades');
   const openPremiumSpikesButton = document.getElementById('quick-access-open-premium-spikes');
+  const openAiInsightsButton = document.getElementById('home-open-ai-insights');
+  const aiOverviewButtons = Array.from(document.querySelectorAll('.home-ai-tool-button'));
+  const openCopilotInlineButton = document.getElementById('open-copilot-inline');
   if (!(searchButton instanceof HTMLButtonElement)) {
     // Keep compatibility on pages where quick access search is absent.
   } else {
@@ -856,6 +857,46 @@ function setupQuickAccessHub() {
       setModuleSearchStatus('Opened Premium Spikes.');
     });
   }
+
+  if (menuToggle instanceof HTMLButtonElement) {
+    menuToggle.textContent = 'Open Tool Library';
+  }
+
+  if (openAiInsightsButton instanceof HTMLButtonElement) {
+    openAiInsightsButton.addEventListener('click', () => {
+      const target = getModuleTargetByKey('ai-discovery');
+      if (target) {
+        const jumped = jumpToModule(target);
+        if (jumped) {
+          setModuleSearchStatus('Opened AI Discovery.');
+        }
+      }
+    });
+  }
+
+  aiOverviewButtons.forEach((button) => {
+    button.addEventListener('click', () => {
+      const key = String(button.getAttribute('data-module-key') || '').trim();
+      const target = getModuleTargetByKey(key);
+      if (!target) {
+        return;
+      }
+      const jumped = jumpToModule(target);
+      if (jumped) {
+        setModuleSearchStatus(`Opened ${target.label}.`);
+      }
+    });
+  });
+
+  if (openCopilotInlineButton instanceof HTMLButtonElement) {
+    openCopilotInlineButton.addEventListener('click', () => {
+      window.dispatchEvent(new CustomEvent('dumbdollars:copilot-open', {
+        detail: {
+          message: 'Copilot opened. Ask what to do next and I will guide you.'
+        }
+      }));
+    });
+  }
 }
 
 function getSidebarDropdownById(id) {
@@ -874,7 +915,7 @@ function resolveDashboardMode(mode) {
 function setupDashboardOrganization() {
   const container = document.getElementById('dashboard-organizer');
   const statusNode = document.getElementById('dashboard-organizer-status');
-  if (!container) {
+  if (!(container instanceof HTMLElement) || !(statusNode instanceof HTMLElement)) {
     return;
   }
   const modeButtons = Array.from(container.querySelectorAll('[data-dashboard-mode]'));
@@ -1345,6 +1386,9 @@ async function openSmartAiSetupPath() {
     || document.getElementById('handsfree-smart-setup-button');
   const statusNode = document.getElementById('handsfree-auto-guide-status')
     || document.getElementById('handsfree-setup-status');
+  if (!(shortcutButton instanceof HTMLButtonElement) || !(statusNode instanceof HTMLElement)) {
+    return;
+  }
   const openCopilotGuide = (detail = {}) => {
     try {
       window.dispatchEvent(new CustomEvent('dumbdollars:copilot-open', { detail }));
@@ -1444,7 +1488,7 @@ async function openSmartAiSetupPath() {
 
 function setupBrokerageApiSection() {
   const section = document.getElementById('brokerage-api-section');
-  if (!section) {
+  if (!(section instanceof HTMLElement)) {
     return;
   }
   section.addEventListener('click', (event) => {
@@ -1482,6 +1526,19 @@ function setupInstantAiLaunchpad() {
   const runByAiControlButton = document.getElementById('run-by-ai-control-button');
   const brokerSelect = document.getElementById('instant-broker-select');
   const statusNode = document.getElementById('instant-ai-launch-status');
+  const hasLaunchpad = (
+    instantTradeButton
+    || connectBrokerButton
+    || runByAiButton
+    || runByAiSetupButton
+    || runByAiBrokerButton
+    || runByAiControlButton
+    || brokerSelect
+    || statusNode
+  );
+  if (!hasLaunchpad) {
+    return;
+  }
 
   const getSelectedBroker = () => {
     if (!(brokerSelect instanceof HTMLSelectElement)) {
@@ -1627,7 +1684,6 @@ function openPortfoliosPage() {
 async function focusPremiumSpikesSection(options = {}) {
   const sectionHeader = document.getElementById('premium-spikes-section');
   const shouldLoad = options.load !== false;
-  openSidebarMenu();
   if (sectionHeader) {
     sectionHeader.scrollIntoView({ behavior: 'smooth', block: 'start' });
     sectionHeader.classList.remove('module-highlight');
@@ -1653,33 +1709,23 @@ async function focusPremiumSpikesSection(options = {}) {
 
 function closeSidebarMenu() {
   const sidebar = document.getElementById('sidebar-panel');
-  const backdrop = document.getElementById('sidebar-backdrop');
   const menuToggle = document.getElementById('sidebar-menu-toggle');
   if (!sidebar || !menuToggle) {
     return;
   }
   sidebarOpen = false;
-  sidebar.classList.remove('sidebar-open');
-  if (backdrop) {
-    backdrop.classList.add('hidden');
-  }
-  document.body.classList.remove('sidebar-menu-open');
+  sidebar.classList.add('sidebar-collapsed');
   menuToggle.setAttribute('aria-expanded', 'false');
 }
 
 function openSidebarMenu() {
   const sidebar = document.getElementById('sidebar-panel');
-  const backdrop = document.getElementById('sidebar-backdrop');
   const menuToggle = document.getElementById('sidebar-menu-toggle');
   if (!sidebar || !menuToggle) {
     return;
   }
   sidebarOpen = true;
-  sidebar.classList.add('sidebar-open');
-  if (backdrop) {
-    backdrop.classList.remove('hidden');
-  }
-  document.body.classList.add('sidebar-menu-open');
+  sidebar.classList.remove('sidebar-collapsed');
   menuToggle.setAttribute('aria-expanded', 'true');
 }
 
@@ -3443,7 +3489,7 @@ function setupModuleDeepLinks() {
 function setupSidebarMenu() {
   const menuToggle = document.getElementById('sidebar-menu-toggle');
   const sidebar = document.getElementById('sidebar-panel');
-  const backdrop = document.getElementById('sidebar-backdrop');
+  const closeButton = document.getElementById('sidebar-close-btn');
   if (!menuToggle || !sidebar) {
     return;
   }
@@ -3452,27 +3498,17 @@ function setupSidebarMenu() {
     toggleSidebarMenu();
   });
 
-  // Keep desktop as a dropdown too, so the menu behavior is consistent.
+  // Start in non-blocking collapsed state to avoid obstructing dashboard.
   closeSidebarMenu();
 
-  document.addEventListener('click', (event) => {
-    const target = event.target;
-    if (!(target instanceof Element)) {
-      return;
-    }
-    if (!sidebar.contains(target) && target !== menuToggle && !menuToggle.contains(target)) {
-      closeSidebarMenu();
-    }
-  });
-
-  if (backdrop) {
-    backdrop.addEventListener('click', () => {
+  if (closeButton instanceof HTMLButtonElement) {
+    closeButton.addEventListener('click', () => {
       closeSidebarMenu();
     });
   }
 
   document.addEventListener('keydown', (event) => {
-    if (event.key === 'Escape') {
+    if (event.key === 'Escape' && sidebarOpen) {
       closeSidebarMenu();
     }
   });
@@ -3497,8 +3533,61 @@ function setupSidebarDropdowns() {
   });
 }
 
+function setupToolLibraryEntryPoints() {
+  const openAiInsightsButton = document.getElementById('home-open-ai-insights');
+  const aiOverviewButtons = Array.from(document.querySelectorAll('.home-ai-tool-button'));
+  const openCopilotInlineButton = document.getElementById('open-copilot-inline');
+  const sidebarCloseButton = document.getElementById('sidebar-close-btn');
+
+  if (openAiInsightsButton instanceof HTMLButtonElement) {
+    openAiInsightsButton.addEventListener('click', () => {
+      const target = getModuleTargetByKey('ai-discovery');
+      if (!target) {
+        return;
+      }
+      const jumped = jumpToModule(target);
+      if (jumped) {
+        setModuleSearchStatus('Opened AI Discovery.');
+      }
+    });
+  }
+
+  aiOverviewButtons.forEach((button) => {
+    button.addEventListener('click', () => {
+      const key = String(button.getAttribute('data-module-key') || '').trim();
+      const target = getModuleTargetByKey(key);
+      if (!target) {
+        return;
+      }
+      const jumped = jumpToModule(target);
+      if (jumped) {
+        setModuleSearchStatus(`Opened ${target.label}.`);
+      }
+    });
+  });
+
+  if (openCopilotInlineButton instanceof HTMLButtonElement) {
+    openCopilotInlineButton.addEventListener('click', () => {
+      window.dispatchEvent(new CustomEvent('dumbdollars:copilot-open', {
+        detail: {
+          message: 'Copilot opened. Ask what to do next and I will guide you.'
+        }
+      }));
+    });
+  }
+
+  if (sidebarCloseButton instanceof HTMLButtonElement) {
+    sidebarCloseButton.addEventListener('click', () => {
+      closeSidebarMenu();
+    });
+  }
+}
+
 function setupStockForm() {
   const form = document.getElementById('stock-form');
+  if (!(form instanceof HTMLFormElement)) {
+    return;
+  }
   form.addEventListener('submit', async (event) => {
     event.preventDefault();
     const input = document.getElementById('ticker-input');
@@ -3519,6 +3608,9 @@ function setupStockForm() {
 
 function setupScanForm() {
   const form = document.getElementById('scan-form');
+  if (!(form instanceof HTMLFormElement)) {
+    return;
+  }
   form.addEventListener('submit', async (event) => {
     event.preventDefault();
     const queryEl = document.getElementById('scan-query');
@@ -3543,6 +3635,9 @@ function setupScanForm() {
 
 function setupOptionsForm() {
   const form = document.getElementById('options-form');
+  if (!(form instanceof HTMLFormElement)) {
+    return;
+  }
   form.addEventListener('submit', async (event) => {
     event.preventDefault();
     const values = {
@@ -3567,6 +3662,9 @@ function setupOptionsForm() {
 
 function setupUnusualRefresh() {
   const button = document.getElementById('refresh-unusual');
+  if (!(button instanceof HTMLButtonElement)) {
+    return;
+  }
   button.addEventListener('click', async () => {
     try {
       await loadUnusualFeed();

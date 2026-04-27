@@ -27,6 +27,7 @@ function isChatbotAuditEnabled() {
 
 const AUTH_TOKEN_STORAGE_KEY = 'dumbdollars_token';
 const LAST_COMPLAINT_TICKET_KEY = 'dumbdollars_last_complaint_ticket';
+const COPILOT_COLLAPSED_STORAGE_KEY = 'dumbdollars_copilot_collapsed';
 
 function getStoredAuthToken() {
   try {
@@ -634,6 +635,15 @@ function mountAiCopilotWidget() {
     return;
   }
 
+  const setCollapsed = (collapsed) => {
+    shell.classList.toggle('ai-copilot-shell--collapsed', Boolean(collapsed));
+    try {
+      localStorage.setItem(COPILOT_COLLAPSED_STORAGE_KEY, collapsed ? '1' : '0');
+    } catch (_error) {
+      // Ignore storage errors.
+    }
+  };
+
   const appendMessage = (role, message) => {
     const row = document.createElement('p');
     row.className = role === 'assistant' ? 'ai-copilot-msg ai-copilot-msg--assistant' : 'ai-copilot-msg ai-copilot-msg--user';
@@ -743,6 +753,7 @@ function mountAiCopilotWidget() {
   runHealthCheck();
 
   const openPanel = () => {
+    setCollapsed(false);
     panel.hidden = false;
     fab.setAttribute('aria-expanded', 'true');
     setTimeout(() => input.focus(), 0);
@@ -862,6 +873,16 @@ function mountAiCopilotWidget() {
       reportToggle.disabled = false;
     }
   });
+
+  try {
+    const persisted = String(localStorage.getItem(COPILOT_COLLAPSED_STORAGE_KEY) || '').trim();
+    if (persisted === '1') {
+      setCollapsed(true);
+      closePanel();
+    }
+  } catch (_error) {
+    // Ignore storage errors.
+  }
 }
 
 function initAiCopilotWidget() {

@@ -16,184 +16,123 @@
             type="button"
             aria-expanded="false"
             aria-controls="sidebar-panel"
-            aria-label="Toggle sidebar menu"
+            aria-label="Open tool library"
           >
             <span class="menu-toggle-icon" aria-hidden="true">
               <span class="menu-toggle-bar"></span>
               <span class="menu-toggle-bar"></span>
               <span class="menu-toggle-bar"></span>
             </span>
-            <span class="menu-toggle-label">Open menu</span>
+            <span class="menu-toggle-label">Open Tool Library</span>
           </button>
         </div>
-        <div class="diamond-banner">
-          <div class="diamond-icon-wrap" aria-hidden="true">
-            <img class="diamond-logo-image" src="./logo-mark.svg" alt="" />
-          </div>
-          <div>
-            <p class="diamond-kicker">DumbDollars</p>
-            <p class="diamond-text">Retail-first market intelligence to expose flow, risk, and earnings traps.</p>
-          </div>
-        </div>
+
         <div class="hero-top">
-          <h1>DumbDollars</h1>
+          <div class="hero-brand">
+            <p class="hero-kicker">DumbDollars</p>
+            <h1>DumbDollars</h1>
+            <p class="subtitle">Cleaner stock research. Faster trade ideas. Smarter market tracking.</p>
+          </div>
           <div class="hero-top-actions">
             <span id="plan-badge" class="plan-badge plan-free">FREE ACCESS</span>
-            <a class="btn-secondary open-link hero-pro-link" href="/ai-trade.html#ai-order-setup-title">Order Setup Assistant</a>
-            <a class="btn-secondary open-link hero-pro-link" href="/pro-modules.html">Explore Pro Modules</a>
+            <button id="open-copilot-inline" class="btn-secondary" type="button">Open Copilot</button>
+            <button id="upgrade-pro-btn" type="button">Upgrade to Pro</button>
           </div>
         </div>
-        <p class="subtitle">DumbDollars helps retail traders track market flow, stock probabilities, options risk, and earnings momentum in one dashboard.</p>
-        <section class="mission-card" aria-labelledby="mission-card-title">
-          <h2 id="mission-card-title">Why we built DumbDollars</h2>
-          <p>We created DumbDollars to help retail traders avoid getting faked out, trapped, or steamrolled by bigger players.</p>
-          <ul class="detail-list">
-            <li>Surface unusual flow, options pressure, and earnings risk in one place.</li>
-            <li>Make market context easier to read before you take a trade.</li>
-            <li>Give everyday traders cleaner signals so they can make smarter decisions.</li>
-          </ul>
-        </section>
+
+        <nav class="dashboard-main-nav" aria-label="Primary navigation">
+          <a class="open-link" href="/">Dashboard</a>
+          <a class="open-link" href="/portfolios.html">Portfolio</a>
+          <a class="open-link" href="#stock-outlook-module">Search</a>
+          <a class="open-link" href="#ai-tools-overview">AI Tools</a>
+        </nav>
+
         <p id="status" class="status">Checking API status...</p>
-        <section id="quick-access-hub" class="quick-access-hub-card" aria-labelledby="quick-access-hub-title">
+
+        <section id="what-dumbdollars-does" class="mission-card" aria-labelledby="what-dumbdollars-does-title">
           <div class="section-header">
-            <h2 id="quick-access-hub-title">What do you want to do right now?</h2>
-            <span class="chip">Quick Access</span>
+            <h2 id="what-dumbdollars-does-title">What DumbDollars Does</h2>
+            <span class="chip">Overview</span>
           </div>
-          <p class="small-note">Use these simple shortcuts if the dashboard feels crowded.</p>
-          <div class="quick-access-grid">
-            <article class="quick-access-item">
-              <h3>Open Pro features</h3>
-              <p class="small-note">Show all paid modules and jump to one quickly.</p>
-              <div class="ai-bot-actions">
-                <a id="quick-access-show-pro" class="btn-secondary open-link" href="/pro-modules.html">Open All Pro Modules</a>
-                <a class="btn-secondary open-link" href="/pro-preview-lab.html">Open Pro Preview Lab</a>
-                <button id="quick-access-open-trend-trades" class="btn-secondary" type="button">Open Trend Trades</button>
-                <button id="quick-access-open-premium-spikes" class="btn-secondary" type="button">Open Premium Spikes</button>
-              </div>
-            </article>
-            <article class="quick-access-item">
-              <h3>Order Setup from Screenshot</h3>
-              <p class="small-note">Upload limit/stop screenshot and get exact entry, stop, and take-profit numbers.</p>
-              <div class="ai-bot-actions">
-                <a id="quick-access-open-order-setup" class="btn-secondary open-link" href="/ai-trade.html#ai-order-setup-title">Open Order Setup Assistant</a>
-              </div>
-            </article>
-            <article class="quick-access-item">
-              <h3>Expanded Pro Ideas Suite</h3>
-              <p class="small-note">All 13 Pro idea modules are added and open in preview mode (no lock yet).</p>
-              <div class="ai-bot-actions">
-                <a class="btn-secondary open-link" href="/pro-preview-lab.html?feature=notifications#pro-idea-notifications">Notification Receiver</a>
-                <a class="btn-secondary open-link" href="/pro-preview-lab.html?feature=alerts#pro-idea-alerts">Alerts Center</a>
-                <a class="btn-secondary open-link" href="/pro-preview-lab.html?feature=backtest#pro-idea-backtest">Backtest Lab</a>
-                <a class="btn-secondary open-link" href="/pro-preview-lab.html?feature=watchlists#pro-idea-watchlists">Watchlists + Rules</a>
-                <a class="btn-secondary open-link" href="/pro-preview-lab.html?feature=heatmap#pro-idea-heatmap">Session Heatmap</a>
-                <a class="btn-secondary open-link" href="/pro-preview-lab.html?feature=journal#pro-idea-journal">Trade Journal Sync</a>
-                <a class="btn-secondary open-link" href="/pro-preview-lab.html?feature=flow#pro-idea-flow-radar">AI Flow Radar</a>
-                <a class="btn-secondary open-link" href="/pro-preview-lab.html?feature=earnings#pro-idea-earnings-planner">Earnings Planner</a>
-                <a class="btn-secondary open-link" href="/pro-preview-lab.html?feature=sector#pro-idea-sector-rotation">Sector Rotation</a>
-                <a class="btn-secondary open-link" href="/pro-preview-lab.html?feature=position#pro-idea-position-sizer">Position Sizer</a>
-                <a class="btn-secondary open-link" href="/pro-preview-lab.html?feature=sweeps#pro-idea-sweep-tape">Sweep Tape</a>
-                <a class="btn-secondary open-link" href="/pro-preview-lab.html?feature=volatility#pro-idea-volatility-guard">Volatility Guard</a>
-                <a class="btn-secondary open-link" href="/pro-preview-lab.html?feature=scenario#pro-idea-scenario-builder">Scenario Builder</a>
-              </div>
-            </article>
-            <article class="quick-access-item">
-              <h3>Connect or fix broker</h3>
-              <p class="small-note">Run bridge test and resolve checklist.</p>
-              <a class="btn-secondary instant-connect-broker-link" href="/brokerage-onboarding.html">Open Broker Connect</a>
-            </article>
-            <article class="quick-access-item">
-              <h3>Control AI account</h3>
-              <p class="small-note">View status and start/stop hands-free AI.</p>
-              <a class="btn-secondary instant-connect-broker-link" href="/ai-bot-account.html">Open AI Account Control</a>
-            </article>
-            <article class="quick-access-item">
-              <h3>Learn AI implementation</h3>
-              <p class="small-note">Simple quick-start + full guide.</p>
-              <a class="btn-secondary instant-connect-broker-link" href="/ai-implementation-steps.html">Open AI Implementation Guide</a>
-            </article>
+          <p>
+            DumbDollars is a stock research and trading-assistant dashboard built to help users move from market noise to clear trade ideas. The app brings together stock search, watchlists, AI-powered market discovery, pattern tracking, unusual market chatter, and setup guidance in one clean workspace. Instead of jumping between multiple tools, users can research tickers, track important signals, and organize trading decisions from one place.
+          </p>
+          <p class="small-note">
+            DumbDollars helps traders research stocks, track market signals, follow AI-powered insights, and organize trading ideas in one place. It is designed to make stock research faster, cleaner, and easier to understand.
+          </p>
+        </section>
+
+        <section id="quick-access-hub" class="home-actions-card card" aria-labelledby="home-actions-title">
+          <div class="section-header">
+            <h2 id="home-actions-title">Main Actions</h2>
+            <span class="chip">Start Here</span>
           </div>
-          <div class="ai-bot-actions">
-            <button id="quick-access-open-search" class="btn-secondary" type="button">Find any tool</button>
+          <div class="home-actions-grid">
+            <article class="home-action-item">
+              <h3>Research Stocks</h3>
+              <p class="small-note">Search a ticker and view sentiment, event pressure, and outlook data quickly.</p>
+              <a class="btn-secondary open-link" href="#stock-outlook-module">Open Stock Research</a>
+            </article>
+            <article class="home-action-item">
+              <h3>Track Watchlist</h3>
+              <p class="small-note">Monitor portfolio-style ideas and recent trade activity in one place.</p>
+              <a class="btn-secondary open-link" href="/portfolios.html">Open Watchlist Tracker</a>
+            </article>
+            <article class="home-action-item">
+              <h3>AI Market Insights</h3>
+              <p class="small-note">Jump into AI Discovery, patterns, insider flow, and unusual chatter signals.</p>
+              <button id="home-open-ai-insights" class="btn-secondary" type="button">Open AI Insights</button>
+            </article>
+            <article class="home-action-item">
+              <h3>Trading Setup Guide</h3>
+              <p class="small-note">Follow a clear setup flow from account prep to execution planning.</p>
+              <a class="btn-secondary open-link" href="/ai-simple-setup.html">Open Setup Guide</a>
+            </article>
           </div>
         </section>
-        <section id="handsfree-ai-setup-hub" class="handsfree-setup-hub" aria-labelledby="handsfree-setup-title">
+
+        <section class="home-quick-start-card card" aria-labelledby="home-quick-start-title">
           <div class="section-header">
-            <h2 id="handsfree-setup-title">Set Up Account Run by AI (Hands-Free)</h2>
-            <span class="chip pro">Most Important</span>
+            <h2 id="home-quick-start-title">Quick Start</h2>
+            <span class="chip">4 Steps</span>
           </div>
-          <p class="small-note">If you want AI to actually trade in your account for you, start with this section first.</p>
-          <div class="handsfree-setup-actions">
-            <a
-              id="handsfree-start-button"
-              class="instant-ai-primary-btn instant-ai-primary-link"
-              href="/ai-simple-setup.html?entry=handsfree"
-            >
-              Start Hands-Free AI Setup
-            </a>
-            <a
-              id="handsfree-control-button"
-              class="btn-secondary instant-connect-broker-link"
-              href="/ai-bot-account.html"
-            >
-              Open Hands-Free Trading Control
-            </a>
-            <a
-              id="handsfree-broker-signup-button"
-              class="btn-secondary instant-connect-broker-link"
-              href="/ai-broker-direct-setup.html?broker=alpaca&entry=handsfree"
-            >
-              Open API Broker Sign-Up
-            </a>
-            <button
-              id="handsfree-auto-guide-button"
-              class="btn-secondary"
-              type="button"
-            >
-              Auto Guide Me to Next Step
-            </button>
-          </div>
-          <p id="handsfree-auto-guide-status" class="small-note">Auto guide checks your account and opens the next required setup step.</p>
-          <ol class="detail-list handsfree-setup-steps">
-            <li>
-              <a class="handsfree-step-link" href="/ai-bot-trader.html#ai-bot-config-form">
-                <strong>1)</strong> Save your AI bot in <strong>Live Funding Mode</strong>.
-              </a>
-            </li>
-            <li>
-              <a class="handsfree-step-link" href="/brokerage-onboarding.html#broker-connect-form">
-                <strong>2)</strong> Connect your broker API and pass broker bridge test.
-              </a>
-            </li>
-            <li>
-              <a class="handsfree-step-link" href="/ai-bot-account.html#ai-account-start-autopilot">
-                <strong>3)</strong> Start <strong>Hands-Free AI Trading</strong> from account control page.
-              </a>
-            </li>
+          <ol class="detail-list home-quick-start-list">
+            <li>Search a stock</li>
+            <li>Review chart and signals</li>
+            <li>Add to watchlist</li>
+            <li>Decide your trade plan</li>
           </ol>
         </section>
-        <section id="dashboard-organizer" class="dashboard-organizer-card" aria-labelledby="dashboard-organizer-title">
+
+        <section id="ai-tools-overview" class="home-ai-tools-card card" aria-labelledby="home-ai-tools-title">
           <div class="section-header">
-            <h2 id="dashboard-organizer-title">Choose a cleaner workspace view</h2>
+            <h2 id="home-ai-tools-title">AI Tools</h2>
             <span class="chip">Organized</span>
           </div>
-          <p class="small-note">Switch views depending on what you are trying to do right now.</p>
-          <div class="dashboard-mode-grid" role="group" aria-label="Dashboard workspace modes">
-            <button type="button" class="btn-secondary dashboard-mode-btn" data-dashboard-mode="essentials" aria-pressed="false">
-              Essentials
-            </button>
-            <button type="button" class="btn-secondary dashboard-mode-btn" data-dashboard-mode="ai" aria-pressed="false">
-              AI Trading
-            </button>
-            <button type="button" class="btn-secondary dashboard-mode-btn" data-dashboard-mode="research" aria-pressed="false">
-              Research
-            </button>
-            <button type="button" class="btn-secondary dashboard-mode-btn" data-dashboard-mode="full" aria-pressed="false">
-              Full Workspace
-            </button>
+          <div class="home-ai-tools-grid">
+            <article class="home-ai-tool-item">
+              <h3>AI Discovery</h3>
+              <p class="small-note">Search themes and surface cross-platform market intelligence.</p>
+              <button class="btn-secondary home-ai-tool-button" data-module-key="ai-discovery" type="button">Open AI Discovery</button>
+            </article>
+            <article class="home-ai-tool-item">
+              <h3>Realized Patterns</h3>
+              <p class="small-note">Track practical pattern signals with cleaner filtering and review flow.</p>
+              <button class="btn-secondary home-ai-tool-button" data-module-key="realized-patterns" type="button">Open Realized Patterns</button>
+            </article>
+            <article class="home-ai-tool-item">
+              <h3>Wild Takes</h3>
+              <p class="small-note">Watch odd market chatter and extreme narratives in one feed.</p>
+              <button class="btn-secondary home-ai-tool-button" data-module-key="wild-takes" type="button">Open Wild Takes</button>
+            </article>
+            <article class="home-ai-tool-item">
+              <h3>Insider Trades</h3>
+              <p class="small-note">Follow insider buys/sells with value filters and timing context.</p>
+              <button class="btn-secondary home-ai-tool-button" data-module-key="insider-trades" type="button">Open Insider Trades</button>
+            </article>
           </div>
-          <p id="dashboard-organizer-status" class="small-note">Essentials view keeps only the most important modules visible.</p>
         </section>
+
         <section class="module-command-card" aria-labelledby="module-command-title">
           <div class="section-header">
             <h2 id="module-command-title">Find a module fast</h2>
@@ -211,114 +150,122 @@
               />
               <datalist id="module-search-options"></datalist>
             </label>
-            <button type="submit">Go to module</button>
+            <button type="submit">Go to Module</button>
           </form>
-          <p id="module-search-status" class="small-note">Use quick links or search by feature name.</p>
+          <p id="module-search-status" class="small-note">Search by feature name and jump directly to it.</p>
           <div id="quick-module-links" class="quick-module-links"></div>
         </section>
-        <section class="auth-bar">
-          <div class="auth-grid">
-            <form id="signup-form" class="auth-form">
-              <label>
-                Create account
-                <input id="signup-email" type="email" placeholder="email@domain.com" required />
-              </label>
-              <label>
-                Password
-                <input
-                  id="signup-password"
-                  type="password"
-                  placeholder="min 10 chars, upper/lower/number/symbol"
-                  minlength="10"
-                  autocomplete="new-password"
-                  required
-                />
-              </label>
-              <p id="signup-password-strength" class="small-note auth-hint"></p>
-              <label class="auth-remember">
-                <input id="signup-remember" type="checkbox" checked />
-                Keep me signed in on this device
-              </label>
-              <button type="submit">Sign up</button>
-            </form>
-            <form id="login-form" class="auth-form">
-              <label>
-                Login email
-                <input id="login-email" type="email" placeholder="email@domain.com" required />
-              </label>
-              <label>
-                Password
-                <input id="login-password" type="password" placeholder="password" autocomplete="current-password" required />
-              </label>
-              <label class="auth-remember">
-                <input id="login-remember" type="checkbox" checked />
-                Keep me signed in on this device
-              </label>
-              <button type="submit">Log in</button>
-            </form>
-          </div>
-          <div id="social-auth-row" class="social-auth-row">
-            <p class="small-note">Quick sign in with:</p>
-            <div class="social-auth-buttons">
-              <button class="btn-secondary oauth-btn" data-provider="google" type="button">Continue with Google</button>
-              <button class="btn-secondary oauth-btn" data-provider="apple" type="button">Continue with Apple</button>
-              <button class="btn-secondary oauth-btn" data-provider="github" type="button">Continue with GitHub</button>
-              <button class="btn-secondary oauth-btn" data-provider="discord" type="button">Continue with Discord</button>
-              <button class="btn-secondary oauth-btn" data-provider="x" type="button">Continue with X</button>
+
+        <details class="dashboard-auth-details">
+          <summary>Account, billing, and email automation</summary>
+          <section class="auth-bar">
+            <div class="auth-grid">
+              <form id="signup-form" class="auth-form">
+                <label>
+                  Create account
+                  <input id="signup-email" type="email" placeholder="email@domain.com" required />
+                </label>
+                <label>
+                  Password
+                  <input
+                    id="signup-password"
+                    type="password"
+                    placeholder="min 10 chars, upper/lower/number/symbol"
+                    minlength="10"
+                    autocomplete="new-password"
+                    required
+                  />
+                </label>
+                <p id="signup-password-strength" class="small-note auth-hint"></p>
+                <label class="auth-remember">
+                  <input id="signup-remember" type="checkbox" checked />
+                  Keep me signed in on this device
+                </label>
+                <button type="submit">Sign up</button>
+              </form>
+              <form id="login-form" class="auth-form">
+                <label>
+                  Login email
+                  <input id="login-email" type="email" placeholder="email@domain.com" required />
+                </label>
+                <label>
+                  Password
+                  <input id="login-password" type="password" placeholder="password" autocomplete="current-password" required />
+                </label>
+                <label class="auth-remember">
+                  <input id="login-remember" type="checkbox" checked />
+                  Keep me signed in on this device
+                </label>
+                <button type="submit">Log in</button>
+              </form>
             </div>
-          </div>
-          <article id="email-automation-card" class="email-automation-card hidden" aria-labelledby="email-automation-title">
-            <h3 id="email-automation-title">Email Automation</h3>
-            <p class="small-note">Use your sign-in email for updates. Free users get Pro upgrade nudges; Pro users get module update digests.</p>
-            <form id="email-automation-form" class="row-form" novalidate>
-              <label>
-                Confirm your account email
-                <input id="email-automation-confirm-email" type="email" placeholder="you@domain.com" />
-              </label>
-              <label class="auth-remember">
-                <input id="email-automation-enabled" type="checkbox" checked />
-                Enable email automation
-              </label>
-              <label class="auth-remember">
-                <input id="email-automation-free-promo" type="checkbox" checked />
-                Free plan: send Pro upgrade nudges
-              </label>
-              <label class="auth-remember">
-                <input id="email-automation-pro-update" type="checkbox" checked />
-                Pro plan: send module update digests
-              </label>
-              <label>
-                Send cadence (days)
-                <input id="email-automation-cadence-days" type="number" min="1" max="30" step="1" value="3" />
-              </label>
-              <button id="email-automation-save" type="submit">Save Email Automation</button>
-            </form>
-            <div class="ai-bot-actions">
-              <button id="email-automation-send-test" class="btn-secondary" type="button">Send Test Email Now</button>
+            <div id="social-auth-row" class="social-auth-row">
+              <p class="small-note">Quick sign in with:</p>
+              <div class="social-auth-buttons">
+                <button class="btn-secondary oauth-btn" data-provider="google" type="button">Continue with Google</button>
+                <button class="btn-secondary oauth-btn" data-provider="apple" type="button">Continue with Apple</button>
+                <button class="btn-secondary oauth-btn" data-provider="github" type="button">Continue with GitHub</button>
+                <button class="btn-secondary oauth-btn" data-provider="discord" type="button">Continue with Discord</button>
+                <button class="btn-secondary oauth-btn" data-provider="x" type="button">Continue with X</button>
+              </div>
             </div>
-            <p id="email-automation-status" class="small-note">Sign in to configure email automation.</p>
-          </article>
-          <div class="auth-actions">
-            <button id="upgrade-pro-btn" type="button">Upgrade to Pro ($15/mo)</button>
-            <button id="billing-portal-btn" class="btn-secondary" type="button">Manage Billing</button>
-            <button id="logout-btn" class="btn-secondary" type="button">Log out</button>
-            <a id="open-auth-access-page" class="btn-secondary open-link" href="/ai-trade-access.html?next=%2F">Open Full Sign In / Sign Up</a>
-          </div>
-          <article id="billing-safety-card" class="billing-safety-card hidden" aria-live="polite">
-            <h3>Secure Pro Checkout</h3>
-            <p id="billing-plan-line" class="small-note">Plan: DumbDollars Pro • $15/month</p>
-            <ul id="billing-trust-points" class="detail-list"></ul>
-            <div class="billing-actions">
-              <button id="billing-safe-continue" type="button">Continue to secure checkout</button>
-              <button id="billing-safe-cancel" class="btn-secondary" type="button">Cancel</button>
+            <article id="email-automation-card" class="email-automation-card hidden" aria-labelledby="email-automation-title">
+              <h3 id="email-automation-title">Email Automation</h3>
+              <p class="small-note">Use your sign-in email for updates. Free users get Pro upgrade nudges; Pro users get module update digests.</p>
+              <form id="email-automation-form" class="row-form" novalidate>
+                <label>
+                  Confirm your account email
+                  <input id="email-automation-confirm-email" type="email" placeholder="you@domain.com" />
+                </label>
+                <label class="auth-remember">
+                  <input id="email-automation-enabled" type="checkbox" checked />
+                  Enable email automation
+                </label>
+                <label class="auth-remember">
+                  <input id="email-automation-free-promo" type="checkbox" checked />
+                  Free plan: send Pro upgrade nudges
+                </label>
+                <label class="auth-remember">
+                  <input id="email-automation-pro-update" type="checkbox" checked />
+                  Pro plan: send module update digests
+                </label>
+                <label>
+                  Send cadence (days)
+                  <input id="email-automation-cadence-days" type="number" min="1" max="30" step="1" value="3" />
+                </label>
+                <button id="email-automation-save" type="submit">Save Email Automation</button>
+              </form>
+              <div class="ai-bot-actions">
+                <button id="email-automation-send-test" class="btn-secondary" type="button">Send Test Email Now</button>
+              </div>
+              <p id="email-automation-status" class="small-note">Sign in to configure email automation.</p>
+            </article>
+            <div class="auth-actions">
+              <button id="billing-portal-btn" class="btn-secondary" type="button">Manage Billing</button>
+              <button id="logout-btn" class="btn-secondary" type="button">Log out</button>
+              <a id="open-auth-access-page" class="btn-secondary open-link" href="/ai-trade-access.html?next=%2F">Open Full Sign In / Sign Up</a>
             </div>
-          </article>
-          <p id="auth-message" class="small-note"></p>
-        </section>
+            <article id="billing-safety-card" class="billing-safety-card hidden" aria-live="polite">
+              <h3>Secure Pro Checkout</h3>
+              <p id="billing-plan-line" class="small-note">Plan: DumbDollars Pro • $15/month</p>
+              <ul id="billing-trust-points" class="detail-list"></ul>
+              <div class="billing-actions">
+                <button id="billing-safe-continue" type="button">Continue to secure checkout</button>
+                <button id="billing-safe-cancel" class="btn-secondary" type="button">Cancel</button>
+              </div>
+            </article>
+            <p id="auth-message" class="small-note"></p>
+          </section>
+        </details>
       </header>
 
       <div class="app-layout">
-        <aside id="sidebar-panel" class="sidebar card">
+        <aside id="sidebar-panel" class="sidebar card" aria-label="Tool library">
+          <div class="sidebar-header-row">
+            <h2>Tool Library</h2>
+            <button id="sidebar-close-btn" class="btn-secondary" type="button">Close</button>
+          </div>
+          <p class="small-note">Open any research or AI module from here without blocking your dashboard.</p>
           <details id="sidebar-core-dropdown" class="module-dropdown" open>
             <summary class="module-dropdown-summary">
               <span>Free + Core modules</span>
@@ -476,21 +423,21 @@
             <span class="chip">Account</span>
               </div>
               <p class="small-note">Upload chart patterns and get multi-AI trade analysis with stop-loss and take-profit guidance.</p>
-              <button id="open-ai-trade" type="button">Open AI Trading</button>
+              <button id="open-ai-trade" class="btn-secondary" type="button">Open AI Trading</button>
 
               <div id="ai-order-setup-section" class="section-header">
             <h2>Order Setup Assistant</h2>
             <span class="chip">Account</span>
               </div>
               <p class="small-note">Upload your limit/stop screenshot, enter loss/gain %, and get exact entry, stop, and take-profit numbers.</p>
-              <button id="open-order-setup-assistant" type="button">Open Order Setup Assistant</button>
+              <button id="open-order-setup-assistant" class="btn-secondary" type="button">Open Order Setup Assistant</button>
 
               <div id="ai-auto-trader-section" class="section-header">
             <h2>AI Trading Bot (Auto Trader)</h2>
             <span class="chip">Account</span>
               </div>
               <p class="small-note">Set prompt, capital, risk limits, and sector targets for automated AI trade planning.</p>
-              <button id="open-ai-auto-trader" type="button">Open AI Trading Bot</button>
+              <button id="open-ai-auto-trader" class="btn-secondary" type="button">Open AI Trading Bot</button>
               <button id="open-live-brokerage-account" class="btn-secondary" type="button">Open Live Brokerage Account</button>
 
               <div id="ai-analyzer-section" class="section-header">
@@ -498,7 +445,7 @@
             <span class="chip">Account</span>
               </div>
               <p class="small-note">Upload screenshots and review if the setup was a good trade with AI scoring.</p>
-              <button id="open-ai-analyzer" type="button">Open AI Analyzer</button>
+              <button id="open-ai-analyzer" class="btn-secondary" type="button">Open AI Analyzer</button>
 
               <div id="ai-implementation-section" class="section-header">
             <h2>Learn AI Implementation</h2>
@@ -509,8 +456,6 @@
             </div>
           </details>
         </aside>
-        <div id="sidebar-backdrop" class="sidebar-backdrop hidden" aria-hidden="true"></div>
-
         <div class="main-panels">
           <section id="stock-outlook-module" class="card module-card module-wide">
             <div class="section-header">
