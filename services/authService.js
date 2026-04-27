@@ -40,7 +40,8 @@ function parseAuthToken(authorizationHeader) {
   if (!payload || !payload.userId) {
     return { ok: false };
   }
-  return { ok: true, userId: payload.userId, email: payload.email || '' };
+  const email = String(payload.email || '').trim().toLowerCase();
+  return { ok: true, userId: payload.userId, email };
 }
 
 module.exports = {

@@ -6,7 +6,9 @@ const path = require('path');
 const usersById = new Map();
 const usersByEmail = new Map();
 const usersByStripeCustomerId = new Map();
-const USER_STORE_FILE = String(process.env.USER_STORE_FILE || path.join(process.cwd(), 'data', 'users.json')).trim();
+const USER_STORE_FILE = String(
+  process.env.USER_STORE_FILE || path.join(__dirname, '..', 'data', 'users.json')
+).trim();
 const SUPPORTED_AUTH_PROVIDERS = new Set(['password', 'google', 'apple', 'github', 'discord', 'x']);
 const REMEMBER_SESSION_TTL_DAYS = Math.max(7, Math.min(365, Number(process.env.REMEMBER_SESSION_TTL_DAYS || 120)));
 const MAX_REMEMBER_SESSIONS_PER_USER = 8;

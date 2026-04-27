@@ -27,6 +27,8 @@ const REMEMBER_TOKEN_STORAGE_KEY = 'dumbdollars_remember_token';
 const PREMIUM_SPIKE_PROOF_STORAGE_KEY = 'dumbdollars_premium_spike_proofs_v1';
 const FALLBACK_AI_DISCOVERY_LINK = 'https://x.com';
 const CHECKOUT_RETURN_PATH_STORAGE_KEY = 'dumbdollars_return_after_checkout';
+const EMAIL_AUTOMATION_FORM_IDLE_LABEL = 'Save Email Automation';
+const EMAIL_AUTOMATION_TEST_IDLE_LABEL = 'Send Test Email Now';
 let restoreSessionInFlight = false;
 const MODULE_NAV_TARGETS = Object.freeze([
   {
@@ -1638,6 +1640,175 @@ function setAuthMessage(text, isError = false) {
   node.className = isError ? 'small-note auth-error' : 'small-note';
 }
 
+function setEmailAutomationStatus(text, isError = false) {
+  const node = document.getElementById('email-automation-status');
+  if (!node) {
+    return;
+  }
+  node.textContent = String(text || '');
+  node.className = isError ? 'small-note email-automation-status-error' : 'small-note email-automation-status-ok';
+}
+
+function setEmailAutomationBusy(button, isBusy, idleLabel, busyLabel) {
+  if (!(button instanceof HTMLButtonElement)) {
+    return;
+  }
+  button.disabled = isBusy;
+  button.textContent = isBusy ? busyLabel : idleLabel;
+}
+
+function buildEmailAutomationHeaders() {
+  return {
+    'Content-Type': 'application/json',
+    ...headersWithPlan()
+  };
+}
+
+function toggleEmailAutomationCardVisibility(isVisible) {
+  const card = document.getElementById('email-automation-card');
+  if (!card) {
+    return;
+  }
+  if (isVisible) {
+    card.classList.remove('hidden');
+  } else {
+    card.classList.add('hidden');
+  }
+}
+
+function populateEmailAutomationFormFromSettings(payload) {
+  const settings = payload?.settings || {};
+  const accountEmail = String(payload?.accountEmail || currentUser?.email || '').trim().toLowerCase();
+  const confirmEmailInput = document.getElementById('email-automation-confirm-email');
+  const enabledInput = document.getElementById('email-automation-enabled');
+  const freePromoInput = document.getElementById('email-automation-free-promo');
+  const proUpdateInput = document.getElementById('email-automation-pro-update');
+  const cadenceInput = document.getElementById('email-automation-cadence-days');
+  const transportReady = Boolean(payload?.transportReady);
+  if (confirmEmailInput instanceof HTMLInputElement) {
+    confirmEmailInput.value = accountEmail;
+  }
+  if (enabledInput instanceof HTMLInputElement) {
+    enabledInput.checked = settings.enabled !== false;
+  }
+  if (freePromoInput instanceof HTMLInputElement) {
+    freePromoInput.checked = settings.freePromoEnabled !== false;
+  }
+  if (proUpdateInput instanceof HTMLInputElement) {
+    proUpdateInput.checked = settings.proUpdateEnabled !== false;
+  }
+  if (cadenceInput instanceof HTMLInputElement) {
+    const cadenceDays = Number(settings.cadenceDays);
+    cadenceInput.value = Number.isFinite(cadenceDays) ? String(Math.max(1, Math.min(30, Math.trunc(cadenceDays)))) : '3';
+  }
+  const statusLine = transportReady
+    ? 'Email automation ready. SMTP is configured for real delivery.'
+    : 'Email automation active in preview mode (SMTP not configured yet).';
+  setEmailAutomationStatus(statusLine, false);
+}
+
+async function loadEmailAutomationSettings() {
+  if (!currentUser) {
+    toggleEmailAutomationCardVisibility(false);
+    setEmailAutomationStatus('Sign in to configure email automation.', false);
+    return;
+  }
+  toggleEmailAutomationCardVisibility(true);
+  setEmailAutomationStatus('Loading email automation settings...', false);
+  try {
+    const payload = await fetchJson('/api/auth/email-automation/settings', {
+      headers: headersWithPlan()
+    });
+    populateEmailAutomationFormFromSettings(payload);
+  } catch (error) {
+    setEmailAutomationStatus(error.message || 'Could not load email automation settings.', true);
+  }
+}
+
+function setupEmailAutomationCard() {
+  const form = document.getElementById('email-automation-form');
+  const sendTestButton = document.getElementById('email-automation-send-test');
+  if (!(form instanceof HTMLFormElement) || !(sendTestButton instanceof HTMLButtonElement)) {
+    return;
+  }
+
+  form.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    if (!currentUser) {
+      setEmailAutomationStatus('Sign in first to save email automation.', true);
+      return;
+    }
+    const saveButton = document.getElementById('email-automation-save');
+    const idleLabel = saveButton instanceof HTMLButtonElement ? saveButton.textContent || 'Save Email Automation' : 'Save Email Automation';
+    try {
+      setEmailAutomationBusy(saveButton, true, idleLabel, 'Saving...');
+      const confirmEmail = String(document.getElementById('email-automation-confirm-email')?.value || '').trim().toLowerCase();
+      const enabled = Boolean(document.getElementById('email-automation-enabled')?.checked);
+      const freePromoEnabled = Boolean(document.getElementById('email-automation-free-promo')?.checked);
+      const proUpdateEnabled = Boolean(document.getElementById('email-automation-pro-update')?.checked);
+      const cadenceDays = Number(document.getElementById('email-automation-cadence-days')?.value || 3);
+      const payload = await fetchJson('/api/auth/email-automation/settings', {
+        method: 'POST',
+        headers: buildEmailAutomationHeaders(),
+        body: JSON.stringify({
+          confirmEmail,
+          enabled,
+          freePromoEnabled,
+          proUpdateEnabled,
+          cadenceDays
+        })
+      });
+      populateEmailAutomationFormFromSettings(payload);
+      setEmailAutomationStatus('Email automation settings saved.', false);
+    } catch (error) {
+      setEmailAutomationStatus(error.message || 'Could not save email automation settings.', true);
+    } finally {
+      setEmailAutomationBusy(saveButton, false, idleLabel, 'Saving...');
+    }
+  });
+
+  sendTestButton.addEventListener('click', async () => {
+    if (!currentUser) {
+      setEmailAutomationStatus('Sign in first to send a test email.', true);
+      return;
+    }
+    const idleLabel = sendTestButton.textContent || 'Send Test Email Now';
+    try {
+      setEmailAutomationBusy(sendTestButton, true, idleLabel, 'Sending...');
+      const payload = await fetchJson('/api/auth/email-automation/send', {
+        method: 'POST',
+        headers: buildEmailAutomationHeaders(),
+        body: JSON.stringify({
+          type: 'auto',
+          reason: 'manual_test'
+        })
+      });
+      const deliveryStatus = String(payload?.delivery?.status || '').trim().toLowerCase();
+      if (deliveryStatus === 'sent') {
+        setEmailAutomationStatus('Test email sent successfully.', false);
+      } else if (deliveryStatus === 'preview') {
+        setEmailAutomationStatus('SMTP not configured yet. Test email generated in preview mode.', false);
+      } else if (payload?.skipped) {
+        setEmailAutomationStatus(`Test email skipped: ${payload.reason || 'not eligible right now'}.`, false);
+      } else {
+        setEmailAutomationStatus('Test email request completed.', false);
+      }
+      await loadEmailAutomationSettings();
+    } catch (error) {
+      setEmailAutomationStatus(error.message || 'Could not send test email.', true);
+    } finally {
+      setEmailAutomationBusy(sendTestButton, false, idleLabel, 'Sending...');
+    }
+  });
+}
+
+function ensureEmailAutomationCardVisibility() {
+  toggleEmailAutomationCardVisibility(Boolean(currentUser));
+  if (!currentUser) {
+    setEmailAutomationStatus('Sign in to configure email automation.', false);
+  }
+}
+
 function normalizeCheckoutErrorMessage(error) {
   const rawMessage = String(error?.message || '').trim();
   const rawErrorCode = String(error?.body?.error || '').trim().toLowerCase();
@@ -1774,6 +1945,7 @@ function renderAuthState() {
   if (logoutButton) {
     logoutButton.disabled = !currentUser;
   }
+  ensureEmailAutomationCardVisibility();
 }
 
 function renderOutlook(payload) {
@@ -2579,6 +2751,16 @@ async function fetchCurrentUser() {
   renderAuthState();
 }
 
+// One place to refresh post-auth UI/data so login/signup flows stay consistent.
+async function runPostAuthHydration() {
+  await Promise.allSettled([
+    refreshBaseline(),
+    loadUnusualFeed(),
+    loadTrendTrades(),
+    loadEmailAutomationSettings()
+  ]);
+}
+
 async function login(email, password, options = {}) {
   const payload = await fetchJson('/api/auth/login', {
     method: 'POST',
@@ -2611,7 +2793,7 @@ async function signup(email, password, options = {}) {
 
 async function resolveExistingEmailConflict(email, password) {
   try {
-    await login(email, password, { skipPostLoginRefresh: true });
+    await login(email, password);
     setAuthMessage('That email already had an account. Logged you in successfully.');
     await runPostAuthHydration();
     return true;
@@ -2666,6 +2848,9 @@ function setupAuthForms() {
   const billingCard = document.getElementById('billing-safety-card');
   const billingCancelButton = document.getElementById('billing-safe-cancel');
   const billingContinueButton = document.getElementById('billing-safe-continue');
+  if (!(loginForm instanceof HTMLFormElement) || !(signupForm instanceof HTMLFormElement)) {
+    return;
+  }
 
   function closeBillingCard() {
     if (!billingCard) {
@@ -2686,11 +2871,7 @@ function setupAuthForms() {
   updatePasswordHint('signup-password', 'signup-password-strength');
 
   const refreshAfterAuth = async () => {
-    await Promise.allSettled([
-      refreshBaseline(),
-      loadUnusualFeed(),
-      loadTrendTrades()
-    ]);
+    await runPostAuthHydration();
   };
 
   loginForm.addEventListener('submit', async (event) => {
@@ -3370,6 +3551,8 @@ async function init() {
   setupInstantAiLaunchpad();
   setupQuickAccessHub();
   setupModuleNavigation();
+  setupEmailAutomationCard();
+  ensureEmailAutomationCardVisibility();
   setupDashboardOrganization();
   setupBrokerageApiSection();
   setupAiSidebar();

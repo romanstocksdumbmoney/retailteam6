@@ -143,8 +143,15 @@ Access control:
 - `POST /api/market/copilot/notifications/send` (auth required)
 - `POST /api/market/ai-trade/order-setup` (auth required) — upload order screenshot + entry/loss/gain percentages and get exact limit/stop/take-profit numbers with step-by-step setup guidance
 
+### Email automation endpoints (auth required)
+- `GET /api/auth/email-automation/settings` — fetch current email automation preferences for signed-in account email
+- `POST /api/auth/email-automation/settings` — save preferences (`confirmEmail` must match signed-in account email)
+- `POST /api/auth/email-automation/send` — send immediate test/forced automation email (`type`: `auto|free_promo|pro_update`)
+
 Real delivery env vars:
 - `NOTIFICATION_REQUIRE_REAL_DELIVERY=1` (default) -> send call fails unless at least one channel actually sends
+- `EMAIL_AUTOMATION_REQUIRE_REAL_DELIVERY=0` (default) -> if set to `1`, auth email automation send fails when SMTP cannot actually deliver
+- Optional persistence override: `EMAIL_AUTOMATION_STORE_FILE` (defaults to `data/email-automation.json`)
 - Email channel via SMTP:
   - `NOTIFY_SMTP_HOST` (or fallback `SMTP_HOST`)
   - `NOTIFY_SMTP_PORT` (or fallback `SMTP_PORT`)

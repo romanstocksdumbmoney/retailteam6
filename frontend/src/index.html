@@ -267,6 +267,37 @@
               <button class="btn-secondary oauth-btn" data-provider="x" type="button">Continue with X</button>
             </div>
           </div>
+          <article id="email-automation-card" class="email-automation-card hidden" aria-labelledby="email-automation-title">
+            <h3 id="email-automation-title">Email Automation</h3>
+            <p class="small-note">Use your sign-in email for updates. Free users get Pro upgrade nudges; Pro users get module update digests.</p>
+            <form id="email-automation-form" class="row-form" novalidate>
+              <label>
+                Confirm your account email
+                <input id="email-automation-confirm-email" type="email" placeholder="you@domain.com" />
+              </label>
+              <label class="auth-remember">
+                <input id="email-automation-enabled" type="checkbox" checked />
+                Enable email automation
+              </label>
+              <label class="auth-remember">
+                <input id="email-automation-free-promo" type="checkbox" checked />
+                Free plan: send Pro upgrade nudges
+              </label>
+              <label class="auth-remember">
+                <input id="email-automation-pro-update" type="checkbox" checked />
+                Pro plan: send module update digests
+              </label>
+              <label>
+                Send cadence (days)
+                <input id="email-automation-cadence-days" type="number" min="1" max="30" step="1" value="3" />
+              </label>
+              <button id="email-automation-save" type="submit">Save Email Automation</button>
+            </form>
+            <div class="ai-bot-actions">
+              <button id="email-automation-send-test" class="btn-secondary" type="button">Send Test Email Now</button>
+            </div>
+            <p id="email-automation-status" class="small-note">Sign in to configure email automation.</p>
+          </article>
           <div class="auth-actions">
             <button id="upgrade-pro-btn" type="button">Upgrade to Pro ($15/mo)</button>
             <button id="billing-portal-btn" class="btn-secondary" type="button">Manage Billing</button>

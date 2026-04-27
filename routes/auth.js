@@ -30,6 +30,11 @@ const {
   deliverAccessCode,
   verifyAccessCode
 } = require('../services/accessCodeService');
+const {
+  getEmailAutomationSettings,
+  saveEmailAutomationSettings,
+  sendEmailAutomationEvent
+} = require('../services/emailAutomationService');
 
 const router = express.Router();
 const PASSWORD_REQUIREMENT_MESSAGES = {
@@ -203,7 +208,11 @@ function authRequired(req, res, next) {
     return res.status(401).json({ error: 'unauthorized', message: 'Login required.' });
   }
 
-  const user = getUserById(parsed.userId);
+  let user = getUserById(parsed.userId);
+  if (!user && parsed.email) {
+    // Backward-compatible recovery when local user IDs were regenerated.
+    user = findUserByEmail(parsed.email);
+  }
   if (!user) {
     return res.status(401).json({ error: 'unauthorized', message: 'User not found.' });
   }
@@ -227,6 +236,17 @@ function canUseProRecoveryCode(userRecord) {
     || normalizedStatus === 'active'
     || normalizedStatus === 'trialing'
   );
+}
+
+async function triggerEmailAutomationForUser(user, options = {}) {
+  if (!user?.id || !user?.email) {
+    return;
+  }
+  try {
+    await sendEmailAutomationEvent(user, options);
+  } catch (_error) {
+    // Keep auth flows resilient if email provider is unavailable.
+  }
 }
 
 router.get('/billing-info', (_req, res) => {
@@ -303,6 +323,10 @@ router.post('/signup', async (req, res) => {
     const user = createUser({ email, password });
     const token = signAuthToken({ userId: user.id, email: user.email });
     const remember = maybeCreateRememberSession(user, req);
+    await triggerEmailAutomationForUser(user, {
+      type: 'free_promo',
+      reason: 'signup'
+    });
     return res.status(201).json({
       token,
       user,
@@ -364,7 +388,7 @@ router.get('/oauth/providers', (_req, res) => {
   });
 });
 
-router.post('/oauth/signin', (req, res) => {
+router.post('/oauth/signin', async (req, res) => {
   try {
     const email = String(req.body?.email || '').trim().toLowerCase();
     const provider = normalizeAuthProvider(req.body?.provider);
@@ -393,6 +417,10 @@ router.post('/oauth/signin', (req, res) => {
     });
     const token = signAuthToken({ userId: user.id, email: user.email });
     const remember = maybeCreateRememberSession(user, req);
+    await triggerEmailAutomationForUser(user, {
+      type: 'auto',
+      reason: created ? 'signup_social' : 'social_signin'
+    });
     return res.status(created ? 201 : 200).json({
       token,
       user,
@@ -650,6 +678,73 @@ router.get('/me', authRequired, (req, res) => {
   return res.json({ user: req.user });
 });
 
+router.get('/email-automation/settings', authRequired, (req, res) => {
+  try {
+    const payload = getEmailAutomationSettings(req.user);
+    return res.json(payload);
+  } catch (_error) {
+    return res.status(400).json({
+      error: 'invalid_request',
+      message: 'Could not load email automation settings.'
+    });
+  }
+});
+
+router.post('/email-automation/settings', authRequired, (req, res) => {
+  try {
+    const payload = saveEmailAutomationSettings(req.user, req.body || {});
+    return res.json(payload);
+  } catch (error) {
+    const code = String(error.message || '');
+    if (code === 'confirm_email_required') {
+      return res.status(400).json({
+        error: 'confirm_email_required',
+        message: 'Enter your account email to confirm email automation setup.'
+      });
+    }
+    if (code === 'email_mismatch_account') {
+      return res.status(400).json({
+        error: 'email_mismatch_account',
+        message: 'Use the same email as your signed-in account.'
+      });
+    }
+    return res.status(400).json({
+      error: 'invalid_request',
+      message: 'Could not save email automation settings.'
+    });
+  }
+});
+
+router.post('/email-automation/send', authRequired, async (req, res) => {
+  try {
+    const payload = await sendEmailAutomationEvent(req.user, {
+      type: req.body?.type,
+      reason: req.body?.reason || 'manual_test',
+      force: true
+    });
+    return res.json(payload);
+  } catch (error) {
+    const code = String(error.message || '');
+    if (code === 'invalid_email_automation_type') {
+      return res.status(400).json({
+        error: 'invalid_email_automation_type',
+        message: 'Email type must be auto, free_promo, or pro_update.'
+      });
+    }
+    if (code === 'email_delivery_failed') {
+      return res.status(502).json({
+        error: 'email_delivery_failed',
+        message: 'Email provider could not deliver this message right now.',
+        delivery: error.delivery || null
+      });
+    }
+    return res.status(400).json({
+      error: 'invalid_request',
+      message: 'Could not send email automation message.'
+    });
+  }
+});
+
 router.get('/dev/pro-link', (_req, res) => {
   // Security hardening: this route is intentionally disabled.
   return res.status(404).json({ error: 'not_found' });
@@ -735,6 +830,10 @@ router.post('/stripe/confirm-checkout-session', authRequired, async (req, res) =
     }
     await confirmCheckoutSessionForUser(req.user, sessionId);
     const refreshed = getUserById(req.user.id);
+    await triggerEmailAutomationForUser(refreshed, {
+      type: 'pro_update',
+      reason: 'pro_activated'
+    });
     const token = signAuthToken({ userId: refreshed.id, email: refreshed.email });
     return res.json({
       ok: true,

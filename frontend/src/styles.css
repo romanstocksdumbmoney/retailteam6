@@ -1515,6 +1515,36 @@ h1 {
   margin: 0;
 }
 
+.email-automation-card {
+  border: 1px solid rgba(250, 204, 21, 0.32);
+  border-radius: 12px;
+  background: rgba(15, 23, 42, 0.72);
+  padding: 0.7rem;
+  display: grid;
+  gap: 0.55rem;
+}
+
+.email-automation-card.hidden {
+  display: none;
+}
+
+.email-automation-card h3 {
+  margin: 0;
+  color: #fde68a;
+}
+
+.email-automation-meta {
+  margin: 0;
+}
+
+#email-automation-status.email-automation-status-ok {
+  color: #86efac;
+}
+
+#email-automation-status.email-automation-status-error {
+  color: #fecaca;
+}
+
 .social-auth-buttons {
   display: flex;
   flex-wrap: wrap;
