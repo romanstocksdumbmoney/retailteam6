@@ -5,13 +5,29 @@ async function fetchJson(url, options = {}) {
     try {
       body = await response.json();
     } catch (_error) {
-      body = { message: `Request failed (${response.status})` };
+      body = { message: '' };
     }
-    const error = new Error(body.message || `Request failed: ${response.status}`);
+    const status = Number(response.status || 0);
+    const rawMessage = String(body.message || '').trim();
+    const fallback = status === 401
+      ? 'Your session expired. Please sign in again.'
+      : status === 403
+        ? 'This portfolio view is not available on your current plan.'
+        : status === 404
+          ? 'Portfolio data endpoint is not available right now.'
+          : status >= 500
+            ? 'Portfolio data is temporarily unavailable. Please retry in a moment.'
+            : 'Could not load portfolio data. Please retry.';
+    const friendly = rawMessage && !/^[a-z0-9_]+$/i.test(rawMessage) ? rawMessage.slice(0, 220) : fallback;
+    const error = new Error(friendly);
     error.status = response.status;
     throw error;
   }
   return response.json();
+}
+
+function isLoadingStatusText(text) {
+  return /\b(loading|refresh|updating|syncing|fetching)\b/i.test(String(text || ''));
 }
 
 function setStatus(text, isError = false) {
@@ -20,7 +36,11 @@ function setStatus(text, isError = false) {
     return;
   }
   node.textContent = text;
-  node.className = isError ? 'small-note auth-error' : 'small-note';
+  if (isError) {
+    node.className = 'small-note auth-error';
+    return;
+  }
+  node.className = isLoadingStatusText(text) ? 'small-note status-loading' : 'small-note';
 }
 
 function fmtUsd(value) {
@@ -175,6 +195,7 @@ async function loadPortfolios() {
 function setupFilters() {
   const form = document.getElementById('portfolios-page-form');
   const applyButton = document.getElementById('portfolios-apply');
+  const boardTarget = document.getElementById('portfolios-page-results');
   if (!form) {
     return;
   }
@@ -183,6 +204,11 @@ function setupFilters() {
     try {
       if (applyButton) {
         applyButton.disabled = true;
+        applyButton.classList.add('is-loading');
+        applyButton.setAttribute('aria-busy', 'true');
+      }
+      if (boardTarget) {
+        boardTarget.classList.add('content-loading');
       }
       setStatus('Loading portfolios...');
       await loadPortfolios();
@@ -192,19 +218,32 @@ function setupFilters() {
     } finally {
       if (applyButton) {
         applyButton.disabled = false;
+        applyButton.classList.remove('is-loading');
+        applyButton.removeAttribute('aria-busy');
+      }
+      if (boardTarget) {
+        boardTarget.classList.remove('content-loading');
       }
     }
   });
 }
 
 async function init() {
+  const boardTarget = document.getElementById('portfolios-page-results');
   setupFilters();
   try {
+    if (boardTarget) {
+      boardTarget.classList.add('content-loading');
+    }
     setStatus('Loading portfolios...');
     await loadPortfolios();
     setStatus('Top portfolios loaded.');
   } catch (error) {
     setStatus(error.message || 'Could not load portfolios.', true);
+  } finally {
+    if (boardTarget) {
+      boardTarget.classList.remove('content-loading');
+    }
   }
 
   window.setInterval(() => {

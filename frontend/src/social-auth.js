@@ -7,7 +7,16 @@ async function fetchJson(url, options = {}) {
     } catch (_error) {
       body = { message: 'Unknown API error' };
     }
-    const error = new Error(body.message || `Request failed: ${response.status}`);
+    const status = Number(response.status || 0);
+    const rawMessage = String(body?.message || '').trim();
+    const fallbackMessage = status === 401
+      ? 'Session expired. Please try signing in again.'
+      : status === 429
+        ? 'Too many attempts. Please wait a moment and retry.'
+        : status >= 500
+          ? 'Sign-in service is temporarily unavailable. Please retry shortly.'
+          : `Request failed (${status || 'network'}).`;
+    const error = new Error(rawMessage && !/^[a-z0-9_]+$/i.test(rawMessage) ? rawMessage : fallbackMessage);
     error.status = response.status;
     throw error;
   }
@@ -21,8 +30,14 @@ function setStatus(text, isError = false) {
   if (!node) {
     return;
   }
-  node.textContent = text;
-  node.className = isError ? 'small-note auth-error' : 'small-note';
+  const normalized = String(text || '');
+  node.textContent = normalized;
+  const isLoading = /\b(connecting|loading|checking|redirecting|signing)\b/i.test(normalized);
+  node.className = isError
+    ? 'small-note auth-error'
+    : isLoading
+      ? 'small-note status-loading'
+      : 'small-note';
 }
 
 function normalizeEmail(value) {
@@ -134,6 +149,8 @@ function setupButtons() {
       const idle = button.textContent || 'Continue';
       try {
         button.disabled = true;
+        button.classList.add('is-loading');
+        button.setAttribute('aria-busy', 'true');
         button.textContent = 'Connecting...';
         setStatus(`Connecting ${providerLabel(provider)} sign in...`);
         const payload = await doSocialSignIn(provider, email, wantsRememberSessionFromQuery());
@@ -146,6 +163,8 @@ function setupButtons() {
         setStatus(error.message || 'Social sign in failed.', true);
       } finally {
         button.disabled = false;
+        button.classList.remove('is-loading');
+        button.removeAttribute('aria-busy');
         button.textContent = idle;
       }
     });

@@ -315,6 +315,43 @@ async function handleCheckoutReturn() {
   }
 }
 
+function fallbackApiMessageByStatus(status) {
+  const numeric = Number(status || 0);
+  if (numeric === 401) {
+    return 'Your session expired. Please sign in again.';
+  }
+  if (numeric === 403) {
+    return 'You do not have access to this action yet.';
+  }
+  if (numeric === 404) {
+    return 'That resource was not found.';
+  }
+  if (numeric === 429) {
+    return 'Too many requests right now. Please wait a moment and try again.';
+  }
+  if (numeric >= 500) {
+    return 'Server is temporarily unavailable. Please try again in a moment.';
+  }
+  return `Request failed (${numeric || 'network'}).`;
+}
+
+function normalizeApiErrorMessage(status, rawMessage) {
+  const message = String(rawMessage || '').trim();
+  if (!message) {
+    return fallbackApiMessageByStatus(status);
+  }
+  const lower = message.toLowerCase();
+  if (
+    /^[a-z0-9_]+$/.test(lower)
+    || lower.includes('internal server error')
+    || lower.includes('sql')
+    || lower.includes('traceback')
+  ) {
+    return fallbackApiMessageByStatus(status);
+  }
+  return message.slice(0, 260);
+}
+
 async function fetchJson(url, options = {}) {
   const response = await fetch(url, options);
   if (!response.ok) {
@@ -324,7 +361,8 @@ async function fetchJson(url, options = {}) {
     } catch (_error) {
       body = { message: 'Unknown API error' };
     }
-    const error = new Error(body.message || `Request failed: ${response.status}`);
+    const friendlyMessage = normalizeApiErrorMessage(response.status, body.message);
+    const error = new Error(friendlyMessage);
     error.status = response.status;
     error.body = body;
     throw error;
@@ -550,13 +588,31 @@ function fmtUsd(value) {
   return `$${Number(value || 0).toLocaleString()}`;
 }
 
+function isLoadingStatusText(text) {
+  return /\b(loading|checking|refreshing|saving|sending|starting|stopping|verifying|processing|running|syncing|activating)\b/i
+    .test(String(text || ''));
+}
+
+function applyStatusClass(node, baseClass, text, isError = false) {
+  if (!node) {
+    return;
+  }
+  const classParts = [baseClass];
+  if (isError) {
+    classParts.push('auth-error');
+  } else if (isLoadingStatusText(text)) {
+    classParts.push('status-loading');
+  }
+  node.className = classParts.join(' ').trim();
+}
+
 function setModuleSearchStatus(text, isError = false) {
   const node = document.getElementById('module-search-status');
   if (!node) {
     return;
   }
   node.textContent = text;
-  node.className = isError ? 'small-note auth-error' : 'small-note';
+  applyStatusClass(node, 'small-note', text, isError);
 }
 
 function normalizeModuleSearchTerm(value) {
@@ -1178,7 +1234,11 @@ function startEarningsDayRolloverWatcher() {
 
 function renderStatus(text) {
   const status = document.getElementById('status');
+  if (!status) {
+    return;
+  }
   status.textContent = text;
+  applyStatusClass(status, 'status', text, false);
 }
 
 function openProPopup(message = 'Pro access needed. Upgrade to unlock this feature.') {
@@ -1637,7 +1697,7 @@ function setAuthMessage(text, isError = false) {
     return;
   }
   node.textContent = text;
-  node.className = isError ? 'small-note auth-error' : 'small-note';
+  applyStatusClass(node, 'small-note', text, isError);
 }
 
 function setEmailAutomationStatus(text, isError = false) {
@@ -1645,8 +1705,15 @@ function setEmailAutomationStatus(text, isError = false) {
   if (!node) {
     return;
   }
-  node.textContent = String(text || '');
-  node.className = isError ? 'small-note email-automation-status-error' : 'small-note email-automation-status-ok';
+  const normalized = String(text || '');
+  node.textContent = normalized;
+  if (isError) {
+    node.className = 'small-note email-automation-status-error';
+    return;
+  }
+  node.className = isLoadingStatusText(normalized)
+    ? 'small-note email-automation-status-ok status-loading'
+    : 'small-note email-automation-status-ok';
 }
 
 function setEmailAutomationBusy(button, isBusy, idleLabel, busyLabel) {
@@ -1655,6 +1722,13 @@ function setEmailAutomationBusy(button, isBusy, idleLabel, busyLabel) {
   }
   button.disabled = isBusy;
   button.textContent = isBusy ? busyLabel : idleLabel;
+  if (isBusy) {
+    button.classList.add('is-loading');
+    button.setAttribute('aria-busy', 'true');
+  } else {
+    button.classList.remove('is-loading');
+    button.removeAttribute('aria-busy');
+  }
 }
 
 function buildEmailAutomationHeaders() {
@@ -2865,6 +2939,13 @@ function setupAuthForms() {
     }
     button.disabled = isBusy;
     button.textContent = isBusy ? busyLabel : idleLabel;
+    if (isBusy) {
+      button.classList.add('is-loading');
+      button.setAttribute('aria-busy', 'true');
+    } else {
+      button.classList.remove('is-loading');
+      button.removeAttribute('aria-busy');
+    }
   }
 
   applySavedEmailToForms();
