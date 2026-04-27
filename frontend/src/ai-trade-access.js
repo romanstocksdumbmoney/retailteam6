@@ -16,6 +16,8 @@ async function fetchJson(url, options = {}) {
 
 const REMEMBER_TOKEN_STORAGE_KEY = 'dumbdollars_remember_token';
 const DEFAULT_NEXT_PATH = '/ai-trade.html';
+const AUTH_PAGE_MODE_LOGIN = 'login';
+const AUTH_PAGE_MODE_SIGNUP = 'signup';
 
 function setStatus(text, isError = false) {
   const node = document.getElementById('ai-access-status')
@@ -176,6 +178,49 @@ function getSafeNextPath() {
     return raw;
   }
   return DEFAULT_NEXT_PATH;
+}
+
+function getRequestedAuthMode() {
+  const mode = String(new URLSearchParams(window.location.search).get('mode') || '')
+    .trim()
+    .toLowerCase();
+  if (mode === AUTH_PAGE_MODE_LOGIN || mode === AUTH_PAGE_MODE_SIGNUP) {
+    return mode;
+  }
+  return '';
+}
+
+function applyRequestedAuthMode() {
+  const mode = getRequestedAuthMode();
+  if (!mode) {
+    return;
+  }
+  const loginForm = document.getElementById('ai-access-login-form');
+  const signupForm = document.getElementById('ai-access-signup-form');
+  const title = document.getElementById('ai-trade-access-title');
+  const subtitle = document.querySelector('.pro-plan-subtitle');
+  if (!(loginForm instanceof HTMLElement) || !(signupForm instanceof HTMLElement)) {
+    return;
+  }
+  if (mode === AUTH_PAGE_MODE_LOGIN) {
+    loginForm.classList.remove('hidden');
+    signupForm.classList.add('hidden');
+    if (title) {
+      title.textContent = 'Log in to your DumbDollars account';
+    }
+    if (subtitle) {
+      subtitle.textContent = 'Welcome back. Log in to continue into your AI trading workspace.';
+    }
+    return;
+  }
+  signupForm.classList.remove('hidden');
+  loginForm.classList.add('hidden');
+  if (title) {
+    title.textContent = 'Create your DumbDollars account';
+  }
+  if (subtitle) {
+    subtitle.textContent = 'Create an account to continue into your AI trading workspace.';
+  }
 }
 
 function goToNextPath() {
@@ -468,6 +513,7 @@ function setupForms() {
 async function init() {
   applySavedEmail();
   setupForms();
+  applyRequestedAuthMode();
   await verifySessionAndRedirectIfSignedIn();
 }
 

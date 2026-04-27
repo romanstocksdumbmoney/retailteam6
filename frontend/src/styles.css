@@ -856,6 +856,19 @@ textarea,
   gap: 0.5rem;
 }
 
+.header-signup-link {
+  border-color: rgba(59, 130, 246, 0.7);
+  color: #dbeafe;
+}
+
+.header-signup-link:hover {
+  border-color: rgba(96, 165, 250, 0.9);
+}
+
+.auth-checking {
+  color: #93c5fd;
+}
+
 .sidebar-menu-toggle {
   display: inline-flex;
   align-items: center;
@@ -2004,6 +2017,12 @@ button[aria-busy='true']::after {
 
 .auth-ok {
   color: #86efac;
+}
+
+.hero-top-actions .btn-secondary.hidden,
+.hero-top-actions button.hidden,
+.hero-top-actions a.hidden {
+  display: none !important;
 }
 
 .auth-success {

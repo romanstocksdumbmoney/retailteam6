@@ -484,6 +484,9 @@ async function init() {
   const token = getStoredToken() || await tryRestoreSession();
   if (!token) {
     showSignInNeeded('Please log in to view the AI brokerage account.');
+    if (typeof window.redirectToSignIn === 'function') {
+      window.redirectToSignIn(`${window.location.pathname || '/ai-bot-account.html'}${window.location.search || ''}${window.location.hash || ''}`);
+    }
     return;
   }
   setupActions();

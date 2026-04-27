@@ -92,6 +92,9 @@ function showSignInNeeded(message = 'Please log in to continue with funding paym
     return;
   }
   setStatus(message, true);
+  if (typeof window.redirectToSignIn === 'function') {
+    window.redirectToSignIn(`${window.location.pathname || '/ai-bot-funding-payment.html'}${window.location.search || ''}${window.location.hash || ''}`);
+  }
 }
 
 function buildPaymentReference() {

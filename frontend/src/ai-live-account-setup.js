@@ -22,6 +22,11 @@ function showSignInNeeded(message = 'Please sign in first so setup can be saved 
     return;
   }
   setStatus(message, true);
+  if (typeof window.redirectToSignIn === 'function') {
+    window.setTimeout(() => {
+      window.redirectToSignIn(nextPath);
+    }, 250);
+  }
 }
 
 function openBrokerConnectWithBroker(broker) {

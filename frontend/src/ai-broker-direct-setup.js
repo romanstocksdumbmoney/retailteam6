@@ -23,16 +23,20 @@ function setStatus(text, isError = false) {
 }
 
 function showSignInNeeded(message = 'Sign in first so AI setup can be saved to your account.') {
+  const nextPath = `${window.location.pathname || '/ai-broker-direct-setup.html'}${window.location.search || ''}${window.location.hash || ''}`;
   if (typeof window.showSignInCallout === 'function') {
     window.showSignInCallout({
       statusElementId: 'direct-broker-status',
       message,
-      nextPath: `${window.location.pathname || '/ai-broker-direct-setup.html'}${window.location.search || ''}${window.location.hash || ''}`,
+      nextPath,
       linkLabel: 'Sign in to continue'
     });
     return;
   }
   setStatus(message, true);
+  if (typeof window.redirectToSignIn === 'function') {
+    window.redirectToSignIn(nextPath);
+  }
 }
 
 async function fetchJson(url, options = {}) {
@@ -237,6 +241,9 @@ async function init() {
     return;
   }
   showSignInNeeded('Sign in first so AI setup can be saved to your account.');
+  if (typeof window.redirectToSignIn === 'function') {
+    window.redirectToSignIn(`${window.location.pathname || '/ai-broker-direct-setup.html'}${window.location.search || ''}${window.location.hash || ''}`);
+  }
 }
 
 init();

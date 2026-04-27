@@ -539,6 +539,9 @@ async function init() {
   }
   if (!getStoredToken()) {
     showSignInNeeded('Please sign in to configure funding.');
+    if (typeof window.redirectToSignIn === 'function') {
+      window.redirectToSignIn(`${window.location.pathname || '/ai-bot-funding.html'}${window.location.search || ''}${window.location.hash || ''}`);
+    }
     return;
   }
   setupForm();

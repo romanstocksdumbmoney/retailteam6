@@ -28,6 +28,7 @@ const REMEMBER_TOKEN_STORAGE_KEY = 'dumbdollars_remember_token';
 const PREMIUM_SPIKE_PROOF_STORAGE_KEY = 'dumbdollars_premium_spike_proofs_v1';
 const FALLBACK_AI_DISCOVERY_LINK = 'https://x.com';
 const CHECKOUT_RETURN_PATH_STORAGE_KEY = 'dumbdollars_return_after_checkout';
+const AUTH_ACCESS_PATH = '/ai-trade-access.html';
 const EMAIL_AUTOMATION_FORM_IDLE_LABEL = 'Save Email Automation';
 const EMAIL_AUTOMATION_TEST_IDLE_LABEL = 'Send Test Email Now';
 let restoreSessionInFlight = false;
@@ -433,6 +434,20 @@ function saveRememberToken(token) {
 
 function clearRememberToken() {
   localStorage.removeItem(REMEMBER_TOKEN_STORAGE_KEY);
+}
+
+function getCurrentAppPath() {
+  const path = `${window.location.pathname || '/'}${window.location.search || ''}${window.location.hash || ''}`;
+  if (!path.startsWith('/') || path.startsWith('//')) {
+    return '/';
+  }
+  return path;
+}
+
+function getAuthAccessUrl(mode = 'login', nextPath = getCurrentAppPath()) {
+  const normalizedMode = String(mode || 'login').trim().toLowerCase() === 'signup' ? 'signup' : 'login';
+  const safeNext = String(nextPath || '/').startsWith('/') ? String(nextPath) : '/';
+  return `${AUTH_ACCESS_PATH}?mode=${encodeURIComponent(normalizedMode)}&next=${encodeURIComponent(safeNext)}`;
 }
 
 function applyAuthPayload(payload, fallbackEmail = '') {
@@ -1726,14 +1741,6 @@ function openSidebarMenu() {
   sidebar.classList.remove('sidebar-collapsed');
 }
 
-function toggleSidebarMenu() {
-  if (sidebarOpen) {
-    closeSidebarMenu();
-  } else {
-    openSidebarMenu();
-  }
-}
-
 function setBrowseToolsMenuState(isOpen) {
   const menuToggle = document.getElementById('sidebar-menu-toggle');
   const browseMenu = document.getElementById('browse-tools-menu');
@@ -2111,6 +2118,10 @@ function renderAuthState() {
   const checkoutButton = document.getElementById('upgrade-pro-btn');
   const billingPortalButton = document.getElementById('billing-portal-btn');
   const logoutButton = document.getElementById('logout-btn');
+  const headerLoginLink = document.getElementById('header-login-link');
+  const headerSignupLink = document.getElementById('header-signup-link');
+  const headerProfileButton = document.getElementById('header-profile-btn');
+  const headerLogoutButton = document.getElementById('header-logout-btn');
   const hasOwnerAccess = Boolean(currentUser && currentUser.ownerAccess);
 
   activePlan = currentUser && currentUser.plan === PLAN_PRO ? PLAN_PRO : PLAN_FREE;
@@ -2138,6 +2149,21 @@ function renderAuthState() {
 
   if (logoutButton) {
     logoutButton.disabled = !currentUser;
+  }
+
+  if (headerLoginLink) {
+    headerLoginLink.classList.toggle('hidden', Boolean(currentUser));
+  }
+  if (headerSignupLink) {
+    headerSignupLink.classList.toggle('hidden', Boolean(currentUser));
+  }
+  if (headerProfileButton instanceof HTMLButtonElement) {
+    headerProfileButton.classList.toggle('hidden', !currentUser);
+    headerProfileButton.disabled = !currentUser;
+  }
+  if (headerLogoutButton instanceof HTMLButtonElement) {
+    headerLogoutButton.classList.toggle('hidden', !currentUser);
+    headerLogoutButton.disabled = !currentUser;
   }
   ensureEmailAutomationCardVisibility();
 }
@@ -2920,28 +2946,46 @@ async function fetchCurrentUser() {
   try {
     const payload = await fetchJson('/api/auth/me', { headers: headersWithPlan() });
     currentUser = payload.user;
-  } catch (_error) {
-    authToken = '';
-    localStorage.removeItem('dumbdollars_token');
-    const restored = await restoreAuthSessionFromRememberToken();
-    if (restored) {
-      try {
-        const retryPayload = await fetchJson('/api/auth/me', { headers: headersWithPlan() });
-        currentUser = retryPayload.user;
-      } catch (_retryError) {
+    if (currentUser && restoredFromRemember) {
+      setAuthMessage(`Welcome back, ${currentUser.email}. Session restored.`);
+    }
+    renderAuthState();
+    return;
+  } catch (error) {
+    const status = Number(error?.status || 0);
+    if (status !== 401) {
+      // Avoid logging users out for transient API failures.
+      renderAuthState();
+      return;
+    }
+  }
+
+  // Token was rejected; clear only after confirmed 401.
+  authToken = '';
+  localStorage.removeItem('dumbdollars_token');
+  const restored = await restoreAuthSessionFromRememberToken();
+  if (restored) {
+    try {
+      const retryPayload = await fetchJson('/api/auth/me', { headers: headersWithPlan() });
+      currentUser = retryPayload.user;
+      if (currentUser) {
+        setAuthMessage(`Welcome back, ${currentUser.email}. Session restored.`);
+      }
+      renderAuthState();
+      return;
+    } catch (retryError) {
+      const retryStatus = Number(retryError?.status || 0);
+      if (retryStatus === 401) {
         currentUser = null;
         clearRememberToken();
         setAuthMessage('Session expired. Please sign in again.', true);
       }
-    } else {
-      currentUser = null;
-      setAuthMessage('Session expired. Please sign in again.', true);
+      renderAuthState();
+      return;
     }
   }
-
-  if (currentUser && restoredFromRemember) {
-    setAuthMessage(`Welcome back, ${currentUser.email}. Session restored.`);
-  }
+  currentUser = null;
+  setAuthMessage('Session expired. Please sign in again.', true);
   renderAuthState();
 }
 
@@ -2985,18 +3029,6 @@ async function signup(email, password, options = {}) {
   return payload;
 }
 
-async function resolveExistingEmailConflict(email, password) {
-  try {
-    await login(email, password);
-    setAuthMessage('That email already had an account. Logged you in successfully.');
-    await runPostAuthHydration();
-    return true;
-  } catch (_error) {
-    setAuthMessage('That email already has an account. Please use Log in with the same email/password.', true);
-    return false;
-  }
-}
-
 async function socialSignIn(provider, email, options = {}) {
   const payload = await fetchJson('/api/auth/oauth/signin', {
     method: 'POST',
@@ -3037,13 +3069,59 @@ function setupAuthForms() {
   const signupRememberInput = document.getElementById('signup-remember');
   const socialButtons = Array.from(document.querySelectorAll('.oauth-btn'));
   const logoutButton = document.getElementById('logout-btn');
+  const openAuthAccessPageLink = document.getElementById('open-auth-access-page');
   const checkoutButton = document.getElementById('upgrade-pro-btn');
   const billingPortalButton = document.getElementById('billing-portal-btn');
+  const headerLoginLink = document.getElementById('header-login-link');
+  const headerSignupLink = document.getElementById('header-signup-link');
+  const headerProfileButton = document.getElementById('header-profile-btn');
+  const headerLogoutButton = document.getElementById('header-logout-btn');
   const billingCard = document.getElementById('billing-safety-card');
   const billingCancelButton = document.getElementById('billing-safe-cancel');
   const billingContinueButton = document.getElementById('billing-safe-continue');
   if (!(loginForm instanceof HTMLFormElement) || !(signupForm instanceof HTMLFormElement)) {
     return;
+  }
+
+  const openAuthAccessPage = (mode) => {
+    const targetMode = mode === 'signup' ? 'signup' : 'login';
+    const next = encodeURIComponent(`${window.location.pathname || '/'}${window.location.search || ''}${window.location.hash || ''}`);
+    window.location.href = `/ai-trade-access.html?mode=${encodeURIComponent(targetMode)}&next=${next}`;
+  };
+
+  if (headerLoginLink instanceof HTMLAnchorElement) {
+    headerLoginLink.addEventListener('click', (event) => {
+      event.preventDefault();
+      openAuthAccessPage('login');
+    });
+  }
+
+  if (headerSignupLink instanceof HTMLAnchorElement) {
+    headerSignupLink.addEventListener('click', (event) => {
+      event.preventDefault();
+      openAuthAccessPage('signup');
+    });
+  }
+
+  if (headerProfileButton instanceof HTMLButtonElement) {
+    headerProfileButton.addEventListener('click', () => {
+      if (!currentUser) {
+        openAuthAccessPage('login');
+        return;
+      }
+      const authDetails = document.querySelector('.dashboard-auth-details');
+      if (authDetails instanceof HTMLDetailsElement) {
+        authDetails.open = true;
+        authDetails.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }
+    });
+  }
+
+  if (openAuthAccessPageLink instanceof HTMLAnchorElement) {
+    openAuthAccessPageLink.addEventListener('click', (event) => {
+      event.preventDefault();
+      openAuthAccessPage('login');
+    });
   }
 
   function closeBillingCard() {
@@ -3118,7 +3196,7 @@ function setupAuthForms() {
       await refreshAfterAuth();
     } catch (error) {
       if (error?.status === 409 || String(error?.body?.error || '').trim().toLowerCase() === 'email_in_use') {
-        await resolveExistingEmailConflict(email, password);
+        setAuthMessage('That email already has an account. Please use Log in with your existing password.', true);
         return;
       }
       setAuthMessage(error.message || 'Signup failed.', true);
@@ -3164,6 +3242,22 @@ function setupAuthForms() {
     setAuthMessage('Logged out.');
     await refreshAfterAuth();
   });
+
+  if (headerLogoutButton instanceof HTMLButtonElement) {
+    headerLogoutButton.addEventListener('click', async () => {
+      if (logoutButton instanceof HTMLButtonElement) {
+        logoutButton.click();
+        return;
+      }
+      // Fallback safety path if inline logout button is unavailable.
+      authToken = '';
+      currentUser = null;
+      localStorage.removeItem('dumbdollars_token');
+      clearRememberToken();
+      renderAuthState();
+      setAuthMessage('Logged out.');
+    });
+  }
 
   if (billingCancelButton) {
     billingCancelButton.addEventListener('click', closeBillingCard);
@@ -3777,6 +3871,12 @@ function setupProPopup() {
 
 async function init() {
   authToken = localStorage.getItem('dumbdollars_token') || '';
+  renderAuthState();
+  setAuthMessage('Checking your session...');
+  const authMessageNode = document.getElementById('auth-message');
+  if (authMessageNode instanceof HTMLElement) {
+    authMessageNode.classList.add('auth-checking');
+  }
   await handleCheckoutReturn();
   applySavedEmailToForms();
   const rememberedEmail = loadPreferredEmail();
@@ -3818,6 +3918,9 @@ async function init() {
   } catch (error) {
     console.error(error);
     renderStatus('Failed to initialize dashboard.');
+  }
+  if (authMessageNode) {
+    authMessageNode.classList.remove('auth-checking');
   }
 
   if (earningsRefreshIntervalId) {

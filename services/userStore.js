@@ -6,9 +6,12 @@ const path = require('path');
 const usersById = new Map();
 const usersByEmail = new Map();
 const usersByStripeCustomerId = new Map();
-const USER_STORE_FILE = String(
+const configuredUserStoreFile = String(
   process.env.USER_STORE_FILE || path.join(__dirname, '..', 'data', 'users.json')
 ).trim();
+const USER_STORE_FILE = path.isAbsolute(configuredUserStoreFile)
+  ? configuredUserStoreFile
+  : path.resolve(process.cwd(), configuredUserStoreFile);
 const SUPPORTED_AUTH_PROVIDERS = new Set(['password', 'google', 'apple', 'github', 'discord', 'x']);
 const REMEMBER_SESSION_TTL_DAYS = Math.max(7, Math.min(365, Number(process.env.REMEMBER_SESSION_TTL_DAYS || 120)));
 const MAX_REMEMBER_SESSIONS_PER_USER = 8;
@@ -93,7 +96,8 @@ function pruneExpiredRememberSessions(user) {
   return changed;
 }
 
-function persistUsersToDisk() {
+function persistUsersToDisk(options = {}) {
+  const throwOnError = Boolean(options.throwOnError);
   try {
     ensureStoreDirExists();
     const records = [...usersById.values()].map((user) => ({
@@ -114,8 +118,13 @@ function persistUsersToDisk() {
     const tmpPath = `${USER_STORE_FILE}.tmp`;
     fs.writeFileSync(tmpPath, payload, 'utf8');
     fs.renameSync(tmpPath, USER_STORE_FILE);
-  } catch (_error) {
+    return true;
+  } catch (error) {
+    if (throwOnError) {
+      throw error;
+    }
     // Intentionally non-fatal in runtime; in-memory store still operates.
+    return false;
   }
 }
 
@@ -279,6 +288,19 @@ function mergeAuthProviders(currentProviders, nextProvider) {
   return [...merged];
 }
 
+function looksLikeBcryptHash(value) {
+  return /^\$2[aby]\$\d{2}\$[./A-Za-z0-9]{53}$/.test(String(value || ''));
+}
+
+function secureStringEqual(left, right) {
+  const leftBuffer = Buffer.from(String(left || ''), 'utf8');
+  const rightBuffer = Buffer.from(String(right || ''), 'utf8');
+  if (leftBuffer.length !== rightBuffer.length) {
+    return false;
+  }
+  return crypto.timingSafeEqual(leftBuffer, rightBuffer);
+}
+
 function createUser({ email, password, passwordHash, authProvider = 'password' }) {
   const normalizedEmail = normalizeEmail(email);
   if (!normalizedEmail) {
@@ -318,7 +340,13 @@ function createUser({ email, password, passwordHash, authProvider = 'password' }
 
   usersById.set(user.id, user);
   usersByEmail.set(user.email, user.id);
-  persistUsersToDisk();
+  try {
+    persistUsersToDisk({ throwOnError: true });
+  } catch (_error) {
+    usersById.delete(user.id);
+    usersByEmail.delete(user.email);
+    throw new Error('user_store_unavailable');
+  }
   return sanitizeUser(user);
 }
 
@@ -327,11 +355,51 @@ async function verifyUserPassword({ email, password }) {
   if (!user) {
     return null;
   }
-  const valid = await bcrypt.compare(String(password || ''), user.passwordHash);
+  const valid = await verifyPasswordWithMigration(user, password);
   if (!valid) {
     return null;
   }
   return sanitizeUser(user);
+}
+
+async function verifyPasswordWithMigration(user, rawPassword) {
+  if (!user) {
+    return false;
+  }
+  const incoming = String(rawPassword || '');
+  const incomingTrimmed = incoming.trim();
+  const candidates = incomingTrimmed && incomingTrimmed !== incoming
+    ? [incoming, incomingTrimmed]
+    : [incoming];
+  const stored = String(user.passwordHash || '');
+  if (!stored) {
+    return false;
+  }
+  if (looksLikeBcryptHash(stored)) {
+    for (const candidate of candidates) {
+      // eslint-disable-next-line no-await-in-loop
+      const valid = await bcrypt.compare(candidate, stored);
+      if (valid) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  const matchedCandidate = candidates.find((candidate) => (
+    secureStringEqual(candidate, stored)
+    || secureStringEqual(candidate, stored.trim())
+  ));
+  if (!matchedCandidate) {
+    return false;
+  }
+
+  user.passwordHash = await bcrypt.hash(matchedCandidate, 10);
+  user.authProviders = mergeAuthProviders(user.authProviders, 'password');
+  user.lastAuthProvider = 'password';
+  user.updatedAt = nowIso();
+  persistUsersToDisk();
+  return true;
 }
 
 function findUserByEmail(email) {
@@ -609,6 +677,7 @@ module.exports = {
   createRememberSessionForUser,
   restoreRememberSession,
   revokeRememberSession,
+  verifyPasswordWithMigration,
   isValidEmailFormat,
   evaluatePasswordStrength
 };

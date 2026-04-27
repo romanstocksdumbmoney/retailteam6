@@ -59,6 +59,9 @@ function showSignInNeeded(message = 'Please log in to use AI Trade.') {
     return;
   }
   setStatus(message, true);
+  if (typeof window.redirectToSignIn === 'function') {
+    window.redirectToSignIn(nextPath);
+  }
 }
 
 function setQueueStatus(text, isError = false) {

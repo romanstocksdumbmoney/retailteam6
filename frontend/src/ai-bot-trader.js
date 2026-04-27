@@ -973,6 +973,10 @@ async function init() {
     await tryRestoreSession();
   }
   if (!getStoredToken()) {
+    if (typeof window.redirectToSignIn === 'function') {
+      window.redirectToSignIn(`${window.location.pathname || '/ai-bot-trader.html'}${window.location.search || ''}${window.location.hash || ''}`);
+      return;
+    }
     showSignInNeeded('Please log in to use AI Bot Trader.');
     return;
   }
@@ -982,6 +986,10 @@ async function init() {
     setStatus('AI Bot Trader ready.');
   } catch (error) {
     if (error.status === 401) {
+      if (typeof window.redirectToSignIn === 'function') {
+        window.redirectToSignIn(`${window.location.pathname || '/ai-bot-trader.html'}${window.location.search || ''}${window.location.hash || ''}`);
+        return;
+      }
       showSignInNeeded('Please log in to use AI Bot Trader.');
       return;
     }

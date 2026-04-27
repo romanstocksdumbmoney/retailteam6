@@ -93,9 +93,17 @@ function showSignInNeeded(message = 'Please log in first to connect paper tradin
       nextPath,
       linkLabel: 'Sign in to continue'
     });
+    window.setTimeout(() => {
+      if (typeof window.redirectToSignIn === 'function') {
+        window.redirectToSignIn(nextPath);
+      }
+    }, 350);
     return;
   }
   setStatus(message, true);
+  if (typeof window.redirectToSignIn === 'function') {
+    window.redirectToSignIn(nextPath);
+  }
 }
 
 function parseQueryDefaults() {

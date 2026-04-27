@@ -313,7 +313,7 @@ router.get('/billing/checkout-preview', (_req, res) => {
 router.post('/signup', async (req, res) => {
   try {
     const email = String(req.body?.email || '').trim().toLowerCase();
-    const password = String(req.body?.password || '');
+    const password = String(req.body?.password || '').trim();
     if (!EMAIL_PATTERN.test(email)) {
       return res.status(400).json({
         error: 'invalid_email',
@@ -337,20 +337,6 @@ router.post('/signup', async (req, res) => {
     if (String(error.message) === 'email_exists') {
       const existing = findUserByEmail(String(req.body?.email || '').trim().toLowerCase());
       if (existing) {
-        const matches = await matchesAnyPassword(existing.passwordHash, req.body?.password);
-        if (matches) {
-          const user = sanitizeUser(existing);
-          const token = signAuthToken({ userId: user.id, email: user.email });
-          const remember = maybeCreateRememberSession(user, req);
-          return res.status(200).json({
-            token,
-            user,
-            rememberToken: remember?.rememberToken || null,
-            rememberTokenExpiresAt: remember?.expiresAt || null,
-            existingAccount: true,
-            message: 'Account already existed. Logged in successfully.'
-          });
-        }
         const authProviders = Array.isArray(existing.authProviders) ? existing.authProviders : [];
         if (!authProviders.includes('password')) {
           return res.status(409).json({
@@ -440,7 +426,7 @@ router.post('/oauth/signin', async (req, res) => {
 
 router.post('/login', async (req, res) => {
   const email = String(req.body?.email || '').trim().toLowerCase();
-  const password = String(req.body?.password || '');
+  const password = String(req.body?.password || '').trim();
   const clientIp = getClientIp(req);
   const atMs = nowMs();
   if (!EMAIL_PATTERN.test(email)) {
@@ -473,7 +459,10 @@ router.post('/login', async (req, res) => {
       });
     }
     await delayFailedLoginResponse();
-    return res.status(401).json({ error: 'invalid_credentials', message: 'Invalid email or password.' });
+    return res.status(404).json({
+      error: 'unknown_email',
+      message: 'No account found for this email. Sign up first.'
+    });
   }
 
   const ok = await matchesAnyPassword(user.passwordHash, password);
@@ -497,7 +486,10 @@ router.post('/login', async (req, res) => {
       });
     }
     await delayFailedLoginResponse();
-    return res.status(401).json({ error: 'invalid_credentials', message: 'Invalid email or password.' });
+    return res.status(401).json({
+      error: 'incorrect_password',
+      message: 'Incorrect password. Please try again.'
+    });
   }
 
   clearLoginFailureStates(email, clientIp);
