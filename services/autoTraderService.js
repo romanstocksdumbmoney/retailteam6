@@ -761,7 +761,7 @@ function ensureAutoTraderAutopilot(user, options = {}) {
   };
 }
 
-async function runAutoTraderAutopilotTick(user) {
+async function runAutoTraderAutopilotTick(user, options = {}) {
   const userId = user?.id;
   if (!userId) {
     return {
@@ -779,15 +779,58 @@ async function runAutoTraderAutopilotTick(user) {
       reason: 'autopilot_requirements_not_met'
     };
   }
-  const cycle = runAutoTraderCycle(user);
-  const execution = await executeAutoTraderBrokerOrders(user, {});
+  const hasIntervalOverride = Object.prototype.hasOwnProperty.call(options || {}, 'intervalMs');
+  let intervalOverride = undefined;
+  if (hasIntervalOverride) {
+    const rawInterval = Number(options.intervalMs);
+    if (!Number.isFinite(rawInterval) || rawInterval < AUTOPILOT_MIN_INTERVAL_MS) {
+      throw new Error('invalid_autopilot_interval');
+    }
+    intervalOverride = Math.trunc(rawInterval);
+  }
+  const executionMessages = {
+    no_order_tickets: 'Cycle generated no broker-ready order tickets; autopilot remains active for the next cycle.',
+    no_ready_tickets: 'Current tickets are not broker-ready yet; autopilot remains active for the next cycle.',
+    ticket_not_found: 'Requested ticket IDs were not found; autopilot remains active for the next cycle.',
+    insufficient_cash: 'Insufficient cash for this cycle; autopilot remains active until balance is replenished.',
+    validate_real_broker_order_failed: 'Broker rejected one or more orders; autopilot remains active while you review broker setup.'
+  };
+  let cycle = null;
+  try {
+    cycle = runAutoTraderCycle(user);
+  } catch (cycleError) {
+    const code = String(cycleError?.message || 'cycle_failed');
+    return {
+      active: false,
+      skipped: true,
+      reason: code
+    };
+  }
+  let execution;
+  try {
+    execution = await executeAutoTraderBrokerOrders(user, {});
+  } catch (executionError) {
+    const code = String(executionError?.message || 'execution_failed');
+    execution = {
+      submittedAt: nowIso(),
+      selectedTickets: 0,
+      submittedCount: 0,
+      rejectedCount: 0,
+      manualActionRequired: true,
+      orders: [],
+      status: 'skipped',
+      reason: code,
+      message: executionMessages[code] || 'Autopilot started, but order submission for this immediate tick was skipped.'
+    };
+  }
+  const latestState = getState(userId);
   const ensured = ensureAutoTraderAutopilot(user, {
-    intervalMs: state.config?.autopilotIntervalMs
+    intervalMs: intervalOverride ?? latestState.config?.autopilotIntervalMs
   });
   return {
     active: Boolean(ensured.active),
     skipped: false,
-    cycleId: cycle?.cycleId || null,
+    cycleId: cycle?.executedAt ? `cyc-${hashString(`${userId}:${cycle.executedAt}`)}` : null,
     execution
   };
 }
