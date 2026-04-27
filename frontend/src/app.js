@@ -16,6 +16,7 @@ let activeInsiderUnusualOnly = true;
 let insiderAutoRefreshTimerId = null;
 let sidebarOpen = false;
 let browseToolsMenuOpen = false;
+let browseToolsMenuInitialized = false;
 let dashboardModeController = null;
 let billingInfo = null;
 let proPopupVisible = false;
@@ -1759,6 +1760,47 @@ function setBrowseToolsMenuState(isOpen) {
   menuToggle.setAttribute('aria-expanded', 'false');
 }
 
+function ensureBrowseToolsFallbackMenuItems(browseMenu) {
+  if (!(browseMenu instanceof HTMLElement)) {
+    return;
+  }
+  const existingLinks = browseMenu.querySelectorAll('.browse-tools-link');
+  if (existingLinks.length > 0) {
+    return;
+  }
+  const fallbackLinks = [
+    { label: 'Dashboard', href: '/' },
+    { label: 'Portfolio', href: '/portfolios.html' },
+    { label: 'Search', href: '#stock-outlook-module' },
+    { label: 'AI Tools', href: '#ai-tools-overview' },
+    { label: 'AI Trade', href: '/ai-trade.html' },
+    { label: 'AI Analyzer', href: '/ai-analyzer.html' },
+    { label: 'Pro', href: '/pro.html' }
+  ];
+  browseMenu.innerHTML = fallbackLinks
+    .map((item) => `<a class="browse-tools-link" role="menuitem" href="${item.href}">${item.label}</a>`)
+    .join('');
+}
+
+function positionBrowseToolsMenu(menuToggle, browseMenu) {
+  if (!(menuToggle instanceof HTMLElement) || !(browseMenu instanceof HTMLElement)) {
+    return;
+  }
+  const viewportPadding = 8;
+  browseMenu.style.left = '';
+  browseMenu.style.right = '';
+  const menuRect = browseMenu.getBoundingClientRect();
+  if (menuRect.left < viewportPadding) {
+    browseMenu.style.left = `${Math.round(viewportPadding - menuRect.left)}px`;
+    browseMenu.style.right = 'auto';
+    return;
+  }
+  if (menuRect.right > window.innerWidth - viewportPadding) {
+    browseMenu.style.left = 'auto';
+    browseMenu.style.right = '0';
+  }
+}
+
 function handleBrowseToolsNavigation(event) {
   const anchor = event.target instanceof Element
     ? event.target.closest('.browse-tools-link')
@@ -1770,22 +1812,32 @@ function handleBrowseToolsNavigation(event) {
 }
 
 function setupBrowseToolsMenu() {
+  if (browseToolsMenuInitialized) {
+    return;
+  }
   const menuToggle = document.getElementById('sidebar-menu-toggle');
   const browseMenu = document.getElementById('browse-tools-menu');
   if (!(menuToggle instanceof HTMLButtonElement) || !(browseMenu instanceof HTMLElement)) {
     return;
   }
 
+  browseToolsMenuInitialized = true;
+  ensureBrowseToolsFallbackMenuItems(browseMenu);
   setBrowseToolsMenuState(false);
 
   menuToggle.addEventListener('click', (event) => {
     event.preventDefault();
+    console.log('Browse Tools clicked');
     setBrowseToolsMenuState(!browseToolsMenuOpen);
+    if (!browseToolsMenuOpen) {
+      return;
+    }
+    positionBrowseToolsMenu(menuToggle, browseMenu);
   });
 
   browseMenu.addEventListener('click', handleBrowseToolsNavigation);
 
-  document.addEventListener('pointerdown', (event) => {
+  const closeIfOutside = (event) => {
     if (!browseToolsMenuOpen) {
       return;
     }
@@ -1797,7 +1849,10 @@ function setupBrowseToolsMenu() {
       return;
     }
     setBrowseToolsMenuState(false);
-  });
+  };
+
+  document.addEventListener('pointerdown', closeIfOutside);
+  document.addEventListener('click', closeIfOutside);
 
   document.addEventListener('keydown', (event) => {
     if (event.key !== 'Escape') {
@@ -1814,7 +1869,7 @@ function setupBrowseToolsMenu() {
     if (!browseToolsMenuOpen) {
       return;
     }
-    setBrowseToolsMenuState(true);
+    positionBrowseToolsMenu(menuToggle, browseMenu);
   });
 }
 
@@ -3870,6 +3925,7 @@ function setupProPopup() {
 }
 
 async function init() {
+  setupBrowseToolsMenu();
   authToken = localStorage.getItem('dumbdollars_token') || '';
   renderAuthState();
   setAuthMessage('Checking your session...');
@@ -3893,7 +3949,6 @@ async function init() {
   await fetchBillingInfo();
   setupAuthForms();
   setupProPopup();
-  setupBrowseToolsMenu();
   setupSidebarMenu();
   setupSidebarDropdowns();
   setupStartHereRoutingGuard();
