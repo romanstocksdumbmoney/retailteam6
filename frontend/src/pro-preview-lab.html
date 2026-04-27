@@ -26,6 +26,13 @@
             <a class="btn-secondary" href="#pro-idea-watchlists">Watchlists + Rules</a>
             <a class="btn-secondary" href="#pro-idea-heatmap">Session Heatmap</a>
             <a class="btn-secondary" href="#pro-idea-journal">Trade Journal Sync</a>
+            <a class="btn-secondary" href="#pro-idea-flow-radar">AI Flow Radar</a>
+            <a class="btn-secondary" href="#pro-idea-earnings-planner">Earnings Planner</a>
+            <a class="btn-secondary" href="#pro-idea-sector-rotation">Sector Rotation</a>
+            <a class="btn-secondary" href="#pro-idea-position-sizer">Position Sizer</a>
+            <a class="btn-secondary" href="#pro-idea-sweep-tape">Options Sweep Tape</a>
+            <a class="btn-secondary" href="#pro-idea-volatility-guard">Volatility Guard</a>
+            <a class="btn-secondary" href="#pro-idea-scenario-builder">Scenario Builder</a>
           </div>
         </section>
 
@@ -204,6 +211,161 @@
             <button type="submit">Add Preview Journal Trade</button>
           </form>
           <div id="preview-journal-entries" class="stack"></div>
+        </section>
+
+        <section id="pro-idea-flow-radar" class="pro-plan-box">
+          <h2>6) AI Flow Radar (Preview)</h2>
+          <p class="small-note">Get a quick flow pressure read for a ticker with momentum/volatility context.</p>
+          <form id="preview-flow-radar-form" class="row-form" novalidate>
+            <label>
+              Symbol
+              <input id="preview-flow-symbol" type="text" maxlength="10" value="NVDA" />
+            </label>
+            <label>
+              Timeframe
+              <select id="preview-flow-timeframe">
+                <option value="intraday" selected>Intraday</option>
+                <option value="swing">Swing</option>
+                <option value="position">Position</option>
+              </select>
+            </label>
+            <label>
+              Sensitivity
+              <select id="preview-flow-sensitivity">
+                <option value="balanced" selected>Balanced</option>
+                <option value="aggressive">Aggressive</option>
+                <option value="defensive">Defensive</option>
+              </select>
+            </label>
+            <button type="submit">Run Flow Radar</button>
+          </form>
+          <div id="preview-flow-radar-results" class="stack"></div>
+        </section>
+
+        <section id="pro-idea-earnings-planner" class="pro-plan-box">
+          <h2>7) Earnings Reaction Planner (Preview)</h2>
+          <p class="small-note">Build a simple post-earnings reaction plan with breakout/breakdown levels.</p>
+          <form id="preview-earnings-planner-form" class="row-form" novalidate>
+            <label>
+              Symbol
+              <input id="preview-earnings-symbol" type="text" maxlength="10" value="AAPL" />
+            </label>
+            <label>
+              Expected move % (options)
+              <input id="preview-earnings-move" type="number" min="1" max="40" step="0.1" value="6.5" />
+            </label>
+            <label>
+              Bias
+              <select id="preview-earnings-bias">
+                <option value="neutral" selected>Neutral</option>
+                <option value="bullish">Bullish lean</option>
+                <option value="bearish">Bearish lean</option>
+              </select>
+            </label>
+            <button type="submit">Build Earnings Plan</button>
+          </form>
+          <div id="preview-earnings-planner-results" class="stack"></div>
+        </section>
+
+        <section id="pro-idea-sector-rotation" class="pro-plan-box">
+          <h2>8) Sector Rotation Leaderboard (Preview)</h2>
+          <p class="small-note">See which sectors are gaining flow leadership vs. fading.</p>
+          <div class="ai-bot-actions">
+            <button id="preview-sector-rotation-refresh" type="button">Refresh Rotation Board</button>
+          </div>
+          <div id="preview-sector-rotation-results" class="stack"></div>
+        </section>
+
+        <section id="pro-idea-position-sizer" class="pro-plan-box">
+          <h2>9) Smart Position Sizer (Preview)</h2>
+          <p class="small-note">Calculate max shares from account risk, entry, and stop-loss.</p>
+          <form id="preview-position-sizer-form" class="row-form" novalidate>
+            <label>
+              Account size ($)
+              <input id="preview-position-account" type="number" min="100" step="1" value="10000" />
+            </label>
+            <label>
+              Risk per trade (%)
+              <input id="preview-position-risk-pct" type="number" min="0.1" max="20" step="0.1" value="1" />
+            </label>
+            <label>
+              Entry price
+              <input id="preview-position-entry" type="number" min="0.01" step="0.01" value="100" />
+            </label>
+            <label>
+              Stop price
+              <input id="preview-position-stop" type="number" min="0.01" step="0.01" value="97.5" />
+            </label>
+            <button type="submit">Calculate Position Size</button>
+          </form>
+          <div id="preview-position-sizer-results" class="stack"></div>
+        </section>
+
+        <section id="pro-idea-sweep-tape" class="pro-plan-box">
+          <h2>10) Options Sweep Tape (Preview)</h2>
+          <p class="small-note">Preview a filtered tape of unusual sweep blocks by symbol and bias.</p>
+          <form id="preview-sweep-tape-form" class="row-form" novalidate>
+            <label>
+              Symbol
+              <input id="preview-sweep-symbol" type="text" maxlength="10" value="TSLA" />
+            </label>
+            <label>
+              Expiry bucket
+              <select id="preview-sweep-expiry">
+                <option value="weekly" selected>Weekly</option>
+                <option value="monthly">Monthly</option>
+                <option value="quarterly">Quarterly</option>
+              </select>
+            </label>
+            <label>
+              Bias filter
+              <select id="preview-sweep-bias">
+                <option value="all" selected>All</option>
+                <option value="call">Call sweeps</option>
+                <option value="put">Put sweeps</option>
+              </select>
+            </label>
+            <button type="submit">Load Sweep Tape</button>
+          </form>
+          <div id="preview-sweep-tape-results" class="stack"></div>
+        </section>
+
+        <section id="pro-idea-volatility-guard" class="pro-plan-box">
+          <h2>11) Volatility Regime Guard (Preview)</h2>
+          <p class="small-note">Classify a ticker's volatility regime and suggest a safer risk posture.</p>
+          <form id="preview-volatility-guard-form" class="row-form" novalidate>
+            <label>
+              Symbol
+              <input id="preview-volatility-symbol" type="text" maxlength="10" value="QQQ" />
+            </label>
+            <button type="submit">Check Volatility Guard</button>
+          </form>
+          <div id="preview-volatility-guard-results" class="stack"></div>
+        </section>
+
+        <section id="pro-idea-scenario-builder" class="pro-plan-box">
+          <h2>12) AI Scenario Builder (Preview)</h2>
+          <p class="small-note">Build what-if plans from a catalyst scenario before market open.</p>
+          <form id="preview-scenario-builder-form" class="row-form" novalidate>
+            <label>
+              Symbol
+              <input id="preview-scenario-symbol" type="text" maxlength="10" value="META" />
+            </label>
+            <label>
+              Scenario
+              <input id="preview-scenario-text" type="text" value="Guidance beats while ad demand reaccelerates." />
+            </label>
+            <label>
+              Direction
+              <select id="preview-scenario-direction">
+                <option value="bullish" selected>Bullish</option>
+                <option value="bearish">Bearish</option>
+                <option value="two-sided">Two-sided</option>
+              </select>
+            </label>
+            <button type="submit">Build Scenario Plan</button>
+          </form>
+          <div id="preview-scenario-builder-results" class="stack"></div>
         </section>
 
         <section class="ai-bot-actions">

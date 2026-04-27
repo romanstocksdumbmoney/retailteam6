@@ -364,6 +364,370 @@ function initJournalForm(state) {
   });
 }
 
+function numberValue(input, fallback = 0) {
+  const parsed = Number(input);
+  if (!Number.isFinite(parsed)) {
+    return fallback;
+  }
+  return parsed;
+}
+
+function formatUsd(value) {
+  return `$${numberValue(value, 0).toFixed(2)}`;
+}
+
+function formatPct(value) {
+  return `${numberValue(value, 0).toFixed(2)}%`;
+}
+
+function getSymbolSeed(symbol, salt = 0) {
+  const normalized = normalizeSymbol(symbol) || 'SPY';
+  let seed = salt;
+  for (let i = 0; i < normalized.length; i += 1) {
+    seed += normalized.charCodeAt(i) * (i + 3);
+  }
+  return seed;
+}
+
+function initFlowRadarForm() {
+  const form = document.getElementById('preview-flow-radar-form');
+  const results = document.getElementById('preview-flow-radar-results');
+  if (!(form instanceof HTMLFormElement) || !(results instanceof HTMLElement)) {
+    return;
+  }
+  const renderEmpty = () => {
+    results.innerHTML = '<p class="preview-lab-empty">Run Flow Radar to preview pressure, momentum, and risk posture.</p>';
+  };
+  renderEmpty();
+  form.addEventListener('submit', (event) => {
+    event.preventDefault();
+    const symbol = normalizeSymbol(document.getElementById('preview-flow-symbol')?.value || 'NVDA') || 'NVDA';
+    const timeframe = String(document.getElementById('preview-flow-timeframe')?.value || 'intraday').trim().toLowerCase();
+    const sensitivity = String(document.getElementById('preview-flow-sensitivity')?.value || 'balanced').trim().toLowerCase();
+    const seed = getSymbolSeed(symbol, timeframe.length * 11 + sensitivity.length * 17);
+    const flowPressure = Math.round(clamp(35 + pseudoRandom(seed + 1) * 60, 0, 100));
+    const momentumScore = Math.round(clamp(30 + pseudoRandom(seed + 3) * 64, 0, 100));
+    const volatilityScore = Math.round(clamp(24 + pseudoRandom(seed + 7) * 70, 0, 100));
+    const sensitivityBias = sensitivity === 'aggressive' ? 8 : (sensitivity === 'defensive' ? -8 : 0);
+    const combined = flowPressure * 0.45 + momentumScore * 0.35 - volatilityScore * 0.18 + sensitivityBias;
+    const direction = combined >= 52 ? 'Bullish pressure' : combined <= 44 ? 'Bearish pressure' : 'Mixed / neutral';
+    const confidence = Math.round(clamp(48 + pseudoRandom(seed + 9) * 42 + Math.abs(combined - 50) * 0.45, 35, 96));
+    const suggestedStopPct = clamp(0.9 + (volatilityScore / 100) * 2.8, 0.8, 4.5);
+    const suggestedTargetPct = suggestedStopPct * clamp(1.5 + pseudoRandom(seed + 13), 1.4, 2.7);
+    const posture = sensitivity === 'defensive'
+      ? 'Defensive size and tighter invalidation.'
+      : sensitivity === 'aggressive'
+        ? 'Aggressive size allowed only if setup confirms.'
+        : 'Balanced size with normal risk cap.';
+    results.innerHTML = `
+      <article class="stack-item">
+        <p><strong>${escapeHtml(symbol)}</strong> • ${escapeHtml(timeframe)} • ${escapeHtml(sensitivity)} sensitivity</p>
+        <div class="preview-lab-inline">
+          <span class="preview-lab-chip">Flow ${flowPressure}</span>
+          <span class="preview-lab-chip">Momentum ${momentumScore}</span>
+          <span class="preview-lab-chip">Volatility ${volatilityScore}</span>
+          <span class="preview-lab-chip preview-lab-chip--warn">Confidence ${confidence}%</span>
+        </div>
+        <p><strong>Bias:</strong> ${escapeHtml(direction)}</p>
+        <p class="small-note"><strong>Risk posture:</strong> ${escapeHtml(posture)}</p>
+        <p class="small-note"><strong>Suggested stop:</strong> ${formatPct(suggestedStopPct)} • <strong>Suggested target:</strong> ${formatPct(suggestedTargetPct)}</p>
+      </article>
+    `;
+    setStatus('Flow Radar preview generated.');
+  });
+}
+
+function initEarningsPlannerForm() {
+  const form = document.getElementById('preview-earnings-planner-form');
+  const results = document.getElementById('preview-earnings-planner-results');
+  if (!(form instanceof HTMLFormElement) || !(results instanceof HTMLElement)) {
+    return;
+  }
+  results.innerHTML = '<p class="preview-lab-empty">Build an earnings plan to preview breakout/breakdown levels.</p>';
+  form.addEventListener('submit', (event) => {
+    event.preventDefault();
+    const symbol = normalizeSymbol(document.getElementById('preview-earnings-symbol')?.value || 'AAPL') || 'AAPL';
+    const expectedMovePct = clamp(numberValue(document.getElementById('preview-earnings-move')?.value, 6.5), 1, 40);
+    const bias = String(document.getElementById('preview-earnings-bias')?.value || 'neutral').trim().toLowerCase();
+    const seed = getSymbolSeed(symbol, Math.round(expectedMovePct * 10));
+    const reference = clamp(60 + pseudoRandom(seed + 2) * 250, 20, 800);
+    const moveFraction = expectedMovePct / 100;
+    const breakout = reference * (1 + moveFraction * 0.5);
+    const breakdown = reference * (1 - moveFraction * 0.5);
+    const targetUp = breakout * (1 + moveFraction * 0.65);
+    const targetDown = breakdown * (1 - moveFraction * 0.65);
+    const biasLine = bias === 'bullish'
+      ? 'Lean long only if breakout holds and opening volume confirms.'
+      : bias === 'bearish'
+        ? 'Lean short only if breakdown holds and weak bounce fails.'
+        : 'Stay two-sided until post-earnings direction is confirmed.';
+    results.innerHTML = `
+      <article class="stack-item">
+        <p><strong>${escapeHtml(symbol)} earnings plan</strong> • expected move ${formatPct(expectedMovePct)}</p>
+        <p class="small-note"><strong>Reference:</strong> ${formatUsd(reference)} • <strong>Breakout:</strong> ${formatUsd(breakout)} • <strong>Breakdown:</strong> ${formatUsd(breakdown)}</p>
+        <p class="small-note"><strong>Upside target:</strong> ${formatUsd(targetUp)} • <strong>Downside target:</strong> ${formatUsd(targetDown)}</p>
+        <p class="small-note"><strong>Bias plan:</strong> ${escapeHtml(biasLine)}</p>
+      </article>
+    `;
+    setStatus('Earnings Reaction Planner preview built.');
+  });
+}
+
+function buildSectorRotationRows() {
+  const sectors = ['Technology', 'Semiconductors', 'Financials', 'Energy', 'Healthcare', 'Industrials', 'Consumer Discretionary'];
+  const daySeed = new Date().toISOString().slice(0, 10);
+  return sectors.map((sector, index) => {
+    const seed = getSymbolSeed(`${sector}:${daySeed}`, index * 31);
+    const flowScore = Math.round(clamp(35 + pseudoRandom(seed + 3) * 64, 1, 100));
+    const relativeStrength = clamp(-2 + pseudoRandom(seed + 9) * 5, -3, 3);
+    const trend = flowScore >= 66 ? 'Leading' : flowScore <= 42 ? 'Fading' : 'Neutral';
+    return {
+      sector,
+      flowScore,
+      relativeStrength,
+      trend
+    };
+  }).sort((a, b) => b.flowScore - a.flowScore);
+}
+
+function renderSectorRotationBoard() {
+  const results = document.getElementById('preview-sector-rotation-results');
+  if (!(results instanceof HTMLElement)) {
+    return;
+  }
+  const rows = buildSectorRotationRows();
+  const top = rows[0];
+  const lag = rows[rows.length - 1];
+  results.innerHTML = `
+    <article class="stack-item">
+      <p><strong>Top rotation:</strong> ${escapeHtml(top.sector)} (${top.flowScore}) • <strong>Weakest:</strong> ${escapeHtml(lag.sector)} (${lag.flowScore})</p>
+      <table class="preview-lab-table">
+        <thead>
+          <tr>
+            <th>Sector</th>
+            <th>Flow score</th>
+            <th>Relative strength</th>
+            <th>State</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${rows.map((row) => `
+            <tr>
+              <td>${escapeHtml(row.sector)}</td>
+              <td>${row.flowScore}</td>
+              <td>${row.relativeStrength >= 0 ? '+' : ''}${row.relativeStrength.toFixed(2)}%</td>
+              <td>${escapeHtml(row.trend)}</td>
+            </tr>
+          `).join('')}
+        </tbody>
+      </table>
+      <p class="small-note">Preview values are simulated for interface testing.</p>
+    </article>
+  `;
+}
+
+function initSectorRotationModule() {
+  const button = document.getElementById('preview-sector-rotation-refresh');
+  if (button instanceof HTMLButtonElement) {
+    button.addEventListener('click', () => {
+      renderSectorRotationBoard();
+      setStatus('Sector Rotation board refreshed.');
+    });
+  }
+  renderSectorRotationBoard();
+}
+
+function initPositionSizerForm() {
+  const form = document.getElementById('preview-position-sizer-form');
+  const results = document.getElementById('preview-position-sizer-results');
+  if (!(form instanceof HTMLFormElement) || !(results instanceof HTMLElement)) {
+    return;
+  }
+  results.innerHTML = '<p class="preview-lab-empty">Run calculation to preview risk-based position sizing.</p>';
+  form.addEventListener('submit', (event) => {
+    event.preventDefault();
+    const accountSize = clamp(numberValue(document.getElementById('preview-position-account')?.value, 10000), 100, 100000000);
+    const riskPct = clamp(numberValue(document.getElementById('preview-position-risk-pct')?.value, 1), 0.1, 20);
+    const entry = clamp(numberValue(document.getElementById('preview-position-entry')?.value, 100), 0.01, 1000000);
+    const stop = clamp(numberValue(document.getElementById('preview-position-stop')?.value, 97.5), 0.01, 1000000);
+    const riskPerShare = Math.abs(entry - stop);
+    if (riskPerShare <= 0.0001) {
+      results.innerHTML = '<p class="preview-lab-empty">Entry and stop cannot be the same price.</p>';
+      setStatus('Position Sizer needs different entry and stop values.', true);
+      return;
+    }
+    const riskBudget = accountSize * (riskPct / 100);
+    const maxShares = Math.max(0, Math.floor(riskBudget / riskPerShare));
+    const maxNotional = maxShares * entry;
+    const projectedLoss = maxShares * riskPerShare;
+    results.innerHTML = `
+      <article class="stack-item">
+        <p><strong>Risk budget:</strong> ${formatUsd(riskBudget)} (${formatPct(riskPct)} of ${formatUsd(accountSize)})</p>
+        <p class="small-note"><strong>Risk/share:</strong> ${formatUsd(riskPerShare)} • <strong>Max shares:</strong> ${maxShares.toLocaleString()}</p>
+        <p class="small-note"><strong>Max notional:</strong> ${formatUsd(maxNotional)} • <strong>Projected max loss:</strong> ${formatUsd(projectedLoss)}</p>
+      </article>
+    `;
+    setStatus('Smart Position Sizer preview calculated.');
+  });
+}
+
+function initSweepTapeForm() {
+  const form = document.getElementById('preview-sweep-tape-form');
+  const results = document.getElementById('preview-sweep-tape-results');
+  if (!(form instanceof HTMLFormElement) || !(results instanceof HTMLElement)) {
+    return;
+  }
+  results.innerHTML = '<p class="preview-lab-empty">Load sweep tape to preview unusual options blocks.</p>';
+  form.addEventListener('submit', (event) => {
+    event.preventDefault();
+    const symbol = normalizeSymbol(document.getElementById('preview-sweep-symbol')?.value || 'TSLA') || 'TSLA';
+    const expiry = String(document.getElementById('preview-sweep-expiry')?.value || 'weekly').trim().toLowerCase();
+    const bias = String(document.getElementById('preview-sweep-bias')?.value || 'all').trim().toLowerCase();
+    const seed = getSymbolSeed(symbol, expiry.length * 19 + bias.length * 23);
+    const center = clamp(50 + pseudoRandom(seed + 1) * 350, 10, 1000);
+    const rows = Array.from({ length: 8 }).map((_, index) => {
+      const rowSeed = seed + index * 37;
+      const type = pseudoRandom(rowSeed + 2) >= 0.5 ? 'CALL' : 'PUT';
+      const strikeShiftPct = (pseudoRandom(rowSeed + 3) - 0.5) * 0.24;
+      const strike = center * (1 + strikeShiftPct);
+      const premium = clamp(0.8 + pseudoRandom(rowSeed + 5) * 12.5, 0.2, 30);
+      const contracts = Math.round(clamp(60 + pseudoRandom(rowSeed + 7) * 850, 25, 1200));
+      const notional = premium * 100 * contracts;
+      const side = pseudoRandom(rowSeed + 11) >= 0.5 ? 'Ask sweep' : 'Bid sweep';
+      return { type, strike, premium, contracts, notional, side };
+    }).filter((row) => bias === 'all' || row.type.toLowerCase() === bias).slice(0, 6);
+
+    if (!rows.length) {
+      results.innerHTML = '<p class="preview-lab-empty">No rows matched this filter in preview; try All bias.</p>';
+      return;
+    }
+
+    results.innerHTML = `
+      <article class="stack-item">
+        <p><strong>${escapeHtml(symbol)} sweep tape</strong> • ${escapeHtml(expiry)} expiry bucket • filter ${escapeHtml(bias)}</p>
+        <table class="preview-lab-table">
+          <thead>
+            <tr>
+              <th>Type</th>
+              <th>Strike</th>
+              <th>Premium</th>
+              <th>Contracts</th>
+              <th>Notional</th>
+              <th>Side</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${rows.map((row) => `
+              <tr>
+                <td>${row.type}</td>
+                <td>${formatUsd(row.strike)}</td>
+                <td>${formatUsd(row.premium)}</td>
+                <td>${row.contracts.toLocaleString()}</td>
+                <td>${formatUsd(row.notional)}</td>
+                <td>${escapeHtml(row.side)}</td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+      </article>
+    `;
+    setStatus('Options Sweep Tape preview loaded.');
+  });
+}
+
+function initVolatilityGuardForm() {
+  const form = document.getElementById('preview-volatility-guard-form');
+  const results = document.getElementById('preview-volatility-guard-results');
+  if (!(form instanceof HTMLFormElement) || !(results instanceof HTMLElement)) {
+    return;
+  }
+  results.innerHTML = '<p class="preview-lab-empty">Check volatility guard to classify regime and risk posture.</p>';
+  form.addEventListener('submit', (event) => {
+    event.preventDefault();
+    const symbol = normalizeSymbol(document.getElementById('preview-volatility-symbol')?.value || 'QQQ') || 'QQQ';
+    const seed = getSymbolSeed(symbol, 91);
+    const ivRank = Math.round(clamp(16 + pseudoRandom(seed + 1) * 80, 1, 99));
+    const atrPct = clamp(0.9 + pseudoRandom(seed + 5) * 5.6, 0.5, 8);
+    const regime = ivRank >= 78 ? 'High-volatility regime'
+      : ivRank >= 55 ? 'Elevated volatility'
+        : ivRank >= 32 ? 'Normal volatility'
+          : 'Compressed volatility';
+    const riskCapPct = ivRank >= 78 ? 0.45 : ivRank >= 55 ? 0.75 : ivRank >= 32 ? 1 : 1.25;
+    const guidance = ivRank >= 78
+      ? 'Favor smaller size, wider invalidation, and faster profit-taking.'
+      : ivRank >= 55
+        ? 'Use normal size minus one tier and avoid chasing late candles.'
+        : ivRank >= 32
+          ? 'Standard risk plan applies with normal sizing discipline.'
+          : 'Breakouts can fake out; require confirmation before full size.';
+    results.innerHTML = `
+      <article class="stack-item">
+        <p><strong>${escapeHtml(symbol)}</strong> • ${escapeHtml(regime)}</p>
+        <div class="preview-lab-inline">
+          <span class="preview-lab-chip">IV Rank ${ivRank}</span>
+          <span class="preview-lab-chip">ATR ${formatPct(atrPct)}</span>
+          <span class="preview-lab-chip preview-lab-chip--warn">Risk cap ${formatPct(riskCapPct)}</span>
+        </div>
+        <p class="small-note">${escapeHtml(guidance)}</p>
+      </article>
+    `;
+    setStatus('Volatility Regime Guard preview generated.');
+  });
+}
+
+function initScenarioBuilderForm() {
+  const form = document.getElementById('preview-scenario-builder-form');
+  const results = document.getElementById('preview-scenario-builder-results');
+  if (!(form instanceof HTMLFormElement) || !(results instanceof HTMLElement)) {
+    return;
+  }
+  results.innerHTML = '<p class="preview-lab-empty">Build a scenario to preview base case, invalidation, and target map.</p>';
+  form.addEventListener('submit', (event) => {
+    event.preventDefault();
+    const symbol = normalizeSymbol(document.getElementById('preview-scenario-symbol')?.value || 'META') || 'META';
+    const scenario = String(document.getElementById('preview-scenario-text')?.value || '').trim()
+      || 'Catalyst-driven move with mixed market backdrop.';
+    const direction = String(document.getElementById('preview-scenario-direction')?.value || 'bullish').trim().toLowerCase();
+    const seed = getSymbolSeed(symbol, scenario.length * 13 + direction.length * 17);
+    const anchor = clamp(70 + pseudoRandom(seed + 1) * 280, 15, 900);
+    const movePct = clamp(2.5 + pseudoRandom(seed + 3) * 7.5, 1.5, 14);
+    const upTrigger = anchor * (1 + movePct / 100 * 0.4);
+    const downTrigger = anchor * (1 - movePct / 100 * 0.4);
+    const upTarget = upTrigger * (1 + movePct / 100 * 0.8);
+    const downTarget = downTrigger * (1 - movePct / 100 * 0.8);
+    let planLines = [];
+    if (direction === 'bullish') {
+      planLines = [
+        `Bull trigger: reclaim and hold ${formatUsd(upTrigger)}.`,
+        `Invalidation: lose ${formatUsd(downTrigger)} on expanding volume.`,
+        `Targets: ${formatUsd(upTarget)} (T1), ${formatUsd(upTarget * 1.02)} (T2).`
+      ];
+    } else if (direction === 'bearish') {
+      planLines = [
+        `Bear trigger: lose and reject ${formatUsd(downTrigger)}.`,
+        `Invalidation: recover ${formatUsd(upTrigger)} with strong breadth.`,
+        `Targets: ${formatUsd(downTarget)} (T1), ${formatUsd(downTarget * 0.98)} (T2).`
+      ];
+    } else {
+      planLines = [
+        `Bull branch: hold above ${formatUsd(upTrigger)} toward ${formatUsd(upTarget)}.`,
+        `Bear branch: fail below ${formatUsd(downTrigger)} toward ${formatUsd(downTarget)}.`,
+        `No-trade zone: between ${formatUsd(downTrigger)} and ${formatUsd(upTrigger)} until break confirms.`
+      ];
+    }
+    results.innerHTML = `
+      <article class="stack-item">
+        <p><strong>${escapeHtml(symbol)} scenario</strong> • ${escapeHtml(direction)} setup</p>
+        <p class="small-note">${escapeHtml(scenario)}</p>
+        <ul class="preview-lab-list">
+          ${planLines.map((line) => `<li>${escapeHtml(line)}</li>`).join('')}
+        </ul>
+      </article>
+    `;
+    setStatus('AI Scenario Builder preview created.');
+  });
+}
+
 function mapTopicInputToApiTopic(value) {
   const normalized = String(value || '').trim().toLowerCase();
   const map = {
@@ -599,8 +963,15 @@ function initPreviewLab() {
   initBacktestForm();
   initWatchlistForm(state);
   initJournalForm(state);
+  initFlowRadarForm();
+  initEarningsPlannerForm();
+  initSectorRotationModule();
+  initPositionSizerForm();
+  initSweepTapeForm();
+  initVolatilityGuardForm();
+  initScenarioBuilderForm();
   initNotificationForms();
-  setStatus('Preview mode active: no Pro lock on this page.');
+  setStatus('Preview mode active: no Pro lock on this page (12 modules open).');
   loadNotificationState().catch((_error) => {
     // UI gracefully handles missing session or empty state.
   });
@@ -622,12 +993,33 @@ function focusRequestedFeature() {
     watchlists: 'pro-idea-watchlists',
     heatmap: 'pro-idea-heatmap',
     journal: 'pro-idea-journal',
+    flow: 'pro-idea-flow-radar',
+    'flow-radar': 'pro-idea-flow-radar',
+    earnings: 'pro-idea-earnings-planner',
+    'earnings-planner': 'pro-idea-earnings-planner',
+    sector: 'pro-idea-sector-rotation',
+    'sector-rotation': 'pro-idea-sector-rotation',
+    position: 'pro-idea-position-sizer',
+    'position-sizer': 'pro-idea-position-sizer',
+    sweeps: 'pro-idea-sweep-tape',
+    'sweep-tape': 'pro-idea-sweep-tape',
+    volatility: 'pro-idea-volatility-guard',
+    'volatility-guard': 'pro-idea-volatility-guard',
+    scenario: 'pro-idea-scenario-builder',
+    'scenario-builder': 'pro-idea-scenario-builder',
     'pro-idea-notifications': 'pro-idea-notifications',
     'pro-idea-alerts': 'pro-idea-alerts',
     'pro-idea-backtest': 'pro-idea-backtest',
     'pro-idea-watchlists': 'pro-idea-watchlists',
     'pro-idea-heatmap': 'pro-idea-heatmap',
     'pro-idea-journal': 'pro-idea-journal',
+    'pro-idea-flow-radar': 'pro-idea-flow-radar',
+    'pro-idea-earnings-planner': 'pro-idea-earnings-planner',
+    'pro-idea-sector-rotation': 'pro-idea-sector-rotation',
+    'pro-idea-position-sizer': 'pro-idea-position-sizer',
+    'pro-idea-sweep-tape': 'pro-idea-sweep-tape',
+    'pro-idea-volatility-guard': 'pro-idea-volatility-guard',
+    'pro-idea-scenario-builder': 'pro-idea-scenario-builder',
     receiver: 'pro-idea-notifications',
     intake: 'pro-idea-notifications',
     contact: 'pro-idea-notifications',
@@ -651,5 +1043,18 @@ function focusRequestedFeature() {
     }, 1500);
   }, 120);
 }
+
+window.proPreviewLab = window.proPreviewLab || {};
+window.proPreviewLab.refreshAllModules = function refreshAllModules() {
+  try {
+    renderHeatmap();
+    renderBacktestResult(null);
+    renderSectorRotationBoard();
+    setStatus('Preview modules refreshed. Everything stays open for testing.');
+    return true;
+  } catch (_error) {
+    return false;
+  }
+};
 
 initPreviewLab();
