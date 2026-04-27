@@ -15,6 +15,7 @@ let activeInsiderSortBy = 'anomaly_desc';
 let activeInsiderUnusualOnly = true;
 let insiderAutoRefreshTimerId = null;
 let sidebarOpen = false;
+let browseToolsMenuOpen = false;
 let dashboardModeController = null;
 let billingInfo = null;
 let proPopupVisible = false;
@@ -1709,24 +1710,20 @@ async function focusPremiumSpikesSection(options = {}) {
 
 function closeSidebarMenu() {
   const sidebar = document.getElementById('sidebar-panel');
-  const menuToggle = document.getElementById('sidebar-menu-toggle');
-  if (!sidebar || !menuToggle) {
+  if (!sidebar) {
     return;
   }
   sidebarOpen = false;
   sidebar.classList.add('sidebar-collapsed');
-  menuToggle.setAttribute('aria-expanded', 'false');
 }
 
 function openSidebarMenu() {
   const sidebar = document.getElementById('sidebar-panel');
-  const menuToggle = document.getElementById('sidebar-menu-toggle');
-  if (!sidebar || !menuToggle) {
+  if (!sidebar) {
     return;
   }
   sidebarOpen = true;
   sidebar.classList.remove('sidebar-collapsed');
-  menuToggle.setAttribute('aria-expanded', 'true');
 }
 
 function toggleSidebarMenu() {
@@ -1735,6 +1732,83 @@ function toggleSidebarMenu() {
   } else {
     openSidebarMenu();
   }
+}
+
+function setBrowseToolsMenuState(isOpen) {
+  const menuToggle = document.getElementById('sidebar-menu-toggle');
+  const browseMenu = document.getElementById('browse-tools-menu');
+  if (!(menuToggle instanceof HTMLButtonElement) || !(browseMenu instanceof HTMLElement)) {
+    return;
+  }
+  browseToolsMenuOpen = Boolean(isOpen);
+  if (browseToolsMenuOpen) {
+    browseMenu.classList.add('is-open');
+    browseMenu.setAttribute('aria-hidden', 'false');
+    menuToggle.setAttribute('aria-expanded', 'true');
+    return;
+  }
+  browseMenu.classList.remove('is-open');
+  browseMenu.setAttribute('aria-hidden', 'true');
+  menuToggle.setAttribute('aria-expanded', 'false');
+}
+
+function handleBrowseToolsNavigation(event) {
+  const anchor = event.target instanceof Element
+    ? event.target.closest('.browse-tools-link')
+    : null;
+  if (!(anchor instanceof HTMLAnchorElement)) {
+    return;
+  }
+  setBrowseToolsMenuState(false);
+}
+
+function setupBrowseToolsMenu() {
+  const menuToggle = document.getElementById('sidebar-menu-toggle');
+  const browseMenu = document.getElementById('browse-tools-menu');
+  if (!(menuToggle instanceof HTMLButtonElement) || !(browseMenu instanceof HTMLElement)) {
+    return;
+  }
+
+  setBrowseToolsMenuState(false);
+
+  menuToggle.addEventListener('click', (event) => {
+    event.preventDefault();
+    setBrowseToolsMenuState(!browseToolsMenuOpen);
+  });
+
+  browseMenu.addEventListener('click', handleBrowseToolsNavigation);
+
+  document.addEventListener('pointerdown', (event) => {
+    if (!browseToolsMenuOpen) {
+      return;
+    }
+    const target = event.target;
+    if (!(target instanceof Node)) {
+      return;
+    }
+    if (menuToggle.contains(target) || browseMenu.contains(target)) {
+      return;
+    }
+    setBrowseToolsMenuState(false);
+  });
+
+  document.addEventListener('keydown', (event) => {
+    if (event.key !== 'Escape') {
+      return;
+    }
+    if (!browseToolsMenuOpen) {
+      return;
+    }
+    event.preventDefault();
+    setBrowseToolsMenuState(false);
+  });
+
+  window.addEventListener('resize', () => {
+    if (!browseToolsMenuOpen) {
+      return;
+    }
+    setBrowseToolsMenuState(true);
+  });
 }
 
 function setAuthMessage(text, isError = false) {
@@ -3487,16 +3561,11 @@ function setupModuleDeepLinks() {
 }
 
 function setupSidebarMenu() {
-  const menuToggle = document.getElementById('sidebar-menu-toggle');
   const sidebar = document.getElementById('sidebar-panel');
   const closeButton = document.getElementById('sidebar-close-btn');
-  if (!menuToggle || !sidebar) {
+  if (!sidebar) {
     return;
   }
-
-  menuToggle.addEventListener('click', () => {
-    toggleSidebarMenu();
-  });
 
   // Start in non-blocking collapsed state to avoid obstructing dashboard.
   closeSidebarMenu();
@@ -3724,6 +3793,7 @@ async function init() {
   await fetchBillingInfo();
   setupAuthForms();
   setupProPopup();
+  setupBrowseToolsMenu();
   setupSidebarMenu();
   setupSidebarDropdowns();
   setupStartHereRoutingGuard();
