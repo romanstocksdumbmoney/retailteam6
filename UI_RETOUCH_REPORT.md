@@ -108,3 +108,26 @@ node -e "const fs=require('fs'); const css=fs.readFileSync('frontend/src/styles.
 - `frontend/src/ai-copilot-widget.js`
 - `UI_RETOUCH_REPORT.md` (this report)
 
+## 8) Final UX Pass (Brand-New User View)
+
+This final pass focused on making the first screen understandable within ~5 seconds and reducing cognitive load.
+
+### What was simplified
+- Added a one-line purpose statement directly under the main tagline:
+  - "Search a ticker, review AI signals, and build a clear trade plan from one workspace."
+- Shortened the "What DumbDollars Does" copy to a concise single paragraph.
+- Simplified action card button language:
+  - "Start Research", "Open Watchlist", "Open Insights", "Open Guide"
+- Tightened Quick Start wording to be more directive and easier to scan.
+- Converted "Find a module fast" into a collapsed disclosure by default to reduce first-screen clutter.
+- Moved advanced heavy modules (Scanner, Options, Unusual Moves) behind an "Advanced analysis tools (optional)" disclosure so beginners see core workflow first.
+- Removed default-open state for Tool Library module groups so users are not hit with a large wall of controls on first load.
+
+### Accessibility and interaction behavior
+- Disclosure summaries now show clear Expand/Collapse and Show/Hide state labels.
+- No core functionality was removed; advanced tools are still one click away.
+
+### Files changed in this final pass
+- `frontend/src/index.html`
+- `frontend/src/styles.css`
+
