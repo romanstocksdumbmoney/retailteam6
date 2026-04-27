@@ -63,6 +63,7 @@ const brokerSecretStore = new Map();
 const autopilotTimers = new Map();
 const AUTOPILOT_MIN_INTERVAL_MS = 15_000;
 const AUTOPILOT_DEFAULT_INTERVAL_MS = 45_000;
+const TRADING_DISCLAIMER = 'DumbDollars is not financial advice. AI trade ideas are for educational and informational purposes only. Trading involves risk, and you can lose money. Past performance does not guarantee future results.';
 
 function clamp(value, min, max) {
   return Math.max(min, Math.min(max, value));
@@ -311,6 +312,14 @@ function daySeed() {
   return `${now.getUTCFullYear()}-${now.getUTCMonth() + 1}-${now.getUTCDate()}`;
 }
 
+function daySeedFromIso(isoLike) {
+  const parsed = new Date(String(isoLike || ''));
+  if (Number.isNaN(parsed.getTime())) {
+    return daySeed();
+  }
+  return `${parsed.getUTCFullYear()}-${parsed.getUTCMonth() + 1}-${parsed.getUTCDate()}`;
+}
+
 function minuteSeed() {
   const now = new Date();
   return `${daySeed()}:${now.getUTCHours()}:${Math.floor(now.getUTCMinutes() / 10)}`;
@@ -320,7 +329,10 @@ function defaultConfig() {
   return {
     prompt: 'Momentum setups with disciplined risk.',
     chasePct: 0.8,
-    riskPerTradePct: 1.5,
+    riskPerTradePct: 1,
+    maxRiskPerTradePct: 1,
+    maxDailyLossPct: 3,
+    maxTradesPerDay: 8,
     minRewardRiskRatio: 1.8,
     autoExecuteLive: false,
     targetReturnPct: 12,
@@ -411,6 +423,7 @@ function defaultState() {
     openPositions: [],
     fundingTransactions: [],
     cycleHistory: [],
+    tradeHistory: [],
     lastCycle: null,
     updatedAt: nowIso()
   };
@@ -613,7 +626,19 @@ function getState(userId) {
   if (!traderStore.has(userId)) {
     traderStore.set(userId, defaultState());
   }
-  return traderStore.get(userId);
+  const state = traderStore.get(userId);
+  ensureLiveExecutionState(state);
+  if (!Array.isArray(state.tradeHistory)) {
+    state.tradeHistory = [];
+  }
+  if (!Array.isArray(state.openPositions)) {
+    state.openPositions = [];
+  }
+  state.config = {
+    ...defaultConfig(),
+    ...(state.config || {})
+  };
+  return state;
 }
 
 function parseAutopilotIntervalMs(value) {
@@ -888,7 +913,10 @@ function sanitizeConfig(input = {}) {
   return {
     prompt: String(input.prompt || '').trim().slice(0, 500) || defaultConfig().prompt,
     chasePct: roundUsd(clamp(Number(input.chasePct || 0.8), 0, 10)),
-    riskPerTradePct: roundUsd(clamp(Number(input.riskPerTradePct || 1.5), 0.1, 10)),
+    riskPerTradePct: roundUsd(clamp(Number(input.riskPerTradePct || 1), 0.1, 10)),
+    maxRiskPerTradePct: roundUsd(clamp(Number(input.maxRiskPerTradePct || 1), 0.2, 5)),
+    maxDailyLossPct: roundUsd(clamp(Number(input.maxDailyLossPct || 3), 0.5, 25)),
+    maxTradesPerDay: Math.trunc(clamp(Number(input.maxTradesPerDay || 8), 1, 40)),
     minRewardRiskRatio: roundUsd(clamp(Number(input.minRewardRiskRatio || 1.8), 0.5, 8)),
     autoExecuteLive: Boolean(input.autoExecuteLive || input.handsFreeLiveMode),
     targetReturnPct: roundUsd(clamp(Number.isFinite(targetReturnRaw) ? targetReturnRaw : 12, 1, 200)),
@@ -1086,6 +1114,16 @@ function closeRandomPositions(state, seed) {
       id: position.id,
       ticker: position.ticker,
       direction: position.direction,
+      shares: Number(position.shares || 0),
+      entry: Number(position.entry || 0),
+      stopLoss: Number(position.stopLoss || 0),
+      takeProfit: Number(position.takeProfit || 0),
+      maxLossUsd: Number(position.maxLossUsd || position.riskUsd || 0),
+      riskLevel: position.riskLevel || 'Medium',
+      confidenceScore: Number(position.confidenceScore || 0),
+      whyAiLikesThis: position.whyAiLikesThis || '',
+      mode: position.mode || (state.tradingMode || 'paper'),
+      openedAt: position.openedAt || null,
       closedAt: nowIso(),
       pnlUsd: grossPnl,
       result: isWin ? 'take_profit' : 'stop_loss'
@@ -1128,6 +1166,473 @@ function buildMarkedPositions(userId, positions = []) {
       unrealizedPnlUsd: roundUsd(rawPnl)
     };
   });
+}
+
+function determineRiskLevel(riskPct) {
+  const normalized = Number(riskPct || 0);
+  if (normalized <= 0.5) {
+    return 'Low';
+  }
+  if (normalized <= 1) {
+    return 'Medium';
+  }
+  if (normalized <= 2) {
+    return 'High';
+  }
+  return 'Very High';
+}
+
+function summarizeAiWhyLikeTrade({
+  ticker,
+  timeframe,
+  outlookUp,
+  outlookDown,
+  queuedSignal,
+  trendSignal
+}) {
+  const reasons = [];
+  if (queuedSignal) {
+    const queuedConfidence = Number(queuedSignal.confidencePct || 0);
+    reasons.push(
+      `${ticker} was already queued by AI with ${queuedConfidence}% confidence and a defined entry/stop/take setup.`
+    );
+  }
+  if (trendSignal) {
+    const trendDirection = String(trendSignal.momentum || '').toLowerCase() === 'down' ? 'bearish' : 'bullish';
+    reasons.push(
+      `Trend signals show ${trendDirection} momentum (${Number(trendSignal.trendScore || 0).toFixed(0)} score) on the ${timeframe} horizon.`
+    );
+  }
+  reasons.push(
+    `Stock outlook probabilities are ${Number(outlookUp || 0).toFixed(0)}% up vs ${Number(outlookDown || 0).toFixed(0)}% down.`
+  );
+  return reasons.join(' ');
+}
+
+function ensureTradeHistoryState(state) {
+  if (!Array.isArray(state.tradeHistory)) {
+    state.tradeHistory = [];
+  }
+  return state.tradeHistory;
+}
+
+function upsertOpenedTradeHistory(state, trade, mode) {
+  const history = ensureTradeHistoryState(state);
+  const existingIndex = history.findIndex((row) => String(row?.tradeId || '') === String(trade?.id || ''));
+  const record = {
+    tradeId: String(trade?.id || ''),
+    ticker: trade?.ticker || '',
+    direction: trade?.direction || 'long',
+    shares: Number(trade?.shares || 0),
+    entryPrice: Number(trade?.entry || 0),
+    stopLoss: Number(trade?.stopLoss || 0),
+    takeProfit: Number(trade?.takeProfit || 0),
+    maxLossUsd: Number(trade?.riskUsd || 0),
+    riskLevel: trade?.riskLevel || 'Medium',
+    confidenceScore: Number(trade?.confidenceScore || 0),
+    whyAiLikesThis: trade?.whyAiLikesThis || '',
+    mode: mode || 'paper',
+    status: 'open',
+    openedAt: trade?.createdAt || nowIso(),
+    closedAt: null,
+    pnlUsd: null,
+    result: null
+  };
+  if (existingIndex >= 0) {
+    history[existingIndex] = {
+      ...history[existingIndex],
+      ...record,
+      closedAt: null,
+      pnlUsd: null,
+      result: null,
+      status: 'open'
+    };
+    return;
+  }
+  state.tradeHistory = [record, ...history].slice(0, 500);
+}
+
+function applyClosedTradeToHistory(state, closedTrade) {
+  const history = ensureTradeHistoryState(state);
+  const tradeId = String(closedTrade?.id || '');
+  const existingIndex = history.findIndex((row) => String(row?.tradeId || '') === tradeId);
+  if (existingIndex >= 0) {
+    history[existingIndex] = {
+      ...history[existingIndex],
+      status: 'closed',
+      closedAt: closedTrade?.closedAt || nowIso(),
+      pnlUsd: Number(closedTrade?.pnlUsd || 0),
+      result: closedTrade?.result || 'closed'
+    };
+    return;
+  }
+  state.tradeHistory = [
+    {
+      tradeId,
+      ticker: closedTrade?.ticker || '',
+      direction: closedTrade?.direction || 'long',
+      shares: Number(closedTrade?.shares || 0),
+      entryPrice: Number(closedTrade?.entry || 0),
+      stopLoss: Number(closedTrade?.stopLoss || 0),
+      takeProfit: Number(closedTrade?.takeProfit || 0),
+      maxLossUsd: Number(closedTrade?.maxLossUsd || 0),
+      riskLevel: closedTrade?.riskLevel || 'Medium',
+      confidenceScore: Number(closedTrade?.confidenceScore || 0),
+      whyAiLikesThis: closedTrade?.whyAiLikesThis || '',
+      mode: closedTrade?.mode || (state.tradingMode || 'paper'),
+      status: 'closed',
+      openedAt: closedTrade?.openedAt || null,
+      closedAt: closedTrade?.closedAt || nowIso(),
+      pnlUsd: Number(closedTrade?.pnlUsd || 0),
+      result: closedTrade?.result || 'closed'
+    },
+    ...history
+  ].slice(0, 500);
+}
+
+function countTradesOpenedOnDay(state, targetDay) {
+  const history = ensureTradeHistoryState(state);
+  const day = String(targetDay || daySeed());
+  return history.filter((row) => daySeedFromIso(row?.openedAt) === day).length;
+}
+
+function getDailyRealizedLossUsd(state, targetDay) {
+  const history = ensureTradeHistoryState(state);
+  const day = String(targetDay || daySeed());
+  const realizedLoss = history
+    .filter((row) => String(row?.status || '').toLowerCase() === 'closed')
+    .filter((row) => daySeedFromIso(row?.closedAt) === day)
+    .reduce((sum, row) => {
+      const pnl = Number(row?.pnlUsd || 0);
+      if (pnl < 0) {
+        return sum + Math.abs(pnl);
+      }
+      return sum;
+    }, 0);
+  return roundUsd(realizedLoss);
+}
+
+function isRealTradingEnabled(state) {
+  const liveExecution = ensureLiveExecutionState(state);
+  const brokerConnection = liveExecution.brokerConnection || {};
+  return Boolean(
+    String(state?.tradingMode || 'paper').toLowerCase() === 'live'
+    && state?.liveFunding?.isFunded
+    && state?.liveFunding?.riskAcknowledged
+    && brokerConnection?.isConnected
+    && brokerConnection?.permissions?.canTrade
+    && String(state?.liveFunding?.executionMode || 'manual_confirmed') === 'broker_linked'
+  );
+}
+
+function buildWinLossSummary(state) {
+  const history = ensureTradeHistoryState(state)
+    .filter((row) => String(row?.status || '').toLowerCase() === 'closed');
+  const wins = history.filter((row) => Number(row?.pnlUsd || 0) > 0).length;
+  const losses = history.filter((row) => Number(row?.pnlUsd || 0) < 0).length;
+  const closedTrades = history.length;
+  return {
+    closedTrades,
+    wins,
+    losses,
+    winRatePct: closedTrades > 0
+      ? roundUsd((wins / closedTrades) * 100)
+      : 0
+  };
+}
+
+function buildRiskCheck(state, trade, context = {}) {
+  const blocks = [];
+  const startingPortfolio = Math.max(1, Number(context.startingPortfolio || state.cashUsd || 0));
+  const riskUsd = roundUsd(Number(trade?.riskUsd || 0));
+  const riskPct = roundUsd((riskUsd / startingPortfolio) * 100);
+  const maxRiskPct = roundUsd(Math.min(
+    Number(state.config?.maxRiskPerTradePct || 1),
+    Number(state.config?.riskPerTradePct || 1)
+  ));
+  const maxDailyLossPct = Number(state.config?.maxDailyLossPct || 3);
+  const maxTradesPerDay = Math.max(1, Math.trunc(Number(state.config?.maxTradesPerDay || 8)));
+  const dayKey = String(context.dayKey || daySeed());
+  const dailyRealizedLossUsd = Number.isFinite(Number(context.dailyRealizedLossUsd))
+    ? roundUsd(Number(context.dailyRealizedLossUsd))
+    : getDailyRealizedLossUsd(state, dayKey);
+  const dailyLossLimitUsd = Number.isFinite(Number(context.dailyLossLimitUsd))
+    ? roundUsd(Number(context.dailyLossLimitUsd))
+    : roundUsd(startingPortfolio * (maxDailyLossPct / 100));
+  const tradesOpenedToday = Number.isFinite(Number(context.tradesOpenedToday))
+    ? Math.max(0, Math.trunc(Number(context.tradesOpenedToday)))
+    : countTradesOpenedOnDay(state, dayKey);
+  const availableCashUsd = Number(context.availableCashUsd ?? state.cashUsd ?? 0);
+  const marketDataAvailable = Boolean(context.marketDataAvailable !== false);
+  const requireRealTradingEnabled = Boolean(context.requireRealTradingEnabled);
+
+  if (!Number.isFinite(Number(trade?.stopLoss)) || Number(trade?.stopLoss) <= 0) {
+    blocks.push('stop_loss_required');
+  }
+  if (!Number.isFinite(Number(trade?.takeProfit)) || Number(trade?.takeProfit) <= 0) {
+    blocks.push('take_profit_required');
+  }
+  if (Number(trade?.riskUsd || 0) <= 0 || Number(trade?.riskUsd || 0) > Number(trade?.notionalUsd || 0)) {
+    blocks.push('invalid_risk_profile');
+  }
+  if (!marketDataAvailable) {
+    blocks.push('market_data_missing');
+  }
+  if (!Number.isFinite(availableCashUsd) || availableCashUsd <= 0 || Number(trade?.notionalUsd || 0) > availableCashUsd + 0.01) {
+    blocks.push('no_balance');
+  }
+  if (riskPct > maxRiskPct + 0.001) {
+    blocks.push('risk_too_high');
+  }
+  if (dailyRealizedLossUsd >= dailyLossLimitUsd && dailyLossLimitUsd > 0) {
+    blocks.push('daily_loss_limit_reached');
+  }
+  if (tradesOpenedToday >= maxTradesPerDay) {
+    blocks.push('max_trades_per_day_reached');
+  }
+  if (requireRealTradingEnabled && !isRealTradingEnabled(state)) {
+    blocks.push('real_trading_not_enabled');
+  }
+
+  return {
+    ok: blocks.length === 0,
+    blocks,
+    riskPct,
+    maxRiskPct,
+    dailyRealizedLossUsd,
+    dailyLossLimitUsd,
+    tradesOpenedToday,
+    maxTradesPerDay
+  };
+}
+
+function buildTradePlanPreview(state, trade, context = {}) {
+  const riskCheck = buildRiskCheck(state, trade, context);
+  return {
+    ticketId: trade.executionTicket?.ticketId || '',
+    sourceOrderId: trade.id,
+    symbol: trade.ticker,
+    ticker: trade.ticker,
+    direction: trade.direction,
+    directionLabel: trade.direction === 'short' ? 'Sell' : 'Buy',
+    entry: trade.entry,
+    stopLoss: trade.stopLoss,
+    takeProfit: trade.takeProfit,
+    notionalUsd: trade.notionalUsd,
+    shares: trade.shares,
+    maxLossUsd: trade.riskUsd,
+    riskUsd: trade.riskUsd,
+    riskLevel: trade.riskLevel || determineRiskLevel(riskCheck.riskPct),
+    riskPct: riskCheck.riskPct,
+    confidenceScore: Number(trade.confidenceScore || 0),
+    whyAiLikesThis: trade.whyAiLikesThis || '',
+    potentialRewardUsd: trade.potentialRewardUsd,
+    rewardRiskRatio: trade.rewardRiskRatio,
+    proposedAt: context.executedAt || nowIso(),
+    status: riskCheck.ok ? 'pending' : 'blocked',
+    riskCheck
+  };
+}
+
+function openTradeFromPlan(state, proposal, mode, approvedAt) {
+  const openedAt = approvedAt || nowIso();
+  const position = {
+    id: proposal.sourceOrderId || `ord-${hashString(`${proposal.symbol}:${openedAt}`)}`,
+    ticker: proposal.symbol || proposal.ticker,
+    sector: proposal.sector || 'Watchlist',
+    direction: proposal.direction || 'long',
+    shares: Number(proposal.shares || 0),
+    entry: Number(proposal.entry || 0),
+    stopLoss: Number(proposal.stopLoss || 0),
+    stopLossPct: Number(proposal.stopLossPct || state.config?.stopLossPct || 0),
+    takeProfit: Number(proposal.takeProfit || 0),
+    takeProfitPct: Number(proposal.takeProfitPct || state.config?.takeProfitPct || 0),
+    notionalUsd: Number(proposal.notionalUsd || 0),
+    riskUsd: Number(proposal.riskUsd || proposal.maxLossUsd || 0),
+    maxLossUsd: Number(proposal.maxLossUsd || proposal.riskUsd || 0),
+    riskLevel: proposal.riskLevel || determineRiskLevel(Number(proposal.riskPct || 0)),
+    confidenceScore: Number(proposal.confidenceScore || 0),
+    whyAiLikesThis: proposal.whyAiLikesThis || '',
+    mode: mode || (state.tradingMode || 'paper'),
+    openedAt
+  };
+  const notionalUsd = Number(position.notionalUsd || 0);
+  if (notionalUsd > 0) {
+    state.cashUsd = roundUsd(Number(state.cashUsd || 0) - notionalUsd);
+  }
+  state.openPositions = [position, ...(state.openPositions || [])].slice(0, 30);
+  upsertOpenedTradeHistory(state, {
+    id: position.id,
+    ticker: position.ticker,
+    direction: position.direction,
+    shares: position.shares,
+    entry: position.entry,
+    stopLoss: position.stopLoss,
+    takeProfit: position.takeProfit,
+    riskUsd: position.riskUsd,
+    maxLossUsd: position.maxLossUsd,
+    riskLevel: position.riskLevel,
+    confidenceScore: position.confidenceScore,
+    whyAiLikesThis: position.whyAiLikesThis,
+    createdAt: openedAt
+  }, mode);
+  return position;
+}
+
+function approvePendingTradeProposal(user, input = {}) {
+  const userId = user?.id;
+  if (!userId) {
+    throw new Error('missing_user');
+  }
+  const state = getState(userId);
+  const liveExecution = ensureLiveExecutionState(state);
+  const ticketId = String(input.ticketId || '').trim();
+  if (!ticketId) {
+    throw new Error('ticket_not_found');
+  }
+  const now = nowIso();
+  const proposal = (liveExecution.pendingTradeProposals || [])
+    .find((row) => String(row?.ticketId || '').trim() === ticketId);
+  if (!proposal) {
+    throw new Error('ticket_not_found');
+  }
+  if (String(proposal.status || '').toLowerCase() !== 'pending') {
+    throw new Error('proposal_not_pending');
+  }
+  const riskCheck = buildRiskCheck(state, proposal, {
+    dayKey: daySeed(),
+    availableCashUsd: Number(state.cashUsd || 0),
+    startingPortfolio: Math.max(
+      1,
+      Number(state.cashUsd || 0) + (state.openPositions || []).reduce((sum, row) => sum + Number(row?.notionalUsd || 0), 0)
+    ),
+    marketDataAvailable: true,
+    requireRealTradingEnabled: String(state.tradingMode || 'paper').toLowerCase() === 'live'
+  });
+  if (!riskCheck.ok) {
+    proposal.status = 'blocked';
+    proposal.riskCheck = riskCheck;
+    proposal.lastActionAt = now;
+    throw new Error('risk_check_failed');
+  }
+  const openedPosition = openTradeFromPlan(
+    state,
+    proposal,
+    String(state.tradingMode || 'paper'),
+    now
+  );
+  const autoApproved = Boolean(input.autoApproved);
+  liveExecution.pendingTradeProposals = liveExecution.pendingTradeProposals.map((row) => {
+    if (String(row?.ticketId || '').trim() !== ticketId) {
+      return row;
+    }
+    return {
+      ...row,
+      status: autoApproved ? 'auto_approved' : 'approved',
+      approvedAt: now,
+      lastActionAt: now,
+      approvalMethod: autoApproved ? 'auto' : 'manual',
+      openedPositionId: openedPosition.id
+    };
+  });
+  state.updatedAt = nowIso();
+  return {
+    approved: true,
+    autoApproved,
+    ticketId,
+    openedPosition
+  };
+}
+
+function autoApprovePendingTradeProposals(user, options = {}) {
+  const userId = user?.id;
+  if (!userId) {
+    throw new Error('missing_user');
+  }
+  const state = getState(userId);
+  const liveExecution = ensureLiveExecutionState(state);
+  const pending = (liveExecution.pendingTradeProposals || [])
+    .filter((row) => String(row?.status || '').toLowerCase() === 'pending');
+  const summary = {
+    attempted: pending.length,
+    approvedCount: 0,
+    blockedCount: 0,
+    skippedCount: 0,
+    results: []
+  };
+  pending.forEach((proposal) => {
+    const ticketId = String(proposal?.ticketId || '').trim();
+    if (!ticketId) {
+      summary.skippedCount += 1;
+      return;
+    }
+    try {
+      const approved = approvePendingTradeProposal(user, {
+        ticketId,
+        autoApproved: true,
+        source: options.source || 'auto'
+      });
+      summary.approvedCount += 1;
+      summary.results.push({
+        ticketId,
+        status: 'approved',
+        openedPositionId: approved?.openedPosition?.id || null
+      });
+    } catch (error) {
+      const code = String(error?.message || 'approval_failed');
+      if (code === 'risk_check_failed') {
+        summary.blockedCount += 1;
+      } else if (code === 'proposal_not_pending') {
+        summary.skippedCount += 1;
+      } else {
+        summary.blockedCount += 1;
+      }
+      summary.results.push({
+        ticketId,
+        status: 'blocked',
+        reason: code
+      });
+    }
+  });
+  return summary;
+}
+
+function cancelPendingTradeProposal(user, input = {}) {
+  const userId = user?.id;
+  if (!userId) {
+    throw new Error('missing_user');
+  }
+  const state = getState(userId);
+  const liveExecution = ensureLiveExecutionState(state);
+  const ticketId = String(input.ticketId || '').trim();
+  if (!ticketId) {
+    throw new Error('ticket_not_found');
+  }
+  const existing = (liveExecution.pendingTradeProposals || [])
+    .find((row) => String(row?.ticketId || '').trim() === ticketId);
+  if (!existing) {
+    throw new Error('ticket_not_found');
+  }
+  if (String(existing.status || '').toLowerCase() !== 'pending') {
+    throw new Error('proposal_not_pending');
+  }
+  const cancelledAt = nowIso();
+  liveExecution.pendingTradeProposals = (liveExecution.pendingTradeProposals || []).map((row) => {
+    if (String(row?.ticketId || '').trim() !== ticketId) {
+      return row;
+    }
+    return {
+      ...row,
+      status: 'cancelled',
+      cancelledAt,
+      lastActionAt: cancelledAt
+    };
+  });
+  state.updatedAt = cancelledAt;
+  return {
+    cancelled: true,
+    ticketId
+  };
 }
 
 function buildSyntheticAccountReference(userId, broker, accountHolder) {
@@ -1287,7 +1792,28 @@ async function executeAutoTraderBrokerOrders(user, input = {}) {
     throw new Error('ticket_not_found');
   }
 
-  const readyTickets = selectedTickets.filter((ticket) => Boolean(ticket.readyForBrokerApi));
+  const proposalStatuses = new Map(
+    (liveExecution.pendingTradeProposals || [])
+      .map((proposal) => [String(proposal?.ticketId || '').trim(), String(proposal?.status || '').toLowerCase()])
+      .filter((entry) => Boolean(entry[0]))
+  );
+  const approvedStatusSet = new Set(['approved', 'auto_approved', 'submitted_to_broker', 'rejected_by_broker']);
+  const approvalGatedTickets = selectedTickets.filter((ticket) => {
+    const ticketId = String(ticket?.ticketId || '').trim();
+    if (!ticketId) {
+      return false;
+    }
+    const status = proposalStatuses.get(ticketId);
+    if (!status) {
+      return false;
+    }
+    return approvedStatusSet.has(status);
+  });
+  if (!approvalGatedTickets.length) {
+    throw new Error('approval_required');
+  }
+
+  const readyTickets = approvalGatedTickets.filter((ticket) => Boolean(ticket.readyForBrokerApi));
   if (!readyTickets.length) {
     throw new Error('no_ready_tickets');
   }
@@ -1474,7 +2000,20 @@ function runAutoTraderCycle(user) {
   const liveExecution = ensureLiveExecutionState(state);
   const liveMode = String(state.tradingMode || 'paper').toLowerCase() === 'live';
   const autoExecuteLive = Boolean(state.config?.autoExecuteLive);
-  const requiresApproval = liveMode && !autoExecuteLive;
+  const requiresApproval = liveMode;
+  const today = daySeed();
+  const tradesOpenedToday = countTradesOpenedOnDay(state, today);
+  const dailyRealizedLossUsd = getDailyRealizedLossUsd(state, today);
+  const startingPortfolio = roundUsd(
+    state.cashUsd + state.openPositions.reduce((sum, position) => sum + Number(position.notionalUsd || 0), 0)
+  );
+  const maxDailyLossUsd = roundUsd(startingPortfolio * (Number(state.config?.maxDailyLossPct || 3) / 100));
+  if (dailyRealizedLossUsd >= maxDailyLossUsd) {
+    throw new Error('daily_loss_limit_reached');
+  }
+  if (tradesOpenedToday >= Number(state.config?.maxTradesPerDay || 8)) {
+    throw new Error('max_trades_per_day_reached');
+  }
   const seed = hashString(`${userId}:${minuteSeed()}:${state.config.prompt}`);
   const websiteSignals = buildWebsiteSignalSnapshot(state, userId);
   const promptControl = parsePromptControl(state.config.prompt);
@@ -1482,18 +2021,20 @@ function runAutoTraderCycle(user) {
     .filter((row) => row.status === 'pending')
     .slice(0, 30);
   const closedPositions = closeRandomPositions(state, seed);
+  closedPositions.forEach((row) => applyClosedTradeToHistory(state, row));
   const maxNewTrades = Math.max(1, Math.min(4, state.config.maxPositions - state.openPositions.length));
   const candidateTrades = [];
   let rejectedByRiskReward = 0;
   let planningCashUsd = Number(state.cashUsd || 0);
   const startingCash = state.cashUsd;
-  const startingPortfolio = roundUsd(
-    state.cashUsd + state.openPositions.reduce((sum, position) => sum + Number(position.notionalUsd || 0), 0)
-  );
+  let openedInThisCycle = 0;
 
   for (let i = 0; i < maxNewTrades; i += 1) {
     const availableCashUsd = requiresApproval ? planningCashUsd : Number(state.cashUsd || 0);
     if (availableCashUsd < 100) {
+      break;
+    }
+    if ((tradesOpenedToday + openedInThisCycle) >= Number(state.config?.maxTradesPerDay || 8)) {
       break;
     }
     const promptSectors = promptControl.preferredSectors
@@ -1551,7 +2092,11 @@ function runAutoTraderCycle(user) {
       roundUsd(startingPortfolio * (state.config.allocationPerTradePct / 100))
     );
     const unitRisk = Math.max(0.01, Math.abs(entry - stopLoss));
-    const maxRiskBudget = roundUsd(startingPortfolio * (state.config.riskPerTradePct / 100));
+    const maxRiskPct = Math.min(
+      Number(state.config?.riskPerTradePct || 1),
+      Number(state.config?.maxRiskPerTradePct || 1)
+    );
+    const maxRiskBudget = roundUsd(startingPortfolio * (maxRiskPct / 100));
     let shares = Math.floor(perTradeBudget / Math.max(entry, 0.01));
     shares = Math.min(shares, Math.floor(maxRiskBudget / unitRisk));
     if (shares < 1) {
@@ -1618,6 +2163,19 @@ function runAutoTraderCycle(user) {
       links: buildExecutionLinks(ticker),
       createdAt: nowIso()
     };
+    const riskPctOfAccount = roundUsd((riskUsd / Math.max(1, startingPortfolio)) * 100);
+    trade.maxLossUsd = riskUsd;
+    trade.riskPctOfAccount = riskPctOfAccount;
+    trade.riskLevel = determineRiskLevel(riskPctOfAccount);
+    trade.confidenceScore = Math.max(1, Math.min(100, Math.round((trade.websiteSignalScore * 0.45) + (Number(trade.promptAlignment?.score || 0) * 0.55))));
+    trade.whyAiLikesThis = summarizeAiWhyLikeTrade({
+      ticker,
+      timeframe: state.config?.timeframe || 'intraday',
+      outlookUp,
+      outlookDown,
+      queuedSignal,
+      trendSignal
+    });
     const promptReasons = [
       promptControl.preferredTickers.includes(ticker) ? 'prompt_ticker' : null,
       promptDirection && direction === promptDirection ? 'prompt_direction' : null,
@@ -1632,6 +2190,22 @@ function runAutoTraderCycle(user) {
         ? `Aligned via: ${promptReasons.join(', ')}`
         : 'No direct prompt alignment factors matched; market signals used.'
     };
+    const riskCheck = buildRiskCheck(state, trade, {
+      dayKey: today,
+      tradesOpenedToday: tradesOpenedToday + openedInThisCycle,
+      dailyRealizedLossUsd,
+      dailyLossLimitUsd: maxDailyLossUsd,
+      availableCashUsd,
+      startingPortfolio,
+      marketDataAvailable: true,
+      requireRealTradingEnabled: false
+    });
+    if (!riskCheck.ok) {
+      if (riskCheck.blocks.includes('risk_too_high')) {
+        rejectedByRiskReward += 1;
+      }
+      continue;
+    }
     trade.executionTicket = buildExecutionTicket(state, trade);
     candidateTrades.push(trade);
     if (queuedSignal) {
@@ -1645,34 +2219,11 @@ function runAutoTraderCycle(user) {
         queuedSignal.consumedByOrderId = trade.id;
       }
     }
-    if (!requiresApproval) {
-      state.cashUsd = roundUsd(state.cashUsd - notionalUsd);
-    } else {
-      planningCashUsd = roundUsd(planningCashUsd - notionalUsd);
-    }
+    planningCashUsd = roundUsd(planningCashUsd - notionalUsd);
+    openedInThisCycle += 1;
   }
 
-  const placedPositions = requiresApproval
-    ? []
-    : candidateTrades.map((trade) => ({
-    id: trade.id,
-    ticker: trade.ticker,
-    sector: trade.sector,
-    direction: trade.direction,
-    shares: trade.shares,
-    entry: trade.entry,
-    stopLoss: trade.stopLoss,
-    stopLossPct: trade.stopLossPct,
-    takeProfit: trade.takeProfit,
-    takeProfitPct: trade.takeProfitPct,
-    notionalUsd: trade.notionalUsd,
-    openedAt: trade.createdAt
-  }));
-  if (requiresApproval) {
-    state.openPositions = state.openPositions.slice(-30);
-  } else {
-    state.openPositions = state.openPositions.concat(placedPositions).slice(-30);
-  }
+  state.openPositions = state.openPositions.slice(-30);
   const promptAdherence = summarizePromptAdherence(candidateTrades, promptControl);
   const cycle = {
     executedAt: nowIso(),
@@ -1690,9 +2241,7 @@ function runAutoTraderCycle(user) {
     promptControl,
     promptAdherence,
     note: state.tradingMode === 'live'
-      ? (requiresApproval
-        ? 'Live mode proposes trades using funded risk sizing and waits for your approval before broker submission.'
-        : 'Live mode is set to auto-execute. Trades are generated with your risk/reward filters and can be auto-submitted when broker bridge checks pass.')
+      ? 'Live mode now always creates a trade plan first. You must approve each AI trade idea, and even auto-approval must pass risk limits before execution.'
       : 'Paper-trading simulation uses website signals; no real brokerage orders are sent.'
   };
   const cycleSummary = {
@@ -1722,14 +2271,21 @@ function runAutoTraderCycle(user) {
     riskUsd: trade.riskUsd,
     potentialRewardUsd: trade.potentialRewardUsd,
     rewardRiskRatio: trade.rewardRiskRatio,
+    maxLossUsd: trade.maxLossUsd,
+    riskLevel: trade.riskLevel,
+    confidenceScore: trade.confidenceScore,
+    whyAiLikesThis: trade.whyAiLikesThis,
+    riskCheck: buildRiskCheck(state, trade, {
+      dayKey: today,
+      availableCashUsd: Number(state.cashUsd || 0),
+      startingPortfolio,
+      marketDataAvailable: true,
+      requireRealTradingEnabled: false
+    }),
     proposedAt: cycle.executedAt,
     status: 'pending'
   }));
-  if (requiresApproval) {
-    liveExecution.pendingTradeProposals = proposalRows.slice(0, 120);
-  } else {
-    liveExecution.pendingTradeProposals = [];
-  }
+  liveExecution.pendingTradeProposals = proposalRows.slice(0, 120);
   liveExecution.riskRewardGate = {
     minRewardRiskRatio: Number(state.config.minRewardRiskRatio || defaultConfig().minRewardRiskRatio),
     passed: candidateTrades.length,
@@ -1743,14 +2299,20 @@ function runAutoTraderCycle(user) {
     broker: state.liveFunding?.broker || 'manual',
     promptControl,
     promptAdherence,
-    requiresApproval,
+    requiresApproval: true,
     riskRewardGate: liveExecution.riskRewardGate,
     proposalsSummary: {
       pending: liveExecution.pendingTradeProposals.length
     },
     orderTickets: candidateTrades.map((trade) => trade.executionTicket),
-    manualActionRequired: requiresApproval || candidateTrades.some((trade) => !Boolean(trade.executionTicket?.readyForBrokerApi))
+    manualActionRequired: true
   };
+  if (liveMode && autoExecuteLive) {
+    liveExecution.lastAutoApproval = {
+      executedAt: nowIso(),
+      ...(autoApprovePendingTradeProposals(user, { source: 'live_auto_execute' }))
+    };
+  }
   liveExecution.promptActivity = [
     {
       at: cycle.executedAt,
@@ -2481,6 +3043,9 @@ function getLiveFundingProfile(user) {
     throw new Error('missing_user');
   }
   const state = getState(userId);
+  const today = daySeed();
+  const startingPortfolio = Math.max(1, Number(state.cashUsd || 0));
+  const winLoss = buildWinLossSummary(state);
   return {
     configured: state.configured,
     tradingMode: state.tradingMode,
@@ -2492,6 +3057,23 @@ function getLiveFundingProfile(user) {
     paperTrading: state.paperTrading || defaultState().paperTrading,
     fundingTransactions: (state.fundingTransactions || []).slice(0, 12),
     cycleHistory: (state.cycleHistory || []).slice(0, 12),
+    tradeHistory: (state.tradeHistory || []).slice(0, 30),
+    riskSettings: {
+      maxRiskPerTradePct: Number(state.config?.maxRiskPerTradePct || 1),
+      maxDailyLossPct: Number(state.config?.maxDailyLossPct || 3),
+      maxTradesPerDay: Number(state.config?.maxTradesPerDay || 8),
+      minRewardRiskRatio: Number(state.config?.minRewardRiskRatio || defaultConfig().minRewardRiskRatio),
+      stopLossRequired: true,
+      takeProfitRequired: true
+    },
+    dailyRiskState: {
+      dayKey: today,
+      tradesOpenedToday: countTradesOpenedOnDay(state, today),
+      dailyRealizedLossUsd: getDailyRealizedLossUsd(state, today),
+      dailyLossLimitUsd: roundUsd(startingPortfolio * (Number(state.config?.maxDailyLossPct || 3) / 100))
+    },
+    winLoss,
+    disclaimer: TRADING_DISCLAIMER,
     updatedAt: state.updatedAt
   };
 }
@@ -2516,6 +3098,39 @@ function getAutoTraderAccountView(user) {
     liveExecution,
     liveExecution.lastWebsiteSignalSnapshot || null
   );
+  const history = ensureTradeHistoryState(state);
+  const openTradeHistory = history
+    .filter((row) => String(row?.status || '').toLowerCase() === 'open')
+    .slice(0, 40);
+  const closedTradeHistory = history
+    .filter((row) => String(row?.status || '').toLowerCase() === 'closed')
+    .slice(0, 80);
+  const winLoss = buildWinLossSummary(state);
+  const todayKey = daySeed();
+  const dailyRealizedLossUsd = getDailyRealizedLossUsd(state, todayKey);
+  const dailyLossLimitUsd = roundUsd(Math.max(1, equityUsd) * (Number(state.config?.maxDailyLossPct || 3) / 100));
+  const tradesOpenedToday = countTradesOpenedOnDay(state, todayKey);
+  const maxTradesPerDay = Math.max(1, Math.trunc(Number(state.config?.maxTradesPerDay || 8)));
+  const pendingProposalsAll = Array.isArray(liveExecution.pendingTradeProposals)
+    ? liveExecution.pendingTradeProposals
+    : [];
+  const pendingProposals = pendingProposalsAll
+    .filter((row) => String(row.status || 'pending') === 'pending')
+    .slice(0, 30);
+  const tradeIdeas = pendingProposals.map((proposal) => ({
+    ...proposal,
+    symbol: proposal.symbol || proposal.ticker,
+    directionLabel: String(proposal.direction || 'long').toLowerCase() === 'short' ? 'Sell' : 'Buy',
+    maxLoss: Number(proposal.maxLossUsd || proposal.riskUsd || 0),
+    confidenceScore: Number(proposal.confidenceScore || 0),
+    whyAiLikesThis: proposal.whyAiLikesThis || '',
+    riskLevel: proposal.riskLevel || determineRiskLevel(Number(proposal.riskPct || 0))
+  }));
+  const realTradingEnabled = isRealTradingEnabled(state);
+  const modeLabel = String(state.tradingMode || 'paper').toLowerCase() === 'live'
+    ? 'Real Money Trading'
+    : 'Paper Trading';
+  const openTradeIdeasCount = tradeIdeas.length;
 
   return {
     account: {
@@ -2548,16 +3163,36 @@ function getAutoTraderAccountView(user) {
       recentFunding: (state.fundingTransactions || []).slice(0, 20),
       recentCycles: (state.cycleHistory || []).slice(0, 20)
     },
+    tradeHistory: {
+      open: openTradeHistory,
+      closed: closedTradeHistory,
+      summary: winLoss
+    },
+    stats: {
+      openTrades: openTradeHistory.length,
+      closedTrades: winLoss.closedTrades,
+      aiTradeIdeas: openTradeIdeasCount,
+      winRatePct: winLoss.winRatePct
+    },
+    riskSettings: {
+      maxRiskPerTradePct: Number(state.config?.maxRiskPerTradePct || 1),
+      maxDailyLossPct: Number(state.config?.maxDailyLossPct || 3),
+      maxDailyLossUsd: dailyLossLimitUsd,
+      dailyRealizedLossUsd,
+      maxTradesPerDay,
+      tradesOpenedToday,
+      stopLossRequired: true,
+      takeProfitRequired: true
+    },
     execution: {
       brokerConnection: liveExecution.brokerConnection,
       queuedAiTrades: (liveExecution.queuedAiTrades || []).slice(0, 20),
-      pendingTradeProposals: (liveExecution.pendingTradeProposals || [])
-        .filter((row) => String(row.status || 'pending') === 'pending')
-        .slice(0, 30),
+      pendingTradeProposals: pendingProposals,
       proposalsSummary: {
-        pending: (liveExecution.pendingTradeProposals || []).filter((row) => String(row.status || 'pending') === 'pending').length,
-        totalTracked: (liveExecution.pendingTradeProposals || []).length
+        pending: pendingProposalsAll.filter((row) => String(row.status || 'pending') === 'pending').length,
+        totalTracked: pendingProposalsAll.length
       },
+      tradeIdeas,
       riskRewardGate: liveExecution.riskRewardGate || {
         minRewardRiskRatio: Number(state.config?.minRewardRiskRatio || defaultConfig().minRewardRiskRatio),
         passed: 0,
@@ -2582,11 +3217,15 @@ function getAutoTraderAccountView(user) {
     paperTrading: state.paperTrading || defaultState().paperTrading,
     safety: {
       mode: state.tradingMode === 'live' ? 'live_funding_mode' : 'paper_trading',
+      modeLabel,
+      realTradingEnabled,
       liveBrokerConnected: Boolean(liveExecution?.brokerConnection?.isConnected),
       paperTradingConnected: Boolean(state.paperTrading?.isConnected),
-      disclaimer: state.tradingMode === 'live'
-        ? 'Live funding is enabled. Use the broker bridge to submit execution tickets and verify fills in your broker account.'
-        : 'Paper mode only. No real brokerage orders are sent.'
+      disclaimer: TRADING_DISCLAIMER,
+      tradingStatusMessage: realTradingEnabled
+        ? 'Real money trading is enabled and broker checks passed.'
+        : 'Real money trading is locked. Paper trading remains active until you explicitly enable and validate live trading.',
+      paperTradingDefault: true
     }
   };
 }
@@ -2602,6 +3241,15 @@ function getAutoTraderStatus(user) {
     liveExecution,
     liveExecution.lastWebsiteSignalSnapshot || null
   );
+  const history = ensureTradeHistoryState(state);
+  const winLoss = buildWinLossSummary(state);
+  const realTradingEnabled = isRealTradingEnabled(state);
+  const pendingProposalsAll = Array.isArray(liveExecution.pendingTradeProposals)
+    ? liveExecution.pendingTradeProposals
+    : [];
+  const pendingProposals = pendingProposalsAll
+    .filter((row) => String(row.status || 'pending') === 'pending')
+    .slice(0, 30);
   return {
     configured: state.configured,
     isActive: state.isActive,
@@ -2618,13 +3266,20 @@ function getAutoTraderStatus(user) {
     execution: {
       brokerConnection: liveExecution.brokerConnection,
       queuedAiTrades: (liveExecution.queuedAiTrades || []).slice(0, 20),
-      pendingTradeProposals: (liveExecution.pendingTradeProposals || [])
-        .filter((row) => String(row.status || 'pending') === 'pending')
-        .slice(0, 30),
+      pendingTradeProposals: pendingProposals,
       proposalsSummary: {
-        pending: (liveExecution.pendingTradeProposals || []).filter((row) => String(row.status || 'pending') === 'pending').length,
-        totalTracked: (liveExecution.pendingTradeProposals || []).length
+        pending: pendingProposalsAll.filter((row) => String(row.status || 'pending') === 'pending').length,
+        totalTracked: pendingProposalsAll.length
       },
+      tradeIdeas: pendingProposals.map((proposal) => ({
+        ...proposal,
+        symbol: proposal.symbol || proposal.ticker,
+        directionLabel: String(proposal.direction || 'long').toLowerCase() === 'short' ? 'Sell' : 'Buy',
+        maxLoss: Number(proposal.maxLossUsd || proposal.riskUsd || 0),
+        confidenceScore: Number(proposal.confidenceScore || 0),
+        whyAiLikesThis: proposal.whyAiLikesThis || '',
+        riskLevel: proposal.riskLevel || determineRiskLevel(Number(proposal.riskPct || 0))
+      })),
       riskRewardGate: liveExecution.riskRewardGate || {
         minRewardRiskRatio: Number(state.config?.minRewardRiskRatio || defaultConfig().minRewardRiskRatio),
         passed: 0,
@@ -2652,11 +3307,23 @@ function getAutoTraderStatus(user) {
     })),
     safety: {
       mode: state.tradingMode === 'live' ? 'live_funding_mode' : 'paper_trading',
+      modeLabel: String(state.tradingMode || 'paper').toLowerCase() === 'live'
+        ? 'Real Money Trading'
+        : 'Paper Trading',
+      realTradingEnabled,
       liveBrokerConnected: Boolean(liveExecution?.brokerConnection?.isConnected),
       paperTradingConnected: Boolean(state.paperTrading?.isConnected),
-      disclaimer: state.tradingMode === 'live'
-        ? 'Live funding is enabled. Broker bridge tickets can be submitted when the connection test passes.'
-        : 'This bot is simulation-only and does not place real brokerage orders.'
+      disclaimer: TRADING_DISCLAIMER,
+      tradingStatusMessage: realTradingEnabled
+        ? 'Real money trading is enabled and broker checks passed.'
+        : 'Real money trading is locked. Paper trading remains active until you explicitly enable and validate live trading.',
+      paperTradingDefault: true
+    },
+    stats: {
+      openTrades: history.filter((row) => String(row?.status || '').toLowerCase() === 'open').length,
+      closedTrades: winLoss.closedTrades,
+      aiTradeIdeas: pendingProposals.length,
+      winRatePct: winLoss.winRatePct
     }
   };
 }
@@ -2679,6 +3346,8 @@ module.exports = {
   testAutoTraderBrokerBridge,
   disconnectAutoTraderBrokerBridge,
   queueAiTradeForExecution,
+  approvePendingTradeProposal,
+  cancelPendingTradeProposal,
   updateAutoTraderPromptControl,
   setAutoTraderPrompt,
   executeAutoTraderBrokerOrders,

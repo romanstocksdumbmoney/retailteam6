@@ -65,6 +65,7 @@ async function requestWithAuthRetry(url, options = {}) {
 }
 
 const SETUP_PROGRESS_AUTOPILOT_STARTED_KEY = 'dumbdollars_setup_autopilot_started_at';
+let activeAccountPayload = null;
 
 function markAutopilotProgress() {
   try {
@@ -106,6 +107,28 @@ function fmtUsd(value) {
 
 function fmtRatio(value) {
   return `${Number(value || 0).toLocaleString(undefined, { maximumFractionDigits: 2 })}x`;
+}
+
+function fmtPct(value) {
+  return `${Number(value || 0).toLocaleString(undefined, { maximumFractionDigits: 2 })}%`;
+}
+
+function setButtonBusy(button, busy, busyLabel = 'Working...') {
+  if (!(button instanceof HTMLButtonElement)) {
+    return;
+  }
+  if (!button.dataset.idleLabel) {
+    button.dataset.idleLabel = button.textContent || '';
+  }
+  button.disabled = busy;
+  button.setAttribute('aria-busy', busy ? 'true' : 'false');
+  if (busy) {
+    button.classList.add('is-loading');
+    button.textContent = busyLabel;
+  } else {
+    button.classList.remove('is-loading');
+    button.textContent = button.dataset.idleLabel || '';
+  }
 }
 
 function renderAccountSnapshot(payload) {
@@ -259,6 +282,110 @@ function escapeHtml(value) {
     .replace(/'/g, '&#39;');
 }
 
+function renderTradeHistorySection(rows, targetId, emptyText) {
+  const target = document.getElementById(targetId);
+  if (!target) {
+    return;
+  }
+  const items = Array.isArray(rows) ? rows : [];
+  target.innerHTML = '';
+  if (!items.length) {
+    target.innerHTML = `<div class="pro-lock">${escapeHtml(emptyText)}</div>`;
+    return;
+  }
+  items.slice(0, 20).forEach((row) => {
+    const card = document.createElement('article');
+    card.className = 'bot-position-card';
+    card.innerHTML = `
+      <h4>${escapeHtml(row.ticker || '-')} • ${escapeHtml(String(row.direction || 'long').toUpperCase())}</h4>
+      <p><strong>Status:</strong> ${escapeHtml(String(row.status || 'unknown').toUpperCase())}</p>
+      <p><strong>Entry / Stop / Take:</strong> ${fmtUsd(row.entryPrice || row.entry)} / ${fmtUsd(row.stopLoss)} / ${fmtUsd(row.takeProfit)}</p>
+      <p><strong>Max Loss:</strong> ${fmtUsd(row.maxLossUsd || row.riskUsd)} • <strong>Risk Level:</strong> ${escapeHtml(row.riskLevel || 'N/A')}</p>
+      <p><strong>PnL:</strong> ${fmtUsd(row.pnlUsd || 0)} • <strong>Result:</strong> ${escapeHtml(String(row.result || '-').replace(/_/g, ' '))}</p>
+      <p class="small-note">${escapeHtml(row.openedAt || row.closedAt || '-')}</p>
+    `;
+    target.appendChild(card);
+  });
+}
+
+function renderTradeIdeas(execution) {
+  const target = document.getElementById('ai-account-trade-ideas');
+  if (!target) {
+    return;
+  }
+  const ideas = Array.isArray(execution?.tradeIdeas) ? execution.tradeIdeas : [];
+  target.innerHTML = '';
+  if (!ideas.length) {
+    target.innerHTML = '<div class="pro-lock">No pending AI trade ideas right now. Run a new AI cycle to generate ideas.</div>';
+    return;
+  }
+  ideas.forEach((idea) => {
+    const card = document.createElement('article');
+    card.className = `bot-position-card ${idea?.riskCheck?.ok === false ? 'bot-position-card--warning' : ''}`;
+    const blockedReasons = Array.isArray(idea?.riskCheck?.blocks) ? idea.riskCheck.blocks : [];
+    const blockedHtml = blockedReasons.length
+      ? `<p class="small-note auth-error"><strong>Blocked by Risk Manager:</strong> ${blockedReasons.map((code) => escapeHtml(String(code).replace(/_/g, ' '))).join(', ')}</p>`
+      : '';
+    card.innerHTML = `
+      <h4>${escapeHtml(idea.symbol || idea.ticker || '-')} • ${escapeHtml(idea.directionLabel || idea.direction || 'Buy')}</h4>
+      <p><strong>Entry:</strong> ${fmtUsd(idea.entry)} • <strong>Stop Loss:</strong> ${fmtUsd(idea.stopLoss)} • <strong>Take Profit:</strong> ${fmtUsd(idea.takeProfit)}</p>
+      <p><strong>Max Loss:</strong> ${fmtUsd(idea.maxLoss || idea.maxLossUsd)} • <strong>Risk Level:</strong> ${escapeHtml(idea.riskLevel || 'N/A')}</p>
+      <p><strong>Confidence Score:</strong> ${Number(idea.confidenceScore || 0)}%</p>
+      <p><strong>Why AI Likes This:</strong> ${escapeHtml(idea.whyAiLikesThis || 'Signal alignment from market inputs and prompt controls.')}</p>
+      ${blockedHtml}
+      <div class="ai-bot-actions">
+        <button type="button" class="btn-secondary" data-action="approve-trade-idea" data-ticket-id="${escapeHtml(idea.ticketId || '')}" ${idea?.riskCheck?.ok === false ? 'disabled' : ''}>Approve Trade</button>
+        <button type="button" class="btn-secondary" data-action="cancel-trade-idea" data-ticket-id="${escapeHtml(idea.ticketId || '')}">Cancel Trade</button>
+      </div>
+    `;
+    target.appendChild(card);
+  });
+}
+
+async function approveTradeIdea(ticketId, button) {
+  if (!ticketId) {
+    return;
+  }
+  setButtonBusy(button, true, 'Approving...');
+  try {
+    await requestWithAuthRetry(`/api/market/auto-trader/trade-ideas/${encodeURIComponent(ticketId)}/approve`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({})
+    });
+    await loadAccountView();
+    setStatus('Trade idea approved and moved into open trades.');
+  } catch (error) {
+    setStatus(error.message || 'Could not approve trade idea.', true);
+  } finally {
+    setButtonBusy(button, false);
+  }
+}
+
+async function cancelTradeIdea(ticketId, button) {
+  if (!ticketId) {
+    return;
+  }
+  setButtonBusy(button, true, 'Cancelling...');
+  try {
+    await requestWithAuthRetry(`/api/market/auto-trader/trade-ideas/${encodeURIComponent(ticketId)}/cancel`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({})
+    });
+    await loadAccountView();
+    setStatus('Trade idea cancelled.');
+  } catch (error) {
+    setStatus(error.message || 'Could not cancel trade idea.', true);
+  } finally {
+    setButtonBusy(button, false);
+  }
+}
+
 function renderExecutionCenter(execution) {
   const summaryTarget = document.getElementById('ai-account-execution-summary');
   const queueTarget = document.getElementById('ai-account-queued-ai-trades');
@@ -384,12 +511,14 @@ function renderExecutionCenter(execution) {
     `;
     queueTarget.appendChild(card);
   });
+  renderTradeIdeas(execution);
 }
 
 async function loadAccountView() {
   const payload = await requestWithAuthRetry('/api/market/auto-trader/account-view', {
     method: 'GET'
   });
+  activeAccountPayload = payload;
   if (payload?.execution?.autopilot?.active) {
     markAutopilotProgress();
   }
@@ -398,6 +527,8 @@ async function loadAccountView() {
   renderExecutionCenter(payload.execution || null);
   renderFundingActivity(payload.activity?.recentFunding || []);
   renderCycleActivity(payload.activity?.recentCycles || []);
+  renderTradeHistorySection(payload.tradeHistory?.open || [], 'ai-account-open-trade-history', 'No open trade history yet.');
+  renderTradeHistorySection(payload.tradeHistory?.closed || [], 'ai-account-closed-trade-history', 'No closed trade history yet.');
   return payload;
 }
 
@@ -407,6 +538,7 @@ function setupActions() {
   const stopAutopilotButton = document.getElementById('ai-account-stop-autopilot');
   const openFundingButton = document.getElementById('ai-account-back-funding');
   const openBrokerOnboardingButton = document.getElementById('ai-account-open-brokerage');
+  const tradeIdeasTarget = document.getElementById('ai-account-trade-ideas');
 
   if (openFundingButton) {
     openFundingButton.addEventListener('click', () => {
@@ -417,6 +549,31 @@ function setupActions() {
   if (openBrokerOnboardingButton) {
     openBrokerOnboardingButton.addEventListener('click', () => {
       window.location.href = '/brokerage-onboarding.html';
+    });
+  }
+
+  if (tradeIdeasTarget instanceof HTMLElement) {
+    tradeIdeasTarget.addEventListener('click', async (event) => {
+      const target = event.target;
+      if (!(target instanceof HTMLElement)) {
+        return;
+      }
+      const actionButton = target.closest('button[data-action]');
+      if (!(actionButton instanceof HTMLButtonElement)) {
+        return;
+      }
+      const action = String(actionButton.dataset.action || '').trim();
+      const ticketId = String(actionButton.dataset.ticketId || '').trim();
+      if (!ticketId) {
+        return;
+      }
+      if (action === 'approve-trade-idea') {
+        await approveTradeIdea(ticketId, actionButton);
+        return;
+      }
+      if (action === 'cancel-trade-idea') {
+        await cancelTradeIdea(ticketId, actionButton);
+      }
     });
   }
 

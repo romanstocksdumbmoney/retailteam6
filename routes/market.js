@@ -32,6 +32,8 @@ const {
   testAutoTraderBrokerBridge,
   disconnectAutoTraderBrokerBridge,
   queueAiTradeForExecution,
+  approvePendingTradeProposal,
+  cancelPendingTradeProposal,
   updateAutoTraderPromptControl,
   executeAutoTraderBrokerOrders,
   runAutoTraderCycle,
@@ -746,13 +748,41 @@ router.post('/auto-trader/run', requireSignedIn, async (req, res) => {
         };
       } else {
         try {
+          const pendingProposals = Array.isArray(statusAfterCycle?.execution?.pendingTradeProposals)
+            ? statusAfterCycle.execution.pendingTradeProposals
+            : [];
+          const approvals = [];
+          for (let index = 0; index < pendingProposals.length; index += 1) {
+            const proposal = pendingProposals[index];
+            const ticketId = String(proposal?.ticketId || '').trim();
+            if (!ticketId) {
+              // eslint-disable-next-line no-continue
+              continue;
+            }
+            try {
+              // eslint-disable-next-line no-await-in-loop
+              const approved = await approvePendingTradeProposal(req.user, { ticketId, autoApproved: true });
+              approvals.push({
+                ticketId,
+                approved: true,
+                openedPositionId: approved?.openedPosition?.id || null
+              });
+            } catch (approvalError) {
+              approvals.push({
+                ticketId,
+                approved: false,
+                reason: String(approvalError?.message || 'approval_failed')
+              });
+            }
+          }
           const executed = await executeAutoTraderBrokerOrders(req.user, {});
           autoExecution = {
             attempted: true,
             status: 'submitted',
             message: `Auto-execution submitted ${Number(executed.submittedCount || 0)} ticket(s).`,
             submittedCount: Number(executed.submittedCount || 0),
-            rejectedCount: Number(executed.rejectedCount || 0)
+            rejectedCount: Number(executed.rejectedCount || 0),
+            approvals
           };
         } catch (autoError) {
           const code = String(autoError.message || 'auto_execution_failed');
@@ -764,7 +794,8 @@ router.post('/auto-trader/run', requireSignedIn, async (req, res) => {
             missing_broker_api_credentials: 'Live broker credentials are missing. Reconnect broker API keys and run bridge test again.',
             validate_real_broker_order_failed: 'Live broker rejected one or more orders. Review broker rejection details and retry.',
             no_order_tickets: 'No order tickets generated in this cycle.',
-            no_ready_tickets: 'Generated tickets are not broker-ready yet.'
+            no_ready_tickets: 'Generated tickets are not broker-ready yet.',
+            approval_required: 'Auto-execution requires proposal approval. Keep auto-approve enabled and ensure risk checks pass.'
           };
           autoExecution = {
             attempted: true,
@@ -805,6 +836,18 @@ router.post('/auto-trader/run', requireSignedIn, async (req, res) => {
       return res.status(400).json({
         error: 'live_funding_required',
         message: 'Live mode requires funding first. Open the funding page to add live capital.'
+      });
+    }
+    if (code === 'daily_loss_limit_reached') {
+      return res.status(400).json({
+        error: 'daily_loss_limit_reached',
+        message: 'Daily loss limit reached. Trading is paused for safety.'
+      });
+    }
+    if (code === 'max_trades_per_day_reached') {
+      return res.status(400).json({
+        error: 'max_trades_per_day_reached',
+        message: 'Maximum trades per day reached. Trading is paused for safety.'
       });
     }
     return res.status(400).json({
@@ -878,6 +921,12 @@ router.post('/auto-trader/execute-orders', requireSignedIn, requireLiveFundingAc
       return res.status(400).json({
         error: 'no_ready_tickets',
         message: 'Selected tickets are not broker-ready yet.'
+      });
+    }
+    if (code === 'approval_required') {
+      return res.status(400).json({
+        error: 'approval_required',
+        message: 'Approve pending trade proposals before sending broker orders.'
       });
     }
     return res.status(400).json({
@@ -1363,6 +1412,126 @@ router.post('/auto-trader/queue-ai-trade', requireSignedIn, (req, res) => {
     return res.status(400).json({
       error: 'invalid_request',
       message: 'Could not queue AI trade for execution.'
+    });
+  }
+});
+
+router.post('/auto-trader/trade-ideas/:ticketId/approve', requireSignedIn, (req, res) => {
+  try {
+    const payload = approvePendingTradeProposal(req.user, {
+      ticketId: req.params.ticketId
+    });
+    return res.json(payload);
+  } catch (error) {
+    const code = String(error.message || '');
+    if (code === 'ticket_not_found') {
+      return res.status(404).json({
+        error: 'ticket_not_found',
+        message: 'Trade idea ticket was not found.'
+      });
+    }
+    if (code === 'proposal_not_pending') {
+      return res.status(400).json({
+        error: 'proposal_not_pending',
+        message: 'This trade idea is no longer pending approval.'
+      });
+    }
+    if (code === 'risk_check_failed') {
+      return res.status(400).json({
+        error: 'risk_check_failed',
+        message: 'Trade blocked by risk manager. Review max loss, balance, and daily limits.'
+      });
+    }
+    return res.status(400).json({
+      error: 'invalid_request',
+      message: 'Could not approve this trade idea.'
+    });
+  }
+});
+
+router.post('/auto-trader/trade-ideas/:ticketId/cancel', requireSignedIn, (req, res) => {
+  try {
+    const payload = cancelPendingTradeProposal(req.user, {
+      ticketId: req.params.ticketId
+    });
+    return res.json(payload);
+  } catch (error) {
+    const code = String(error.message || '');
+    if (code === 'ticket_not_found') {
+      return res.status(404).json({
+        error: 'ticket_not_found',
+        message: 'Trade idea ticket was not found.'
+      });
+    }
+    if (code === 'proposal_not_pending') {
+      return res.status(400).json({
+        error: 'proposal_not_pending',
+        message: 'This trade idea is no longer pending approval.'
+      });
+    }
+    return res.status(400).json({
+      error: 'invalid_request',
+      message: 'Could not cancel this trade idea.'
+    });
+  }
+});
+
+router.post('/auto-trader/proposals/:ticketId/approve', requireSignedIn, (req, res) => {
+  try {
+    const payload = approvePendingTradeProposal(req.user, {
+      ticketId: req.params.ticketId
+    });
+    return res.json(payload);
+  } catch (error) {
+    const code = String(error.message || '');
+    if (code === 'ticket_not_found') {
+      return res.status(404).json({
+        error: 'ticket_not_found',
+        message: 'Trade idea ticket was not found.'
+      });
+    }
+    if (code === 'proposal_not_pending') {
+      return res.status(400).json({
+        error: 'proposal_not_pending',
+        message: 'This trade idea has already been handled.'
+      });
+    }
+    if (code === 'risk_check_failed') {
+      return res.status(400).json({
+        error: 'risk_check_failed',
+        message: 'Trade blocked by risk manager. Review risk settings and account limits.'
+      });
+    }
+    return res.status(400).json({
+      error: 'invalid_request',
+      message: 'Could not approve this trade idea.'
+    });
+  }
+});
+
+router.post('/auto-trader/proposals/:ticketId/cancel', requireSignedIn, (req, res) => {
+  try {
+    const payload = cancelPendingTradeProposal(req.user, {
+      ticketId: req.params.ticketId
+    });
+    return res.json(payload);
+  } catch (error) {
+    const code = String(error.message || '');
+    if (code === 'ticket_not_found') {
+      return res.status(404).json({
+        error: 'ticket_not_found',
+        message: 'Trade idea ticket was not found.'
+      });
+    }
+    if (code === 'proposal_not_pending') {
+      return res.status(400).json({
+        error: 'proposal_not_pending',
+        message: 'This trade idea has already been handled.'
+      });
+    }
+    return res.status(400).json({
+      error: 'invalid_request',
+      message: 'Could not cancel this trade idea.'
     });
   }
 });
