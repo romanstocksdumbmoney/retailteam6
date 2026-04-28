@@ -18,6 +18,34 @@ const REMEMBER_TOKEN_STORAGE_KEY = 'dumbdollars_remember_token';
 const DEFAULT_NEXT_PATH = '/ai-trade.html';
 const AUTH_PAGE_MODE_LOGIN = 'login';
 const AUTH_PAGE_MODE_SIGNUP = 'signup';
+const TRADER_MODE_STORAGE_KEY = 'dumbdollars_trader_mode';
+const DEFAULT_TRADER_MODE = 'day';
+const TRADER_MODE_DETAILS = Object.freeze({
+  scalper: {
+    label: 'Scalper',
+    risk: 'High',
+    horizon: 'Seconds to minutes',
+    description: 'Fast trades, high frequency, rapid entries/exits.'
+  },
+  day: {
+    label: 'Day Trader',
+    risk: 'Medium-High',
+    horizon: 'Minutes to hours',
+    description: 'Intraday setups with no overnight position risk.'
+  },
+  swing: {
+    label: 'Swing Trader',
+    risk: 'Medium',
+    horizon: 'Days to weeks',
+    description: 'Trend and pattern-based setups over multiple sessions.'
+  },
+  long: {
+    label: 'Long-Term Investor',
+    risk: 'Low-Medium',
+    horizon: 'Months to years',
+    description: 'Fundamental and macro-driven investing with long horizon.'
+  }
+});
 
 function setStatus(text, isError = false) {
   const node = document.getElementById('ai-access-status')
@@ -91,17 +119,88 @@ function applySavedEmail() {
   }
 }
 
+function normalizeTraderMode(mode) {
+  const value = String(mode || '').trim().toLowerCase();
+  if (Object.prototype.hasOwnProperty.call(TRADER_MODE_DETAILS, value)) {
+    return value;
+  }
+  return DEFAULT_TRADER_MODE;
+}
+
+function saveTraderMode(mode) {
+  const normalized = normalizeTraderMode(mode);
+  localStorage.setItem(TRADER_MODE_STORAGE_KEY, normalized);
+  return normalized;
+}
+
+function getStoredTraderMode() {
+  return normalizeTraderMode(localStorage.getItem(TRADER_MODE_STORAGE_KEY) || DEFAULT_TRADER_MODE);
+}
+
+function getSelectedTraderModeFromUi() {
+  const active = document.querySelector('.ai-trader-mode-option[aria-pressed="true"]');
+  if (!(active instanceof HTMLElement)) {
+    return getStoredTraderMode();
+  }
+  return normalizeTraderMode(active.getAttribute('data-trader-mode'));
+}
+
+function applyTraderModeSelection(mode, options = {}) {
+  const normalized = normalizeTraderMode(mode);
+  const { persist = true } = options;
+  document.querySelectorAll('.ai-trader-mode-option[data-trader-mode]').forEach((button) => {
+    if (!(button instanceof HTMLButtonElement)) {
+      return;
+    }
+    const isActive = normalizeTraderMode(button.getAttribute('data-trader-mode')) === normalized;
+    button.setAttribute('aria-pressed', isActive ? 'true' : 'false');
+    button.classList.toggle('ai-trader-mode-option--active', isActive);
+  });
+  const preview = document.getElementById('ai-access-trader-mode-summary');
+  const details = TRADER_MODE_DETAILS[normalized];
+  if (preview instanceof HTMLElement && details) {
+    preview.textContent = `Selected: ${details.label}. Risk: ${details.risk}. Time horizon: ${details.horizon}.`;
+  }
+  if (persist) {
+    saveTraderMode(normalized);
+  }
+  return normalized;
+}
+
+function setupTraderModePicker() {
+  const modeButtons = Array.from(document.querySelectorAll('.ai-trader-mode-option[data-trader-mode]'));
+  if (!modeButtons.length) {
+    return;
+  }
+  const queryMode = normalizeTraderMode(getQueryParam('traderMode') || '');
+  const initialMode = getQueryParam('traderMode')
+    ? queryMode
+    : getStoredTraderMode();
+  applyTraderModeSelection(initialMode, { persist: true });
+  modeButtons.forEach((button) => {
+    if (!(button instanceof HTMLButtonElement)) {
+      return;
+    }
+    button.addEventListener('click', () => {
+      applyTraderModeSelection(button.getAttribute('data-trader-mode'), { persist: true });
+    });
+  });
+}
+
 async function signUp(email, password, options = {}) {
+  const traderMode = normalizeTraderMode(options.traderMode);
   const payload = await fetchJson('/api/auth/signup', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       email,
       password,
+      traderMode,
       remember: options.remember !== false
     })
   });
   applyAuthPayload(payload, email);
+  saveTraderMode(payload?.user?.traderMode || traderMode);
 }
 
 async function logIn(email, password, options = {}) {
@@ -118,16 +217,19 @@ async function logIn(email, password, options = {}) {
 }
 
 async function socialSignIn(provider, email, options = {}) {
+  const traderMode = normalizeTraderMode(options.traderMode);
   const payload = await fetchJson('/api/auth/oauth/signin', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       provider,
       email,
+      traderMode,
       remember: options.remember !== false
     })
   });
   applyAuthPayload(payload, email);
+  saveTraderMode(payload?.user?.traderMode || traderMode);
 }
 
 async function requestAccessCode(email, purpose = 'pro_recovery') {
@@ -163,10 +265,11 @@ function goToSocialAuthPage(provider, email, remember = true) {
   const next = encodeURIComponent(getSafeNextPath());
   const providerParam = encodeURIComponent(normalizedProvider);
   const rememberParam = remember ? '1' : '0';
+  const traderModeParam = encodeURIComponent(getSelectedTraderModeFromUi());
   const emailSegment = isLikelyValidEmail(normalizedEmail)
     ? `&email=${encodeURIComponent(normalizedEmail)}`
     : '';
-  window.location.href = `/social-auth.html?provider=${providerParam}${emailSegment}&next=${next}&remember=${rememberParam}`;
+  window.location.href = `/social-auth.html?provider=${providerParam}${emailSegment}&traderMode=${traderModeParam}&next=${next}&remember=${rememberParam}`;
 }
 
 function getSafeNextPath() {
@@ -400,7 +503,8 @@ function setupForms() {
       }
       setButtonBusy(submitButton, true, idleLabel, 'Creating...');
       const remember = !(signupRememberInput instanceof HTMLInputElement) || signupRememberInput.checked;
-      await signUp(email, password, { remember });
+      const traderMode = getSelectedTraderModeFromUi();
+      await signUp(email, password, { remember, traderMode });
       await hydrateSessionUser(String(localStorage.getItem('dumbdollars_token') || '').trim());
       setStatus('Account created. Redirecting...');
       goToNextPath();
@@ -444,8 +548,10 @@ function setupForms() {
       const remember = (loginRememberInput instanceof HTMLInputElement && loginRememberInput.checked)
         || (signupRememberInput instanceof HTMLInputElement && signupRememberInput.checked)
         || (!(loginRememberInput instanceof HTMLInputElement) && !(signupRememberInput instanceof HTMLInputElement));
+      const traderMode = getSelectedTraderModeFromUi();
       button.disabled = true;
       setStatus('Opening social sign-in...');
+      saveTraderMode(traderMode);
       goToSocialAuthPage(provider, email, remember);
       window.setTimeout(() => {
         button.disabled = false;
@@ -511,6 +617,7 @@ function setupForms() {
 }
 
 async function init() {
+  setupTraderModePicker();
   applySavedEmail();
   setupForms();
   applyRequestedAuthMode();

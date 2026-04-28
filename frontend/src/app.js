@@ -23,6 +23,8 @@ let proPopupVisible = false;
 let earningsRefreshIntervalId = null;
 let earningsDayRolloverIntervalId = null;
 let earningsLastEtDateKey = '';
+let activeTraderMode = 'day';
+let traderModeShowAll = false;
 const AUTH_EMAIL_STORAGE_KEY = 'dumbdollars_saved_email';
 const SAVED_EMAIL_KEY = 'dumbdollars_saved_email';
 const REMEMBER_TOKEN_STORAGE_KEY = 'dumbdollars_remember_token';
@@ -195,6 +197,88 @@ const DASHBOARD_MODE_CONFIG = Object.freeze({
     helperText: 'Full workspace view: all modules shown.',
     mainSelectors: 'all',
     sidebarDropdownIds: 'all'
+  }
+});
+const TRADER_MODE_STORAGE_KEY = 'dumbdollars_trader_mode_v1';
+const TRADER_MODE_ORDER = Object.freeze(['scalper', 'day', 'swing', 'long']);
+const TRADER_MODE_LABELS = Object.freeze({
+  scalper: 'Scalper',
+  day: 'Day Trader',
+  swing: 'Swing Trader',
+  long: 'Long-Term Investor'
+});
+const TRADER_MODE_DETAILS = Object.freeze({
+  scalper: {
+    title: 'Scalper',
+    short: 'Fast trades, seconds to minutes, high focus, high frequency.',
+    risk: 'High',
+    horizon: 'Seconds to minutes',
+    dashboardLayout: 'quick',
+    aiTone: 'direct',
+    route: '/ai-tools/scalper',
+    mainSelectors: ['#stock-outlook-module', '#scanner-module'],
+    sidebarDropdownIds: ['sidebar-core-dropdown', 'sidebar-ai-dropdown'],
+    hiddenModuleKeys: ['earnings-gambling', 'insider-trades', 'ai-implementation'],
+    aiPrefix: 'Scalp setup detected',
+    quickSignals: [
+      '1m / 5m momentum focus',
+      'Volume spike confirmation',
+      'Tight stop-loss and quick exit workflow'
+    ]
+  },
+  day: {
+    title: 'Day Trader',
+    short: 'Intraday trades with no overnight risk and catalyst focus.',
+    risk: 'Medium-High',
+    horizon: 'Minutes to end of session',
+    dashboardLayout: 'intraday',
+    aiTone: 'fast-structured',
+    route: '/ai-tools/day',
+    mainSelectors: ['#stock-outlook-module', '#scanner-module', '#unusual-moves-module'],
+    sidebarDropdownIds: ['sidebar-core-dropdown', 'sidebar-ai-dropdown', 'sidebar-pro-dropdown'],
+    hiddenModuleKeys: ['insider-trades'],
+    aiPrefix: 'Intraday breakout forming',
+    quickSignals: [
+      '5m / 15m chart alignment',
+      'VWAP and breakout confirmation',
+      'News catalyst + intraday watchlist'
+    ]
+  },
+  swing: {
+    title: 'Swing Trader',
+    short: 'Hold trades for days to weeks with trend and pattern confirmation.',
+    risk: 'Medium',
+    horizon: 'Days to weeks',
+    dashboardLayout: 'swing',
+    aiTone: 'explainer',
+    route: '/ai-tools/swing',
+    mainSelectors: ['#stock-outlook-module', '#earnings-module', '#scanner-module'],
+    sidebarDropdownIds: ['sidebar-core-dropdown', 'sidebar-ai-dropdown', 'sidebar-pro-dropdown'],
+    hiddenModuleKeys: [],
+    aiPrefix: 'Swing setup forming',
+    quickSignals: [
+      '1H / 4H / daily structure',
+      'Support/resistance and continuation patterns',
+      'Entry, stop, and multi-day target levels'
+    ]
+  },
+  long: {
+    title: 'Long-Term Investor',
+    short: 'Build positions over months/years using fundamentals and macro context.',
+    risk: 'Low-Medium',
+    horizon: 'Months to years',
+    dashboardLayout: 'investor',
+    aiTone: 'analytical',
+    route: '/ai-tools/long',
+    mainSelectors: ['#stock-outlook-module', '#earnings-module'],
+    sidebarDropdownIds: ['sidebar-core-dropdown', 'sidebar-pro-dropdown'],
+    hiddenModuleKeys: ['ai-trade', 'order-setup-assistant', 'ai-auto-trader'],
+    aiPrefix: 'Long-term accumulation zone',
+    quickSignals: [
+      'Fundamentals and earnings strength',
+      'Insider and macro context',
+      'Valuation and risk outlook focus'
+    ]
   }
 });
 function isSecureCheckoutUrl(url) {
@@ -470,6 +554,9 @@ function applyAuthPayload(payload, fallbackEmail = '') {
     saveAuthEmail(email);
     savePreferredEmail(email);
   }
+  if (payload?.user?.traderMode) {
+    persistTraderMode(payload.user.traderMode);
+  }
 }
 
 async function restoreAuthSessionFromRememberToken() {
@@ -673,6 +760,251 @@ function getModuleTargetByKey(key) {
   return MODULE_NAV_TARGETS.find((target) => normalizeModuleSearchTerm(target.key) === normalized) || null;
 }
 
+function normalizeTraderMode(mode) {
+  const value = String(mode || '').trim().toLowerCase();
+  if (TRADER_MODE_ORDER.includes(value)) {
+    return value;
+  }
+  return 'day';
+}
+
+function getStoredTraderMode() {
+  try {
+    return normalizeTraderMode(localStorage.getItem(TRADER_MODE_STORAGE_KEY) || '');
+  } catch (_error) {
+    return 'day';
+  }
+}
+
+function getActiveTraderMode() {
+  if (currentUser?.traderMode) {
+    return normalizeTraderMode(currentUser.traderMode);
+  }
+  return getStoredTraderMode();
+}
+
+function persistTraderMode(mode) {
+  const normalized = normalizeTraderMode(mode);
+  try {
+    localStorage.setItem(TRADER_MODE_STORAGE_KEY, normalized);
+  } catch (_error) {
+    // Ignore storage failures.
+  }
+  return normalized;
+}
+
+function isModeVisibleForTarget(mode, target) {
+  if (!target) {
+    return false;
+  }
+  if (target.panel === 'main') {
+    return Boolean((TRADER_MODE_DETAILS[mode]?.mainSelectors || []).includes(target.selector));
+  }
+  if (target.panel === 'sidebar') {
+    const selector = String(target.selector || '').trim();
+    if (!selector) {
+      return true;
+    }
+    const hiddenKeys = new Set(TRADER_MODE_DETAILS[mode]?.hiddenModuleKeys || []);
+    if (!hiddenKeys.size) {
+      return true;
+    }
+    const bySelector = MODULE_NAV_TARGETS.find((entry) => String(entry.selector || '').trim() === selector);
+    if (!bySelector?.key) {
+      return true;
+    }
+    return !hiddenKeys.has(bySelector.key);
+  }
+  return true;
+}
+
+function openModeRoute(mode) {
+  const normalized = normalizeTraderMode(mode);
+  const routeNode = document.getElementById('trader-mode-routing');
+  const route = TRADER_MODE_DETAILS[normalized]?.route || `/ai-tools/${normalized}`;
+  if (routeNode instanceof HTMLElement) {
+    routeNode.innerHTML = `
+      Mode route: <a class="open-link" href="${route}">${route}</a>
+    `;
+  }
+}
+
+function renderModeAwareInsights(mode) {
+  const normalized = normalizeTraderMode(mode);
+  const config = TRADER_MODE_DETAILS[normalized];
+  const container = document.getElementById('trader-mode-meta');
+  if (!(container instanceof HTMLElement) || !config) {
+    return;
+  }
+  const toneLine = normalized === 'scalper'
+    ? `${config.aiPrefix}: Enter now / exit now / momentum fading.`
+    : normalized === 'swing'
+      ? `${config.aiPrefix}: Trend forming, wait for confirmation before entry.`
+      : normalized === 'long'
+        ? `${config.aiPrefix}: Valuation suggests upside over 6–12 months with macro risk context.`
+        : `${config.aiPrefix}: Volume confirmation detected, suggested entries + stops ready.`;
+  container.innerHTML = `
+    <p><strong>${config.title}</strong> • Risk: ${config.risk} • Horizon: ${config.horizon}</p>
+    <p class="small-note">${config.short}</p>
+    <p class="small-note"><strong>AI style:</strong> ${toneLine}</p>
+    <ul class="detail-list">
+      ${(config.quickSignals || []).map((line) => `<li>${line}</li>`).join('')}
+    </ul>
+  `;
+}
+
+function renderTraderModeCards(activeMode, showAllModes) {
+  const cardsHost = document.getElementById('trader-mode-cards');
+  if (!(cardsHost instanceof HTMLElement)) {
+    return;
+  }
+  const normalized = normalizeTraderMode(activeMode);
+  const modes = showAllModes ? TRADER_MODE_ORDER : [normalized];
+  cardsHost.innerHTML = modes.map((mode) => {
+    const details = TRADER_MODE_DETAILS[mode];
+    const activeClass = mode === normalized ? ' trader-mode-option--active' : '';
+    return `
+      <article class="trader-mode-option${activeClass}" data-mode-card="${mode}">
+        <h4>${details.title}</h4>
+        <p>${details.short}</p>
+        <p><strong>Risk:</strong> ${details.risk}</p>
+        <p><strong>Time horizon:</strong> ${details.horizon}</p>
+      </article>
+    `;
+  }).join('');
+}
+
+async function saveTraderMode(mode) {
+  const normalized = persistTraderMode(mode);
+  if (!authToken) {
+    return normalized;
+  }
+  try {
+    const payload = await fetchJson('/api/auth/trader-mode', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...headersWithPlan()
+      },
+      body: JSON.stringify({ traderMode: normalized })
+    });
+    if (payload?.user) {
+      currentUser = payload.user;
+    }
+    return normalizeTraderMode(payload?.traderMode || normalized);
+  } catch (_error) {
+    return normalized;
+  }
+}
+
+function applyTraderModeUI(mode, options = {}) {
+  const normalized = normalizeTraderMode(mode);
+  const { save = false } = options;
+  const select = document.getElementById('trader-mode-select');
+  const showAllToggle = document.getElementById('trader-mode-show-all');
+  const showAllModes = showAllToggle instanceof HTMLInputElement ? Boolean(showAllToggle.checked) : false;
+  if (select instanceof HTMLSelectElement) {
+    select.value = normalized;
+  }
+  document.body.setAttribute('data-trader-mode', normalized);
+  renderTraderModeCards(normalized, showAllModes);
+  renderModeAwareInsights(normalized);
+  openModeRoute(normalized);
+
+  const modeConfig = TRADER_MODE_DETAILS[normalized];
+  const visibleMainSelectors = new Set(modeConfig?.mainSelectors || []);
+  DASHBOARD_MAIN_MODULE_SELECTORS.forEach((selector) => {
+    const node = document.querySelector(selector);
+    if (!(node instanceof HTMLElement)) {
+      return;
+    }
+    node.hidden = !showAllModes && !visibleMainSelectors.has(selector);
+  });
+
+  const visibleDropdownIds = new Set(modeConfig?.sidebarDropdownIds || []);
+  SIDEBAR_DROPDOWN_IDS.forEach((dropdownId) => {
+    const dropdown = getSidebarDropdownById(dropdownId);
+    if (!dropdown) {
+      return;
+    }
+    dropdown.hidden = !showAllModes && !visibleDropdownIds.has(dropdownId);
+    if (dropdown.hidden) {
+      dropdown.open = false;
+    }
+  });
+
+  MODULE_NAV_TARGETS.forEach((target) => {
+    if (!target?.selector) {
+      return;
+    }
+    const node = document.querySelector(target.selector);
+    if (!(node instanceof HTMLElement)) {
+      return;
+    }
+    const visible = showAllModes ? true : isModeVisibleForTarget(normalized, target);
+    node.hidden = !visible;
+  });
+
+  if (save) {
+    persistTraderMode(normalized);
+  }
+}
+
+function setupTraderModeControls() {
+  const select = document.getElementById('trader-mode-select');
+  const showAllToggle = document.getElementById('trader-mode-show-all');
+  const cardsNode = document.getElementById('trader-mode-cards');
+  const routingNode = document.getElementById('trader-mode-routing');
+  if (!(select instanceof HTMLSelectElement)) {
+    return;
+  }
+  const initial = getActiveTraderMode();
+  applyTraderModeUI(initial, { save: true });
+  select.addEventListener('change', async () => {
+    const selected = normalizeTraderMode(select.value);
+    applyTraderModeUI(selected, { save: true });
+    await saveTraderMode(selected);
+    applyTraderModeUI(selected, { save: false });
+  });
+  if (showAllToggle instanceof HTMLInputElement) {
+    showAllToggle.addEventListener('change', () => {
+      applyTraderModeUI(getActiveTraderMode(), { save: false });
+    });
+  }
+  if (cardsNode instanceof HTMLElement) {
+    cardsNode.addEventListener('click', async (event) => {
+      const target = event.target;
+      if (!(target instanceof HTMLElement)) {
+        return;
+      }
+      const card = target.closest('[data-mode-card]');
+      if (!(card instanceof HTMLElement)) {
+        return;
+      }
+      const nextMode = normalizeTraderMode(card.getAttribute('data-mode-card'));
+      select.value = nextMode;
+      applyTraderModeUI(nextMode, { save: true });
+      await saveTraderMode(nextMode);
+    });
+  }
+  if (routingNode instanceof HTMLElement) {
+    routingNode.addEventListener('click', (event) => {
+      const target = event.target;
+      if (!(target instanceof HTMLElement)) {
+        return;
+      }
+      const link = target.closest('[data-trader-mode-route]');
+      if (!(link instanceof HTMLElement)) {
+        return;
+      }
+      event.preventDefault();
+      const mode = normalizeTraderMode(link.getAttribute('data-trader-mode-route'));
+      openModeRoute(mode);
+      window.location.href = TRADER_MODE_DETAILS[mode]?.route || `/ai-tools/${mode}`;
+    });
+  }
+}
+
 function findBestModuleTarget(query) {
   const normalized = normalizeModuleSearchTerm(query);
   if (!normalized) {
@@ -705,6 +1037,13 @@ function highlightModuleElement(element) {
 
 function jumpToModule(target) {
   if (!target || !target.selector) {
+    return false;
+  }
+  const activeMode = getActiveTraderMode();
+  const showAllToggle = document.getElementById('trader-mode-show-all');
+  const showAllModes = showAllToggle instanceof HTMLInputElement ? Boolean(showAllToggle.checked) : false;
+  if (!showAllModes && !isModeVisibleForTarget(activeMode, target)) {
+    setModuleSearchStatus(`${target.label} is hidden in ${TRADER_MODE_LABELS[activeMode]} mode. Enable "Show All Modes" or switch trader mode.`, true);
     return false;
   }
   if (dashboardModeController && typeof dashboardModeController.revealForTarget === 'function') {
@@ -2275,22 +2614,68 @@ function renderAuthState() {
 
 function renderOutlook(payload) {
   const target = document.getElementById('stock-results');
+  if (!target) {
+    return;
+  }
   const outlook = payload.outlook;
   const day = normalizePairPercents(outlook?.day?.up, outlook?.day?.down);
   const week = normalizePairPercents(outlook?.week?.up, outlook?.week?.down);
   const month = normalizePairPercents(outlook?.month?.up, outlook?.month?.down);
   const year = normalizePairPercents(outlook?.year?.up, outlook?.year?.down);
+  const mode = getActiveTraderMode();
+  const details = TRADER_MODE_DETAILS[mode];
+  const timeframe = mode === 'scalper'
+    ? '1m / 5m'
+    : mode === 'day'
+      ? '5m / 15m'
+      : mode === 'swing'
+        ? '1H / 4H / Daily'
+        : 'Weekly / Monthly';
+  const aiLine = mode === 'scalper'
+    ? 'Enter now only when momentum + volume align. Exit quickly if momentum fades.'
+    : mode === 'day'
+      ? 'Intraday breakout forming with volume confirmation and VWAP alignment.'
+      : mode === 'swing'
+        ? 'Trend forming. Wait for confirmation near support/resistance before entry.'
+        : 'Valuation and earnings context suggest a long-horizon accumulation watch zone.';
   target.innerHTML = `
     <article class="prob-card">
       <h3>${payload.ticker} Outlook</h3>
+      <p class="small-note"><strong>${details.title} focus:</strong> ${details.short}</p>
+      <p class="small-note"><strong>Primary chart window:</strong> ${timeframe}</p>
       <p><strong>Day:</strong> ${fmtPct(day.up)} up / ${fmtPct(day.down)} down</p>
       <p><strong>Week:</strong> ${fmtPct(week.up)} up / ${fmtPct(week.down)} down</p>
       <p><strong>Month:</strong> ${fmtPct(month.up)} up / ${fmtPct(month.down)} down</p>
       <p><strong>Year:</strong> ${fmtPct(year.up)} up / ${fmtPct(year.down)} down</p>
+      <p><strong>${details.aiPrefix}:</strong> ${aiLine}</p>
       <p class="small-note">Analysts tracked: ${payload.coverage.analystsTracked.toLocaleString()}</p>
       <p class="small-note">Articles analyzed: ${payload.coverage.articlesAnalyzed.toLocaleString()}</p>
     </article>
   `;
+}
+
+function renderModeAwareInsights() {
+  const mode = getActiveTraderMode();
+  const details = TRADER_MODE_DETAILS[mode];
+  const target = document.getElementById('trader-mode-routing');
+  if (!(target instanceof HTMLElement) || !details) {
+    return;
+  }
+  const chartWindow = mode === 'scalper'
+    ? '1m / 5m'
+    : mode === 'day'
+      ? '5m / 15m'
+      : mode === 'swing'
+        ? '1H / 4H / Daily'
+        : 'Weekly / Monthly';
+  const aiTone = mode === 'scalper'
+    ? 'AI style: short, fast, direct signals.'
+    : mode === 'day'
+      ? 'AI style: intraday setup + confirmation language.'
+      : mode === 'swing'
+        ? 'AI style: trend explanation with confirmation steps.'
+        : 'AI style: analytical, valuation and risk outlook focused.';
+  target.textContent = `Active route: ${details.route} • Chart focus: ${chartWindow}. ${aiTone}`;
 }
 
 function renderScanner(payload) {
@@ -2320,8 +2705,20 @@ function renderScanner(payload) {
 
 function renderOptions(payload) {
   const target = document.getElementById('options-results');
+  if (!target) {
+    return;
+  }
+  const mode = getActiveTraderMode();
+  const modeHint = mode === 'scalper'
+    ? 'Tight stop-loss calculator active. Use quick exits for scalp setups.'
+    : mode === 'day'
+      ? 'Use this for intraday risk sizing and breakout pullback entries.'
+      : mode === 'swing'
+        ? 'Use wider stop placements based on support/resistance structure.'
+        : 'Fast options tools are secondary in Long-Term mode. Focus on valuation and risk outlook.';
   target.innerHTML = `
     <article class="stack-item">
+      <p class="small-note"><strong>${TRADER_MODE_DETAILS[mode].title} note:</strong> ${modeHint}</p>
       <p><strong>${payload.ticker}</strong> ${payload.contract.type.toUpperCase()} ${payload.contract.strike}</p>
       <p><strong>Expiration:</strong> ${payload.contract.expiration}</p>
       <p><strong>Premium/contract:</strong> ${fmtUsd(payload.contract.premiumPerContractUsd)}</p>
@@ -2339,7 +2736,22 @@ function renderOptionsLocked(message) {
 
 function renderUnusual(payload) {
   const target = document.getElementById('unusual-results');
+  if (!target) {
+    return;
+  }
   target.innerHTML = '';
+  const mode = getActiveTraderMode();
+  const modeHeadline = mode === 'day'
+    ? 'Intraday catalyst feed'
+    : mode === 'scalper'
+      ? 'Short-window order-flow alerts'
+      : mode === 'swing'
+        ? 'Multi-session unusual flow context'
+        : 'Long-horizon unusual activity context';
+  const intro = document.createElement('p');
+  intro.className = 'small-note';
+  intro.innerHTML = `<strong>${modeHeadline}:</strong> ${TRADER_MODE_DETAILS[mode].aiPrefix}.`;
+  target.appendChild(intro);
   const rows = Array.isArray(payload?.data) ? payload.data : [];
   rows.forEach((move) => {
     const row = document.createElement('article');
@@ -2367,6 +2779,11 @@ function renderHighIv(payload) {
     return;
   }
   target.innerHTML = '';
+  const mode = getActiveTraderMode();
+  const hint = document.createElement('p');
+  hint.className = 'small-note';
+  hint.innerHTML = `<strong>${TRADER_MODE_DETAILS[mode].title} context:</strong> ${mode === 'scalper' ? 'Prioritize the most liquid names and quickest expected moves.' : mode === 'day' ? 'Focus on names with intraday catalyst + elevated IV.' : mode === 'swing' ? 'Use elevated IV for swing entry/hedge timing.' : 'Use IV spikes as caution flags, not short-term triggers.'}`;
+  target.appendChild(hint);
   (payload.items || []).forEach((item) => {
     const card = document.createElement('article');
     card.className = 'high-iv-card';
@@ -2403,6 +2820,11 @@ function renderPremiumSpikes(payload) {
     return;
   }
   target.innerHTML = '';
+  const mode = getActiveTraderMode();
+  const modeLead = document.createElement('p');
+  modeLead.className = 'small-note';
+  modeLead.innerHTML = `<strong>${TRADER_MODE_DETAILS[mode].title} signal:</strong> ${mode === 'scalper' ? 'Use only same-session spikes with immediate reaction.' : mode === 'day' ? 'Confirm with VWAP + breakout before entry.' : mode === 'swing' ? 'Look for multi-day continuation after the spike.' : 'Treat spikes as sentiment context for fundamental watchlists.'}`;
+  target.appendChild(modeLead);
   const rows = Array.isArray(payload?.items) ? payload.items : [];
   rows.forEach((item) => {
     const isCall = String(item.premiumType || '').toLowerCase() === 'call';
@@ -2455,6 +2877,36 @@ function renderPremiumSpikesLocked(message) {
     return;
   }
   target.innerHTML = `<div class="pro-lock">${message}</div>`;
+}
+
+function renderModeAwareInsights() {
+  const mode = getActiveTraderMode();
+  const details = TRADER_MODE_DETAILS[mode];
+  const meta = document.getElementById('trader-mode-meta');
+  if (meta instanceof HTMLElement && details) {
+    meta.innerHTML = `
+      <p><strong>${details.title}</strong> • Risk: ${details.risk} • Horizon: ${details.horizon}</p>
+      <p class="small-note">${details.short}</p>
+    `;
+  }
+  const cards = document.getElementById('trader-mode-cards');
+  if (cards instanceof HTMLElement) {
+    const rows = details.quickSignals
+      .map((line) => `<li>${line}</li>`)
+      .join('');
+    cards.innerHTML = `
+      <article class="trader-mode-option trader-mode-option--active">
+        <h4>${details.aiPrefix}</h4>
+        <p>${details.short}</p>
+        <p><strong>Workflow:</strong> ${MODE_LAYOUT_TEXT[details.dashboardLayout] || MODE_LAYOUT_TEXT.intraday}</p>
+        <ul class="detail-list">${rows}</ul>
+      </article>
+    `;
+  }
+  const routeNote = document.getElementById('trader-mode-routing');
+  if (routeNote instanceof HTMLElement) {
+    routeNote.innerHTML = `Mode route: <a class="open-link" href="${details.route}">${details.route}</a>`;
+  }
 }
 
 function renderEarningsBoard(payload) {
@@ -2579,10 +3031,19 @@ function renderEarningsDetail(item) {
       return `<li><a class="open-link" href="${url}" target="_blank" rel="noopener noreferrer">${title}</a>${publishedAt}</li>`;
     })
     .join('');
+  const mode = getActiveTraderMode();
+  const modeNarrative = mode === 'scalper'
+    ? 'If trading this event, keep position size small and exits fast.'
+    : mode === 'day'
+      ? 'Use opening range + volume confirmation before intraday entry.'
+      : mode === 'swing'
+        ? 'Wait for post-earnings trend direction and retest confirmation.'
+        : 'Prioritize guidance quality, earnings growth, and valuation trajectory over short-term moves.';
 
   target.innerHTML = `
     <article class="earnings-detail-card">
       <h3>${item.ticker} Earnings Intel</h3>
+      <p class="small-note"><strong>${TRADER_MODE_DETAILS[mode].title} lens:</strong> ${modeNarrative}</p>
       <p><strong>Date:</strong> ${item.eventDateLabel || item.eventDate || scheduleLabel}</p>
       <p><strong>Session:</strong> ${item.reportTimeLabel || 'Pre-Market'}</p>
       <p class="small-note"><strong>Calendar source:</strong> ${sourceLabel}</p>
@@ -2620,6 +3081,7 @@ function renderAiSidebar(payload) {
     openLink.setAttribute('href', FALLBACK_AI_DISCOVERY_LINK);
     return;
   }
+  const mode = getActiveTraderMode();
 
   if (!platforms.some((platform) => platform.id === activeAiPlatform)) {
     activeAiPlatform = platforms[0].id;
@@ -2637,6 +3099,7 @@ function renderAiSidebar(payload) {
         <article class="stack-item">
           <p><strong>${platform.label}</strong> <span class="chip">Selected</span></p>
           <p class="small-note">${platform.description}</p>
+          <p class="small-note"><strong>${TRADER_MODE_DETAILS[mode].aiPrefix}:</strong> ${mode === 'scalper' ? 'Enter now / exit now / momentum fading.' : mode === 'day' ? 'Intraday breakout forming with volume confirmation detected.' : mode === 'swing' ? 'Trend continuation probability improving; wait for confirmation.' : 'Undervalued based on fundamentals with long-term risk outlook.'}</p>
         </article>
       `;
       openLink.setAttribute('href', platform.searchUrl);
@@ -2668,6 +3131,11 @@ function renderTrendTrades(payload) {
     return;
   }
   target.innerHTML = '';
+  const mode = getActiveTraderMode();
+  const preface = document.createElement('p');
+  preface.className = 'small-note';
+  preface.innerHTML = `<strong>${TRADER_MODE_DETAILS[mode].title} filter:</strong> ${mode === 'scalper' ? 'Only strongest momentum names should be actioned quickly.' : mode === 'day' ? 'Prioritize names with volume + catalyst alignment.' : mode === 'swing' ? 'Prefer higher-confidence names with multi-day continuation.' : 'Use trend as sentiment input, not immediate execution trigger.'}`;
+  target.appendChild(preface);
   if (sourceSelect) {
     const sources = payload.availableSources || payload.sources || ['all'];
     sourceSelect.innerHTML = '';
@@ -2697,6 +3165,7 @@ function renderTrendTrades(payload) {
   if (!Array.isArray(payload?.items) || payload.items.length === 0) {
     target.innerHTML = '<div class="pro-lock">No trend trades are available right now.</div>';
   }
+  applyModeSpecificContentHints();
 }
 
 function renderTrendTradesLocked(message) {
@@ -2725,6 +3194,11 @@ function renderRealizedPatterns(payload) {
     return;
   }
   target.innerHTML = '';
+  const mode = getActiveTraderMode();
+  const intro = document.createElement('p');
+  intro.className = 'small-note';
+  intro.innerHTML = `<strong>${TRADER_MODE_DETAILS[mode].title} pattern lens:</strong> ${mode === 'scalper' ? 'Focus on quick trigger + invalidation levels.' : mode === 'day' ? 'Use intraday pattern confirmation with VWAP context.' : mode === 'swing' ? 'Track continuation/breakout structures across sessions.' : 'Use pattern quality as secondary context to fundamentals.'}`;
+  target.appendChild(intro);
 
   if (filterSelect) {
     const filters = payload.availableTypes || payload.availableFilters || ['all'];
@@ -2764,6 +3238,7 @@ function renderRealizedPatterns(payload) {
   if (!payload.items || payload.items.length === 0) {
     target.innerHTML = '<div class="pro-lock">No active realized patterns right now. Triggered patterns are removed automatically.</div>';
   }
+  applyModeSpecificContentHints();
 }
 
 function renderWildTakes(payload) {
@@ -2772,6 +3247,11 @@ function renderWildTakes(payload) {
     return;
   }
   target.innerHTML = '';
+  const mode = getActiveTraderMode();
+  const intro = document.createElement('p');
+  intro.className = 'small-note';
+  intro.innerHTML = `<strong>${TRADER_MODE_DETAILS[mode].title} AI style:</strong> ${mode === 'scalper' ? 'Short, direct, execution-focused.' : mode === 'day' ? 'Fast but structured intraday narrative.' : mode === 'swing' ? 'Explained setups with confirmation language.' : 'Analytical long-horizon interpretation.'}`;
+  target.appendChild(intro);
   (payload.items || []).forEach((item) => {
     const card = document.createElement('article');
     card.className = `wild-take-card wild-take-card--${item.sentiment || item.direction || 'neutral'}`;
@@ -2789,6 +3269,7 @@ function renderWildTakes(payload) {
   if (!payload.items || payload.items.length === 0) {
     target.innerHTML = '<div class="pro-lock">No fresh wild takes right now.</div>';
   }
+  applyModeSpecificContentHints();
 }
 
 function renderInsiderTrades(payload) {
@@ -3011,6 +3492,7 @@ async function calculateOptions(formValues) {
 async function refreshBaseline() {
   const health = await fetchJson('/health');
   renderStatus(`API status: ${health.status}`);
+  applyTraderModeUI(getActiveTraderMode(), { save: false, persistToServer: false });
   await Promise.all([
     loadOutlook(activeTicker),
     loadEarningsBoard(),
@@ -3120,31 +3602,37 @@ async function login(email, password, options = {}) {
 }
 
 async function signup(email, password, options = {}) {
+  const traderMode = normalizeTraderMode(options.traderMode || getActiveTraderMode());
   const payload = await fetchJson('/api/auth/signup', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       email,
       password,
+      traderMode,
       remember: options.remember !== false
     })
   });
   applyAuthPayload(payload, email);
+  persistTraderMode(payload?.user?.traderMode || traderMode);
   await fetchCurrentUser();
   return payload;
 }
 
 async function socialSignIn(provider, email, options = {}) {
+  const traderMode = normalizeTraderMode(options.traderMode || getActiveTraderMode());
   const payload = await fetchJson('/api/auth/oauth/signin', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       provider,
       email,
+      traderMode,
       remember: options.remember !== false
     })
   });
   applyAuthPayload(payload, email);
+  persistTraderMode(payload?.user?.traderMode || traderMode);
   await fetchCurrentUser();
   return payload;
 }
@@ -3152,6 +3640,7 @@ async function socialSignIn(provider, email, options = {}) {
 function openSocialAuthPage(provider, email, redirectPath, remember = true) {
   const normalizedProvider = String(provider || '').trim().toLowerCase();
   const params = new URLSearchParams();
+  const traderMode = getActiveTraderMode();
   if (normalizedProvider) {
     params.set('provider', normalizedProvider);
   }
@@ -3159,6 +3648,7 @@ function openSocialAuthPage(provider, email, redirectPath, remember = true) {
   if (normalizedEmail) {
     params.set('email', normalizedEmail);
   }
+  params.set('traderMode', traderMode);
   if (redirectPath && String(redirectPath).startsWith('/')) {
     params.set('next', String(redirectPath));
   }
@@ -3976,6 +4466,7 @@ function setupProPopup() {
 
 async function init() {
   setupBrowseToolsMenu();
+  setupTraderModeControls();
   authToken = localStorage.getItem('dumbdollars_token') || '';
   renderAuthState();
   setAuthMessage('Checking your session...');

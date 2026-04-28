@@ -27,6 +27,30 @@
         </section>
 
         <section class="auth-bar">
+          <section class="card ai-trader-mode-card" aria-labelledby="ai-trader-mode-title">
+            <h3 id="ai-trader-mode-title">Choose Your Trading Style</h3>
+            <p class="small-note">We will personalize your tools, signals, and AI workflow based on this mode.</p>
+            <div id="ai-access-trader-mode-grid" class="ai-trader-mode-grid" role="radiogroup" aria-label="Trader mode selector">
+              <button type="button" class="ai-trader-mode-option" data-trader-mode="scalper" aria-pressed="false">
+                <strong>Scalper</strong>
+                <span class="small-note">Fast trades (seconds to minutes) • High risk • High frequency</span>
+              </button>
+              <button type="button" class="ai-trader-mode-option" data-trader-mode="day" aria-pressed="true">
+                <strong>Day Trader</strong>
+                <span class="small-note">Intraday setups • Medium-High risk • No overnight holds</span>
+              </button>
+              <button type="button" class="ai-trader-mode-option" data-trader-mode="swing" aria-pressed="false">
+                <strong>Swing Trader</strong>
+                <span class="small-note">Multi-day trends • Medium risk • Days to weeks</span>
+              </button>
+              <button type="button" class="ai-trader-mode-option" data-trader-mode="long" aria-pressed="false">
+                <strong>Long-Term Investor</strong>
+                <span class="small-note">Fundamentals + macro • Lower frequency • Months to years</span>
+              </button>
+            </div>
+            <p id="ai-access-trader-mode-summary" class="small-note">Selected: Day Trader.</p>
+          </section>
+
           <div class="auth-grid">
             <form id="ai-access-signup-form" class="auth-form">
               <label>

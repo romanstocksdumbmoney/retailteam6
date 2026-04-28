@@ -35,6 +35,8 @@ const DISPOSABLE_EMAIL_DOMAINS = new Set([
   'trashmail.com',
   'yopmail.com'
 ]);
+const ALLOWED_TRADER_MODES = new Set(['scalper', 'day', 'swing', 'long']);
+const DEFAULT_TRADER_MODE = 'day';
 
 function normalizeEmail(email) {
   return String(email || '')
@@ -61,6 +63,14 @@ function ensureStoreDirExists() {
 
 function nowIso() {
   return new Date().toISOString();
+}
+
+function normalizeTraderMode(mode) {
+  const value = String(mode || '').trim().toLowerCase();
+  if (ALLOWED_TRADER_MODES.has(value)) {
+    return value;
+  }
+  return DEFAULT_TRADER_MODE;
 }
 
 function hashRememberToken(token) {
@@ -110,6 +120,7 @@ function persistUsersToDisk(options = {}) {
       stripeCustomerId: user.stripeCustomerId || null,
       stripeSubscriptionId: user.stripeSubscriptionId || null,
       subscriptionStatus: user.subscriptionStatus || (user.plan === 'pro' ? 'active' : 'inactive'),
+      traderMode: normalizeTraderMode(user.traderMode),
       rememberSessions: normalizeRememberSessions(user.rememberSessions),
       createdAt: user.createdAt || nowIso(),
       updatedAt: user.updatedAt || nowIso()
@@ -156,6 +167,7 @@ function loadUsersFromDisk() {
         stripeCustomerId: record?.stripeCustomerId ? String(record.stripeCustomerId).trim() : null,
         stripeSubscriptionId: record?.stripeSubscriptionId ? String(record.stripeSubscriptionId).trim() : null,
         subscriptionStatus: String(record?.subscriptionStatus || (record?.plan === 'pro' ? 'active' : 'inactive')),
+        traderMode: normalizeTraderMode(record?.traderMode),
         rememberSessions: normalizeRememberSessions(record?.rememberSessions),
         createdAt: String(record?.createdAt || nowIso()),
         updatedAt: String(record?.updatedAt || nowIso())
@@ -251,6 +263,7 @@ function sanitizeUser(user) {
     stripeCustomerId: user.stripeCustomerId || null,
     stripeSubscriptionId: user.stripeSubscriptionId || null,
     subscriptionStatus: user.subscriptionStatus || 'inactive',
+    traderMode: normalizeTraderMode(user.traderMode),
     createdAt: user.createdAt,
     updatedAt: user.updatedAt
   };
@@ -301,7 +314,7 @@ function secureStringEqual(left, right) {
   return crypto.timingSafeEqual(leftBuffer, rightBuffer);
 }
 
-function createUser({ email, password, passwordHash, authProvider = 'password' }) {
+function createUser({ email, password, passwordHash, authProvider = 'password', traderMode = DEFAULT_TRADER_MODE }) {
   const normalizedEmail = normalizeEmail(email);
   if (!normalizedEmail) {
     throw new Error('email_required');
@@ -333,6 +346,7 @@ function createUser({ email, password, passwordHash, authProvider = 'password' }
     stripeCustomerId: null,
     stripeSubscriptionId: null,
     subscriptionStatus: 'inactive',
+    traderMode: normalizeTraderMode(traderMode),
     rememberSessions: [],
     createdAt: nowIso(),
     updatedAt: nowIso()
@@ -483,6 +497,10 @@ function updateUser(userId, patch) {
     }
   }
 
+  if (Object.prototype.hasOwnProperty.call(patch, 'traderMode')) {
+    user.traderMode = normalizeTraderMode(patch.traderMode);
+  }
+
   user.updatedAt = nowIso();
   persistUsersToDisk();
   return user;
@@ -582,7 +600,12 @@ function revokeRememberSession(rawRememberToken) {
   return false;
 }
 
-function findOrCreateUserByAuthProvider({ email, authProvider }) {
+function findOrCreateUserByAuthProvider({
+  email,
+  authProvider,
+  traderMode = DEFAULT_TRADER_MODE,
+  hasTraderMode = false
+}) {
   const normalizedEmail = normalizeEmail(email);
   if (!normalizedEmail) {
     throw new Error('email_required');
@@ -597,7 +620,11 @@ function findOrCreateUserByAuthProvider({ email, authProvider }) {
 
   const existing = findUserByEmail(normalizedEmail);
   if (existing) {
-    const updated = updateUser(existing.id, { authProvider: provider });
+    const patch = { authProvider: provider };
+    if (hasTraderMode) {
+      patch.traderMode = traderMode;
+    }
+    const updated = updateUser(existing.id, patch);
     return {
       user: sanitizeUser(updated),
       created: false
@@ -607,7 +634,8 @@ function findOrCreateUserByAuthProvider({ email, authProvider }) {
   const created = createUser({
     email: normalizedEmail,
     passwordHash: bcrypt.hashSync(crypto.randomUUID(), 10),
-    authProvider: provider
+    authProvider: provider,
+    traderMode
   });
   return {
     user: created,

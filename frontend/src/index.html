@@ -80,6 +80,32 @@
 
         <p id="status" class="status">Checking API status...</p>
 
+        <section class="card trader-mode-card" aria-labelledby="trader-mode-title">
+          <div class="section-header">
+            <h2 id="trader-mode-title">Choose Your Trading Style</h2>
+            <span class="chip">Trader Mode</span>
+          </div>
+          <p id="trader-mode-helper" class="small-note">Select a mode to personalize tools, AI language, and workflow.</p>
+          <div class="row-form trader-mode-control-row">
+            <label for="trader-mode-select">
+              Trader Mode
+              <select id="trader-mode-select" aria-describedby="trader-mode-helper">
+                <option value="scalper">Scalper</option>
+                <option value="day">Day Trader</option>
+                <option value="swing">Swing Trader</option>
+                <option value="long">Long-Term Investor</option>
+              </select>
+            </label>
+            <label class="trader-mode-toggle-label">
+              <input id="trader-mode-show-all" type="checkbox" />
+              Show All Modes
+            </label>
+          </div>
+          <div id="trader-mode-meta" class="stack-item trader-mode-meta"></div>
+          <div id="trader-mode-cards" class="trader-mode-cards"></div>
+          <div id="trader-mode-routing" class="small-note trader-mode-routing"></div>
+        </section>
+
         <section class="conversion-hero card" aria-labelledby="conversion-hero-title">
           <p class="conversion-hero-kicker">Built for retail traders and first-time market learners</p>
           <h2 id="conversion-hero-title">Where Smart Moves Start With Small Money</h2>

@@ -7,6 +7,7 @@ const {
   getUserById,
   sanitizeUser,
   setUserPlanById,
+  setUserTraderModeById,
   createRememberSessionForUser,
   restoreRememberSession,
   revokeRememberSession
@@ -61,6 +62,7 @@ const LOGIN_LOCKOUT_MS = 15 * 60 * 1000;
 const loginFailuresByEmail = new Map();
 const loginFailuresByEmailAndIp = new Map();
 const ACCESS_CODE_ALLOW_FREE_UPGRADE = String(process.env.ACCESS_CODE_ALLOW_FREE_UPGRADE || '0').trim() === '1';
+const ALLOWED_TRADER_MODES = new Set(['scalper', 'day', 'swing', 'long']);
 
 function nowMs() {
   return Date.now();
@@ -169,6 +171,14 @@ function wantsRememberSession(req) {
     return true;
   }
   return Boolean(req.body?.remember);
+}
+
+function parseTraderModeInput(rawMode) {
+  const mode = String(rawMode || '').trim().toLowerCase();
+  if (ALLOWED_TRADER_MODES.has(mode)) {
+    return mode;
+  }
+  return null;
 }
 
 function maybeCreateRememberSession(user, req) {
@@ -320,7 +330,8 @@ router.post('/signup', async (req, res) => {
         message: 'Enter a valid email address.'
       });
     }
-    const user = createUser({ email, password });
+    const traderMode = parseTraderModeInput(req.body?.traderMode) || undefined;
+    const user = createUser({ email, password, traderMode });
     const token = signAuthToken({ userId: user.id, email: user.email });
     const remember = maybeCreateRememberSession(user, req);
     await triggerEmailAutomationForUser(user, {
@@ -378,6 +389,7 @@ router.post('/oauth/signin', async (req, res) => {
   try {
     const email = String(req.body?.email || '').trim().toLowerCase();
     const provider = normalizeAuthProvider(req.body?.provider);
+    const requestedTraderMode = parseTraderModeInput(req.body?.traderMode);
     if (!email) {
       return res.status(400).json({
         error: 'email_required',
@@ -399,7 +411,8 @@ router.post('/oauth/signin', async (req, res) => {
 
     const { user, created } = findOrCreateUserByAuthProvider({
       email,
-      authProvider: provider
+      authProvider: provider,
+      traderMode: requestedTraderMode || undefined
     });
     const token = signAuthToken({ userId: user.id, email: user.email });
     const remember = maybeCreateRememberSession(user, req);
@@ -668,6 +681,28 @@ router.post('/access-code/verify', (req, res) => {
 
 router.get('/me', authRequired, (req, res) => {
   return res.json({ user: req.user });
+});
+
+router.post('/trader-mode', authRequired, (req, res) => {
+  const traderMode = parseTraderModeInput(req.body?.traderMode);
+  if (!traderMode) {
+    return res.status(400).json({
+      error: 'invalid_trader_mode',
+      message: 'Trader mode must be one of: scalper, day, swing, long.'
+    });
+  }
+  const user = setUserTraderModeById(req.user.id, traderMode);
+  if (!user) {
+    return res.status(404).json({
+      error: 'user_not_found',
+      message: 'Could not update trader mode for this account.'
+    });
+  }
+  return res.json({
+    ok: true,
+    traderMode: user.traderMode,
+    user
+  });
 });
 
 router.get('/email-automation/settings', authRequired, (req, res) => {

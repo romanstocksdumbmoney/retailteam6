@@ -87,6 +87,18 @@ function getSafeNextPath() {
   return '/';
 }
 
+function getSelectedTraderMode() {
+  const modeSelect = document.getElementById('social-auth-trader-mode');
+  if (!(modeSelect instanceof HTMLSelectElement)) {
+    return 'day';
+  }
+  const value = String(modeSelect.value || '').trim().toLowerCase();
+  if (value === 'scalper' || value === 'day' || value === 'swing' || value === 'long') {
+    return value;
+  }
+  return 'day';
+}
+
 function saveAuthSession(token, email) {
   const normalizedToken = String(token || '').trim();
   if (!normalizedToken) {
@@ -110,10 +122,11 @@ function saveRememberToken(token) {
 }
 
 async function doSocialSignIn(provider, email, remember = true) {
+  const traderMode = getSelectedTraderMode();
   return fetchJson('/api/auth/oauth/signin', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ provider, email, remember })
+    body: JSON.stringify({ provider, email, remember, traderMode })
   });
 }
 
@@ -130,13 +143,20 @@ function providerLabel(provider) {
 
 function setupButtons() {
   const emailInput = document.getElementById('social-auth-email');
+  const modeSelect = document.getElementById('social-auth-trader-mode');
   const buttons = Array.from(document.querySelectorAll('.social-auth-provider-btn, .social-auth-continue-btn'));
   if (!(emailInput instanceof HTMLInputElement)) {
     return;
   }
   const preferredFromQuery = normalizeEmail(getQueryParam('email'));
+  const modeFromQuery = String(getQueryParam('traderMode') || '').trim().toLowerCase();
   const storedEmail = normalizeEmail(localStorage.getItem('dumbdollars_saved_email') || '');
   emailInput.value = preferredFromQuery || storedEmail || '';
+  if (modeSelect instanceof HTMLSelectElement) {
+    const allowedModes = new Set(['scalper', 'day', 'swing', 'long']);
+    const initialMode = allowedModes.has(modeFromQuery) ? modeFromQuery : 'day';
+    modeSelect.value = initialMode;
+  }
 
   buttons.forEach((button) => {
     button.addEventListener('click', async () => {

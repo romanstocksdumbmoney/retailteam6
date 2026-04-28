@@ -1937,6 +1937,216 @@ h1 {
   font-size: 0.83rem;
 }
 
+.trader-mode-card {
+  margin-top: 0.8rem;
+  border: 1px solid rgba(255, 215, 0, 0.3);
+  border-radius: 14px;
+  background: rgba(8, 12, 25, 0.62);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  box-shadow:
+    0 12px 35px rgba(0, 0, 0, 0.45),
+    inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  padding: 0.9rem;
+}
+
+.trader-mode-card h3 {
+  margin: 0;
+  color: #fde68a;
+}
+
+.trader-mode-grid {
+  margin-top: 0.65rem;
+  display: grid;
+  gap: 0.55rem;
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+}
+
+.trader-mode-option {
+  border: 1px solid rgba(148, 163, 184, 0.3);
+  border-radius: 12px;
+  padding: 0.62rem;
+  background: rgba(15, 20, 35, 0.55);
+  cursor: pointer;
+}
+
+.trader-mode-option:hover {
+  border-color: rgba(255, 215, 0, 0.5);
+  background: rgba(255, 215, 0, 0.12);
+}
+
+.trader-mode-option h4 {
+  margin: 0 0 0.2rem;
+  color: #fef08a;
+}
+
+.trader-mode-option p {
+  margin: 0.16rem 0;
+  font-size: 0.82rem;
+  color: #dbe2ee;
+}
+
+.trader-mode-option strong {
+  color: #fde68a;
+}
+
+.trader-mode-option--active {
+  border-color: rgba(255, 215, 0, 0.62);
+  background: rgba(255, 215, 0, 0.15);
+}
+
+.trader-mode-toolbar {
+  margin-top: 0.55rem;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.trader-mode-select {
+  min-width: 210px;
+}
+
+.trader-mode-status {
+  margin-top: 0.45rem;
+}
+
+.trader-mode-control-row {
+  align-items: end;
+}
+
+.trader-mode-toggle-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+}
+
+.trader-mode-meta {
+  margin-top: 0.55rem;
+}
+
+.trader-mode-meta p {
+  margin: 0.2rem 0;
+}
+
+.trader-mode-cards {
+  margin-top: 0.6rem;
+  display: grid;
+  gap: 0.52rem;
+  grid-template-columns: repeat(auto-fit, minmax(215px, 1fr));
+}
+
+.trader-mode-card-item {
+  border: 1px solid rgba(148, 163, 184, 0.34);
+  border-radius: 12px;
+  padding: 0.6rem;
+  background: rgba(15, 20, 35, 0.56);
+}
+
+.trader-mode-card-item h3 {
+  margin: 0;
+  font-size: 0.92rem;
+  color: #fef08a;
+}
+
+.trader-mode-card-item p {
+  margin: 0.2rem 0 0;
+}
+
+.trader-mode-card-item--active {
+  border-color: rgba(250, 204, 21, 0.7);
+  background: rgba(250, 204, 21, 0.14);
+}
+
+.trader-mode-routing {
+  margin-top: 0.52rem;
+}
+
+.trader-mode-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  border: 1px solid rgba(250, 204, 21, 0.42);
+  border-radius: 999px;
+  padding: 0.2rem 0.55rem;
+  font-size: 0.76rem;
+  color: #fde68a;
+}
+
+.trader-mode-ai-note {
+  margin-top: 0.4rem;
+  padding: 0.45rem 0.55rem;
+  border: 1px solid rgba(148, 163, 184, 0.3);
+  border-radius: 10px;
+  background: rgba(8, 12, 25, 0.5);
+}
+
+.ai-trader-mode-grid {
+  margin-top: 0.5rem;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 0.55rem;
+}
+
+.ai-trader-mode-option {
+  width: 100%;
+  text-align: left;
+  display: grid;
+  gap: 0.25rem;
+  border: 1px solid rgba(148, 163, 184, 0.34);
+  border-radius: 12px;
+  background: rgba(8, 12, 25, 0.52);
+  padding: 0.58rem 0.62rem;
+}
+
+.ai-trader-mode-option strong {
+  color: #fef08a;
+}
+
+.ai-trader-mode-option--active {
+  border-color: rgba(250, 204, 21, 0.7) !important;
+  background: rgba(250, 204, 21, 0.16) !important;
+}
+
+.ai-trader-mode-grid {
+  margin-top: 0.65rem;
+  display: grid;
+  gap: 0.55rem;
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+}
+
+.ai-trader-mode-option {
+  border: 1px solid rgba(148, 163, 184, 0.32);
+  border-radius: 12px;
+  background: rgba(15, 20, 35, 0.56);
+  color: #dbe2ee;
+  text-align: left;
+  padding: 0.62rem;
+  display: grid;
+  gap: 0.22rem;
+}
+
+.ai-trader-mode-option strong {
+  color: #fde68a;
+}
+
+.ai-trader-mode-option[aria-pressed='true'] {
+  border-color: rgba(250, 204, 21, 0.72);
+  background: rgba(250, 204, 21, 0.14);
+}
+
+.social-auth-trader-mode-row {
+  margin-top: 0.55rem;
+}
+
+.trader-hint {
+  margin-top: 0.5rem;
+  padding: 0.55rem 0.6rem;
+  border: 1px solid rgba(255, 215, 0, 0.25);
+  border-radius: 10px;
+  background: rgba(8, 12, 25, 0.58);
+}
+
 .plan-badge {
   display: inline-flex;
   align-items: center;
