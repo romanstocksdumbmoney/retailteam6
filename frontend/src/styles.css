@@ -32,7 +32,7 @@ body {
     'Helvetica Neue',
     Arial,
     sans-serif;
-  background: #05070d;
+  background: transparent !important;
   color: var(--text-primary);
   line-height: 1.45;
   letter-spacing: 0.01em;
@@ -47,38 +47,43 @@ body {
   left: 0;
   width: 100%;
   height: 100%;
-  z-index: -2;
+  z-index: 0;
   pointer-events: none;
   overflow: hidden;
-  background-image: url('./diamond-hands-wallstreet-bg.svg');
-  background-size: cover;
+  background-image: url('/diamond-hands.png');
+  background-size: contain;
   background-position: center center;
   background-repeat: no-repeat;
   background-attachment: fixed;
-  filter: brightness(0.85) contrast(1.1);
+  opacity: 0.62;
+  filter: brightness(0.9) contrast(1.14);
 }
 
 .diamond-bg-overlay {
   position: fixed;
   inset: 0;
-  z-index: -1;
+  z-index: 1;
   pointer-events: none;
-  background: linear-gradient(
-    rgba(0, 0, 0, 0.45),
-    rgba(0, 0, 0, 0.65)
-  );
+  background:
+    radial-gradient(circle at center, rgba(0, 0, 0, 0.15), rgba(0, 0, 0, 0.72)),
+    rgba(0, 0, 0, 0.35);
 }
 
 body.fun-mode-off .diamond-bg {
   background-image: none;
-  background:
-    radial-gradient(circle at 20% -20%, rgba(59, 130, 246, 0.14), transparent 45%),
-    radial-gradient(circle at 90% 10%, rgba(15, 23, 42, 0.3), transparent 35%),
-    #05070d;
+  background: rgba(5, 7, 13, 0.85);
 }
 
 body.fun-mode-off .diamond-bg-overlay {
   background: rgba(0, 0, 0, 0.78);
+}
+
+.app,
+.page,
+.main-content {
+  position: relative;
+  z-index: 2;
+  background: transparent !important;
 }
 
 .browse-tools-toggle {
@@ -129,7 +134,7 @@ textarea,
   margin: 0 auto;
   padding: 1.5rem 1rem 3rem;
   position: relative;
-  z-index: 1;
+  z-index: 2;
 }
 
 .pro-page-body {
@@ -2124,9 +2129,11 @@ textarea,
 button {
   font: inherit;
   border-radius: 9px;
-  border: 1px solid #4b5563;
-  background: #0f172a;
+  border: 1px solid rgba(255, 220, 70, 0.32);
+  background: rgba(8, 12, 25, 0.62);
   color: #f8fafc;
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
   padding: 0.5rem 0.65rem;
 }
 

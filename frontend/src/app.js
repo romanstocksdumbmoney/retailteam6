@@ -1898,9 +1898,6 @@ function getInitialFunModeBackgroundPreference() {
   } catch (_error) {
     // Ignore storage failures in restrictive browser contexts.
   }
-  if (window.matchMedia('(max-width: 680px)').matches) {
-    return false;
-  }
   return true;
 }
 

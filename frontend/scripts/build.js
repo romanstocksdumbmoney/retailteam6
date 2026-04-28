@@ -34,6 +34,7 @@ async function build() {
   await fs.copyFile(path.join(srcDir, 'insider-trades.html'), path.join(buildDir, 'insider-trades.html'));
   await fs.copyFile(path.join(srcDir, 'portfolios.html'), path.join(buildDir, 'portfolios.html'));
   await fs.copyFile(path.join(srcDir, 'logo-mark.svg'), path.join(buildDir, 'logo-mark.svg'));
+  await fs.copyFile(path.join(srcDir, 'diamond-hands.png'), path.join(buildDir, 'diamond-hands.png'));
   await fs.copyFile(path.join(srcDir, 'diamond-hands-wallstreet-bg.svg'), path.join(buildDir, 'diamond-hands-wallstreet-bg.svg'));
   await fs.copyFile(path.join(srcDir, 'app.js'), path.join(buildDir, 'app.js'));
   await fs.copyFile(path.join(srcDir, 'pro.js'), path.join(buildDir, 'pro.js'));
