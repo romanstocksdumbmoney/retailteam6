@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>DumbDollars • Stock Analysis</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <div class="diamond-bg" aria-hidden="true"></div>
+    <div class="diamond-bg-overlay" aria-hidden="true"></div>
+    <main class="stock-analysis-page">
+      <div class="stock-analysis-shell">
+        <button id="analysis-back-button" class="btn-secondary analysis-back" type="button">← Back</button>
+        <section class="card stock-analysis-card">
+          <header class="stock-analysis-header">
+            <div>
+              <p class="analysis-kicker">Stock Research</p>
+              <h1 id="analysis-title">Analyzing…</h1>
+              <p id="analysis-subtitle" class="small-note">Loading real market data.</p>
+            </div>
+            <div id="analysis-price-block" class="analysis-price-block"></div>
+          </header>
+
+          <div id="analysis-loading" class="analysis-loading">
+            <div class="status-loading" aria-hidden="true"></div>
+            <p id="analysis-loading-text">Analyzing ticker…</p>
+          </div>
+
+          <div id="analysis-error" class="pro-lock hidden" role="alert"></div>
+
+          <div id="analysis-content" class="analysis-content hidden">
+            <section class="analysis-stat-row" id="analysis-stat-row"></section>
+
+            <section class="analysis-range-wrap">
+              <h2>52-Week Range</h2>
+              <div class="analysis-range-bar">
+                <div id="analysis-range-marker" class="analysis-range-marker" aria-hidden="true"></div>
+              </div>
+              <div class="analysis-range-labels">
+                <span id="analysis-range-low">Unavailable</span>
+                <span id="analysis-range-high">Unavailable</span>
+              </div>
+            </section>
+
+            <section class="analysis-score-board">
+              <div class="analysis-gauge-wrap">
+                <svg class="analysis-gauge" viewBox="0 0 160 160" aria-label="Overall score gauge">
+                  <circle class="analysis-gauge-track" cx="80" cy="80" r="64"></circle>
+                  <circle id="analysis-gauge-progress" class="analysis-gauge-progress" cx="80" cy="80" r="64"></circle>
+                </svg>
+                <div class="analysis-gauge-center">
+                  <strong id="analysis-overall-score">0</strong>
+                  <span>/100</span>
+                </div>
+                <p id="analysis-overall-label" class="analysis-overall-label">NEUTRAL</p>
+              </div>
+            </section>
+
+            <section class="analysis-trade-cards" id="analysis-trade-cards"></section>
+
+            <section class="analysis-indicators">
+              <h2>Technical Indicators</h2>
+              <div id="analysis-indicator-table" class="analysis-indicator-table"></div>
+            </section>
+
+            <p class="small-note">
+              This analysis is for informational purposes only and does not constitute financial advice.
+              Always do your own research before investing.
+            </p>
+          </div>
+        </section>
+      </div>
+    </main>
+    <script src="./stock-analysis.js"></script>
+  </body>
+</html>

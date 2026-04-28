@@ -3515,6 +3515,553 @@ button[aria-busy='true']::after {
   margin-bottom: 0.45rem;
 }
 
+.analysis-page-shell {
+  width: min(1220px, 95vw);
+  margin: 1rem auto 2rem;
+  padding: 0.4rem 0 1.2rem;
+}
+
+.analysis-back-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  color: #fde68a;
+  text-decoration: none;
+  font-weight: 700;
+  margin-bottom: 0.8rem;
+}
+
+.stock-analysis-page {
+  min-height: 100vh;
+  padding: 1rem;
+}
+
+.stock-analysis-shell {
+  width: min(1220px, 95vw);
+  margin: 0 auto 2rem;
+}
+
+.analysis-back {
+  margin-bottom: 0.75rem;
+}
+
+.stock-analysis-card {
+  display: grid;
+  gap: 0.9rem;
+}
+
+.stock-analysis-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 0.8rem;
+  flex-wrap: wrap;
+}
+
+.analysis-kicker {
+  margin: 0;
+  color: #fde68a;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  font-size: 0.72rem;
+}
+
+.analysis-price-block {
+  display: grid;
+  gap: 0.2rem;
+  text-align: right;
+}
+
+.analysis-price {
+  font-size: 1.5rem;
+  font-weight: 800;
+}
+
+.analysis-delta {
+  font-weight: 700;
+}
+
+.analysis-delta.up {
+  color: #86efac;
+}
+
+.analysis-delta.down {
+  color: #fca5a5;
+}
+
+.analysis-loading {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+}
+
+.analysis-content {
+  display: grid;
+  gap: 0.9rem;
+}
+
+.analysis-stat-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+}
+
+.analysis-range-wrap {
+  display: grid;
+  gap: 0.4rem;
+}
+
+.analysis-range-wrap h2 {
+  margin: 0;
+  font-size: 0.95rem;
+}
+
+.analysis-score-board {
+  display: grid;
+  place-items: center;
+}
+
+.analysis-gauge-wrap {
+  position: relative;
+  width: 210px;
+  text-align: center;
+}
+
+.analysis-gauge {
+  width: 210px;
+  height: 210px;
+  display: block;
+}
+
+.analysis-gauge-track {
+  fill: none;
+  stroke: rgba(148, 163, 184, 0.3);
+  stroke-width: 13;
+}
+
+.analysis-gauge-progress {
+  fill: none;
+  stroke-width: 13;
+  stroke-linecap: round;
+  transform: rotate(-90deg);
+  transform-origin: 80px 80px;
+  stroke: #f97316;
+  transition: stroke-dashoffset 900ms ease, stroke 320ms ease;
+}
+
+.analysis-gauge-progress.score-gauge-fill--weak {
+  stroke: #ef4444;
+}
+
+.analysis-gauge-progress.score-gauge-fill--neutral {
+  stroke: #f59e0b;
+}
+
+.analysis-gauge-progress.score-gauge-fill--good {
+  stroke: #3b82f6;
+}
+
+.analysis-gauge-progress.score-gauge-fill--strong {
+  stroke: #22c55e;
+}
+
+.analysis-gauge-center {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-content: center;
+  pointer-events: none;
+}
+
+.analysis-gauge-center strong {
+  font-size: 2rem;
+}
+
+.analysis-overall-label {
+  margin: 0.35rem 0 0;
+  font-weight: 700;
+}
+
+.analysis-trade-cards {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.65rem;
+}
+
+.analysis-trade-card {
+  border-radius: 12px;
+  border: 1px solid rgba(148, 163, 184, 0.3);
+  background: rgba(8, 12, 25, 0.75);
+  padding: 0.72rem;
+  box-shadow: 0 0 0 rgba(0, 0, 0, 0);
+}
+
+.analysis-trade-card[data-verdict="good"] {
+  border-color: rgba(34, 197, 94, 0.55);
+  box-shadow: 0 0 18px rgba(34, 197, 94, 0.16);
+}
+
+.analysis-trade-card[data-verdict="neutral"] {
+  border-color: rgba(245, 158, 11, 0.55);
+  box-shadow: 0 0 18px rgba(245, 158, 11, 0.14);
+}
+
+.analysis-trade-card[data-verdict="bad"] {
+  border-color: rgba(239, 68, 68, 0.58);
+  box-shadow: 0 0 18px rgba(239, 68, 68, 0.16);
+}
+
+.analysis-trade-card-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.trade-score-chip {
+  border-radius: 999px;
+  border: 1px solid rgba(250, 204, 21, 0.34);
+  padding: 0.17rem 0.48rem;
+  font-size: 0.78rem;
+}
+
+.trade-risk-chip {
+  display: inline-flex;
+  border-radius: 999px;
+  border: 1px solid rgba(148, 163, 184, 0.42);
+  padding: 0.16rem 0.42rem;
+  font-size: 0.73rem;
+}
+
+.analysis-indicators h2 {
+  margin: 0 0 0.4rem;
+  font-size: 0.95rem;
+}
+
+.analysis-indicator-table {
+  display: grid;
+  border: 1px solid rgba(250, 204, 21, 0.28);
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+.indicator-row {
+  display: grid;
+  grid-template-columns: 180px 130px 1fr;
+  gap: 0.5rem;
+  padding: 0.55rem 0.68rem;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.16);
+}
+
+.indicator-row:last-child {
+  border-bottom: 0;
+}
+
+.signal-badge {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  border: 1px solid rgba(148, 163, 184, 0.45);
+  padding: 0.12rem 0.45rem;
+  font-size: 0.76rem;
+}
+
+.signal-badge.good {
+  color: #86efac;
+  border-color: rgba(34, 197, 94, 0.52);
+}
+
+.signal-badge.bad {
+  color: #fca5a5;
+  border-color: rgba(239, 68, 68, 0.56);
+}
+
+.signal-badge.neutral {
+  color: #fde68a;
+  border-color: rgba(245, 158, 11, 0.56);
+}
+
+@media (max-width: 980px) {
+  .analysis-trade-cards {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 720px) {
+  .analysis-trade-cards {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .indicator-row {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0.22rem;
+  }
+
+  .analysis-price-block {
+    text-align: left;
+  }
+}
+
+.analysis-header-card {
+  display: grid;
+  gap: 0.75rem;
+  background: rgba(8, 12, 25, 0.72);
+  border: 1px solid rgba(250, 204, 21, 0.3);
+  border-radius: 14px;
+  padding: 0.9rem;
+}
+
+.analysis-title-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.analysis-price-line {
+  font-size: 1.25rem;
+  font-weight: 800;
+}
+
+.analysis-move--up {
+  color: #86efac;
+}
+
+.analysis-move--down {
+  color: #fca5a5;
+}
+
+.analysis-move--flat {
+  color: #fde68a;
+}
+
+.analysis-chip-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+}
+
+.analysis-chip {
+  border: 1px solid rgba(250, 204, 21, 0.34);
+  border-radius: 999px;
+  padding: 0.26rem 0.6rem;
+  font-size: 0.82rem;
+  background: rgba(15, 23, 42, 0.6);
+}
+
+.analysis-range-wrap {
+  display: grid;
+  gap: 0.35rem;
+}
+
+.analysis-range-bar {
+  position: relative;
+  height: 9px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, rgba(239, 68, 68, 0.5), rgba(250, 204, 21, 0.55), rgba(34, 197, 94, 0.58));
+}
+
+.analysis-range-marker {
+  position: absolute;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+  background: #fff;
+  border: 2px solid rgba(2, 6, 23, 0.88);
+}
+
+.analysis-range-labels {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.78rem;
+  color: #cbd5e1;
+}
+
+.analysis-main-grid {
+  margin-top: 0.85rem;
+  display: grid;
+  grid-template-columns: 260px 1fr;
+  gap: 0.85rem;
+}
+
+.score-gauge-card {
+  background: rgba(8, 12, 25, 0.72);
+  border: 1px solid rgba(250, 204, 21, 0.27);
+  border-radius: 14px;
+  padding: 0.9rem;
+  text-align: center;
+}
+
+.score-gauge {
+  width: 170px;
+  height: 170px;
+  margin: 0 auto 0.55rem;
+  display: block;
+}
+
+.score-gauge-track {
+  fill: none;
+  stroke: rgba(148, 163, 184, 0.28);
+  stroke-width: 12;
+}
+
+.score-gauge-progress {
+  fill: none;
+  stroke-width: 12;
+  stroke-linecap: round;
+  transform: rotate(-90deg);
+  transform-origin: 85px 85px;
+  transition: stroke-dashoffset 800ms ease;
+}
+
+.score-gauge-label {
+  font-size: 1.9rem;
+  font-weight: 800;
+}
+
+.score-gauge-text {
+  font-size: 0.82rem;
+  color: #cbd5e1;
+}
+
+.analysis-cards-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.65rem;
+}
+
+.analysis-style-card {
+  border-radius: 12px;
+  padding: 0.75rem;
+  background: rgba(8, 12, 25, 0.72);
+  border: 1px solid rgba(148, 163, 184, 0.28);
+  box-shadow: 0 0 0 rgba(0, 0, 0, 0);
+}
+
+.analysis-style-card--positive {
+  border-color: rgba(34, 197, 94, 0.55);
+  box-shadow: 0 0 18px rgba(34, 197, 94, 0.18);
+}
+
+.analysis-style-card--warning {
+  border-color: rgba(245, 158, 11, 0.58);
+  box-shadow: 0 0 18px rgba(245, 158, 11, 0.16);
+}
+
+.analysis-style-card--negative {
+  border-color: rgba(239, 68, 68, 0.58);
+  box-shadow: 0 0 18px rgba(239, 68, 68, 0.16);
+}
+
+.analysis-style-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.analysis-score-pill {
+  border-radius: 999px;
+  padding: 0.2rem 0.5rem;
+  font-weight: 700;
+  font-size: 0.78rem;
+  background: rgba(15, 23, 42, 0.7);
+  border: 1px solid rgba(250, 204, 21, 0.35);
+}
+
+.analysis-risk-pill {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  padding: 0.17rem 0.48rem;
+  font-size: 0.72rem;
+  margin-top: 0.45rem;
+  border: 1px solid rgba(148, 163, 184, 0.4);
+}
+
+.analysis-tech-table {
+  margin-top: 0.85rem;
+  background: rgba(8, 12, 25, 0.72);
+  border: 1px solid rgba(250, 204, 21, 0.27);
+  border-radius: 14px;
+  overflow: hidden;
+}
+
+.analysis-tech-row {
+  display: grid;
+  grid-template-columns: 160px 150px 1fr;
+  gap: 0.6rem;
+  padding: 0.55rem 0.75rem;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.15);
+}
+
+.analysis-tech-row:last-child {
+  border-bottom: 0;
+}
+
+.analysis-signal {
+  font-size: 0.8rem;
+  font-weight: 700;
+}
+
+.analysis-signal--bullish {
+  color: #86efac;
+}
+
+.analysis-signal--neutral {
+  color: #fde68a;
+}
+
+.analysis-signal--bearish {
+  color: #fca5a5;
+}
+
+.analysis-gauge-progress--weak {
+  stroke: #ef4444;
+}
+
+.analysis-gauge-progress--neutral {
+  stroke: #f59e0b;
+}
+
+.analysis-gauge-progress--good {
+  stroke: #3b82f6;
+}
+
+.analysis-gauge-progress--strong {
+  stroke: #22c55e;
+}
+
+.analysis-disclaimer {
+  margin-top: 0.85rem;
+  font-size: 0.8rem;
+  color: #cbd5e1;
+}
+
+@media (max-width: 1040px) {
+  .analysis-main-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .analysis-cards-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 740px) {
+  .analysis-cards-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .analysis-tech-row {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0.24rem;
+  }
+}
+
 @media (max-width: 680px) {
   .outlook-header {
     flex-direction: column;

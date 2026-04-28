@@ -5016,21 +5016,10 @@ function setupStockForm() {
       return;
     }
     activeTicker = next;
-    try {
-      renderOutlookLoading();
-      renderStatus('Analyzing real market data...');
-      await loadOutlook(activeTicker);
-      await loadEarningsBoard();
-      renderStatus(`Real market analysis loaded for ${activeTicker}.`);
-    } catch (error) {
-      console.error(error);
-      const message = mapStockOutlookErrorMessage(error);
-      const target = document.getElementById('stock-results');
-      if (target) {
-        target.innerHTML = `<div class="pro-lock">${escapeHtml(message)}</div>`;
-      }
-      renderStatus(message);
-    }
+    renderOutlookLoading();
+    renderStatus(`Analyzing ${activeTicker}...`);
+    const destination = `/stock-analysis.html?ticker=${encodeURIComponent(activeTicker)}`;
+    window.location.href = destination;
   });
 }
 

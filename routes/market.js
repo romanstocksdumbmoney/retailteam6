@@ -23,6 +23,9 @@ const {
   MarketDataServiceError
 } = require('../services/MarketDataService');
 const {
+  analyzeStockResearch
+} = require('../services/stockAnalyzerService');
+const {
   configureAutoTrader,
   getAutoTraderStatus,
   getLiveFundingProfile,
@@ -231,8 +234,12 @@ function buildRealStockOutlookPayload(snapshot) {
       invalidation: null,
       waitRecommendation: 'Wait until more confirmation is available.'
     },
+    scoreModel: snapshot.scoreModel || null,
+    scores: snapshot.scores || null,
+    tradingStyles: snapshot.tradingStyles || null,
+    indicators: snapshot.indicators || null,
     dataNature: 'live',
-    sourceDisclosure: 'Real market outlook generated from live Alpha Vantage quote data.',
+    sourceDisclosure: snapshot.sourceDisclosure || 'Real market outlook generated from live Alpha Vantage quote data.',
     dataSources: Array.isArray(snapshot.dataSources) ? snapshot.dataSources : [],
     dataProvider: snapshot.dataProvider || 'Alpha Vantage',
     lastUpdated: snapshot.lastUpdated || new Date().toISOString(),
@@ -355,6 +362,30 @@ async function stockSearchHandler(req, res) {
     return res.status(500).json({
       error: 'stock_outlook_failed',
       message: 'Stock outlook analysis failed unexpectedly.',
+      ticker
+    });
+  }
+}
+
+async function stockAnalysisHandler(req, res) {
+  const ticker = normalizeMarketDataTicker(req.query.ticker || req.query.q || req.params.ticker);
+  if (!ticker) {
+    return res.status(400).json({ error: 'invalid_ticker', message: 'Enter a ticker symbol.' });
+  }
+  try {
+    const analysis = await analyzeStockResearch(ticker);
+    return res.json(analysis);
+  } catch (error) {
+    if (error instanceof MarketDataServiceError) {
+      return res.status(error.status || 500).json({
+        error: error.code || 'market_data_error',
+        message: error.message || 'Stock research analysis failed.',
+        ticker
+      });
+    }
+    return res.status(500).json({
+      error: 'stock_research_failed',
+      message: 'Stock research analysis failed unexpectedly.',
       ticker
     });
   }
@@ -1803,6 +1834,7 @@ router.post('/copilot/notifications/send', requireSignedIn, async (req, res) => 
 });
 
 router.get('/stock-outlook', stockOutlookHandler);
+router.get('/stock-analysis', stockAnalysisHandler);
 router.get('/stock-search', stockSearchHandler);
 router.get('/stock/:ticker', stockByParamHandler);
 router.get('/scan-x', scanHandler);

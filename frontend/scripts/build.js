@@ -31,6 +31,7 @@ async function build() {
   await fs.copyFile(path.join(srcDir, 'ai-broker-direct-setup.html'), path.join(buildDir, 'ai-broker-direct-setup.html'));
   await fs.copyFile(path.join(srcDir, 'ai-implementation-steps.html'), path.join(buildDir, 'ai-implementation-steps.html'));
   await fs.copyFile(path.join(srcDir, 'ai-analyzer.html'), path.join(buildDir, 'ai-analyzer.html'));
+  await fs.copyFile(path.join(srcDir, 'stock-analysis.html'), path.join(buildDir, 'stock-analysis.html'));
   await fs.copyFile(path.join(srcDir, 'insider-trades.html'), path.join(buildDir, 'insider-trades.html'));
   await fs.copyFile(path.join(srcDir, 'portfolios.html'), path.join(buildDir, 'portfolios.html'));
   await fs.copyFile(path.join(srcDir, 'logo-mark.svg'), path.join(buildDir, 'logo-mark.svg'));
@@ -55,6 +56,7 @@ async function build() {
   await fs.copyFile(path.join(srcDir, 'ai-broker-direct-setup.js'), path.join(buildDir, 'ai-broker-direct-setup.js'));
   await fs.copyFile(path.join(srcDir, 'ai-implementation-steps.js'), path.join(buildDir, 'ai-implementation-steps.js'));
   await fs.copyFile(path.join(srcDir, 'ai-analyzer.js'), path.join(buildDir, 'ai-analyzer.js'));
+  await fs.copyFile(path.join(srcDir, 'stock-analysis.js'), path.join(buildDir, 'stock-analysis.js'));
   await fs.copyFile(path.join(srcDir, 'insider-trades.js'), path.join(buildDir, 'insider-trades.js'));
   await fs.copyFile(path.join(srcDir, 'portfolios.js'), path.join(buildDir, 'portfolios.js'));
   await fs.copyFile(path.join(srcDir, 'session-helper.js'), path.join(buildDir, 'session-helper.js'));
