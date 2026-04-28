@@ -1,7 +1,6 @@
 const express = require('express');
 const {
   normalizeTicker,
-  buildStockOutlook,
   buildOptionsSnapshot,
   buildEarningsGambling,
   buildSocialScan,
@@ -16,9 +15,12 @@ const {
   getWildTakes,
   analyzeAiTradePattern,
   analyzeAiTradeScreenshot,
-  analyzeAiOrderSetupAssistant,
-  validateTickerSymbol
+  analyzeAiOrderSetupAssistant
 } = require('../services/marketEngine');
+const {
+  analyzeStockOutlook,
+  MarketDataServiceError
+} = require('../services/MarketDataService');
 const {
   configureAutoTrader,
   getAutoTraderStatus,
@@ -162,25 +164,72 @@ function parseDaysToExpiry(rawExpiration, rawDays) {
   return Math.max(1, Math.ceil(ms / (24 * 60 * 60 * 1000)));
 }
 
-function buildStockOutlookPayload(ticker) {
-  const snapshot = buildStockOutlook(ticker);
+function toUnavailable(value) {
+  if (value === null || value === undefined || value === '') {
+    return 'Unavailable';
+  }
+  return value;
+}
+
+function buildRealStockOutlookPayload(snapshot) {
   return {
-    ticker: snapshot.symbol,
-    outlook: snapshot.probabilities,
-    analystRatings: {
-      bullish: snapshot.analystRatings.bullish,
-      bearish: snapshot.analystRatings.bearish,
-      neutral: snapshot.analystRatings.neutral,
-      total: snapshot.analystRatings.total
+    ticker: snapshot.ticker,
+    companyName: snapshot.companyName || snapshot.ticker,
+    stock: {
+      currentPrice: toUnavailable(snapshot.stock?.currentPrice),
+      dailyChangePercent: toUnavailable(snapshot.stock?.dailyChangePercent),
+      volume: toUnavailable(snapshot.stock?.volume),
+      marketCap: toUnavailable(snapshot.stock?.marketCap),
+      fiftyTwoWeekHigh: toUnavailable(snapshot.stock?.fiftyTwoWeekHigh),
+      fiftyTwoWeekLow: toUnavailable(snapshot.stock?.fiftyTwoWeekLow)
     },
-    coverage: snapshot.coverage,
-    dataNature: snapshot.dataNature || 'simulated',
-    sourceDisclosure: snapshot.sourceDisclosure || 'Model-generated outlook for research/testing.',
-    events: snapshot.events.map((event) => ({
-      label: event.name,
-      impact: event.impact > 0 ? `+${event.impact}` : String(event.impact)
-    })),
-    updatedAt: snapshot.generatedAt
+    technicals: {
+      movingAverage50Day: toUnavailable(snapshot.technicals?.movingAverage50Day),
+      movingAverage200Day: toUnavailable(snapshot.technicals?.movingAverage200Day),
+      rsi14: toUnavailable(snapshot.technicals?.rsi14),
+      averageVolume20Day: toUnavailable(snapshot.technicals?.averageVolume20Day),
+      volatilityDailyPercent: toUnavailable(snapshot.technicals?.volatilityDailyPercent),
+      supportLevel: toUnavailable(snapshot.technicals?.supportLevel),
+      resistanceLevel: toUnavailable(snapshot.technicals?.resistanceLevel)
+    },
+    fundamentals: {
+      earningsDate: toUnavailable(snapshot.fundamentals?.earningsDate),
+      analystRating: toUnavailable(snapshot.fundamentals?.analystRating),
+      analystRatingMean: toUnavailable(snapshot.fundamentals?.analystRatingMean),
+      analystCount: toUnavailable(snapshot.fundamentals?.analystCount),
+      sector: toUnavailable(snapshot.fundamentals?.sector),
+      industry: toUnavailable(snapshot.fundamentals?.industry)
+    },
+    news: Array.isArray(snapshot.news) ? snapshot.news : [],
+    outlook: snapshot.outlook || {
+      bias: 'Neutral',
+      confidenceScore: 30,
+      riskLevel: 'High',
+      riskScore: 70,
+      bullishScore: 0,
+      bearishScore: 0,
+      guidanceLabel: 'No Clear Setup',
+      timeframe: 'Near-term swing (days to weeks)'
+    },
+    summary: snapshot.summary || {
+      plainEnglish: 'Not enough real market confirmation is available yet.',
+      strengths: [],
+      risks: ['Data is currently incomplete for a reliable setup.'],
+      keyLevelsToWatch: []
+    },
+    tradePlan: snapshot.tradePlan || {
+      entryZone: null,
+      stopLoss: null,
+      target: null,
+      invalidation: null,
+      waitRecommendation: 'Wait until more confirmation is available.'
+    },
+    dataNature: 'live',
+    sourceDisclosure: 'Real market outlook generated from live Yahoo Finance quote, chart, profile, and RSS news data.',
+    dataSources: Array.isArray(snapshot.dataSources) ? snapshot.dataSources : [],
+    dataProvider: snapshot.dataProvider || 'Yahoo Finance',
+    lastUpdated: snapshot.lastUpdated || new Date().toISOString(),
+    marketDataMayBeDelayed: Boolean(snapshot.marketDataMayBeDelayed)
   };
 }
 
@@ -236,17 +285,23 @@ async function stockOutlookHandler(req, res) {
   if (!ticker) {
     return res.status(400).json({ error: 'invalid_ticker', message: 'Provide ?ticker=TSLA' });
   }
-  const validation = await validateTickerSymbol(ticker);
-  if (!validation.valid) {
-    return res.status(404).json({
-      error: 'unknown_ticker',
-      message: 'Ticker not found in live market listings.',
-      ticker,
-      source: validation.source || 'yahoo_lookup'
+  try {
+    const snapshot = await analyzeStockOutlook(ticker);
+    return res.json(buildRealStockOutlookPayload(snapshot));
+  } catch (error) {
+    if (error instanceof MarketDataServiceError) {
+      return res.status(error.status || 500).json({
+        error: error.code || 'market_data_error',
+        message: error.message || 'Stock outlook analysis failed.',
+        ticker
+      });
+    }
+    return res.status(500).json({
+      error: 'stock_outlook_failed',
+      message: 'Stock outlook analysis failed unexpectedly.',
+      ticker
     });
   }
-
-  return res.json(buildStockOutlookPayload(ticker));
 }
 
 async function stockByParamHandler(req, res) {
@@ -254,17 +309,23 @@ async function stockByParamHandler(req, res) {
   if (!ticker) {
     return res.status(400).json({ error: 'invalid_ticker' });
   }
-  const validation = await validateTickerSymbol(ticker);
-  if (!validation.valid) {
-    return res.status(404).json({
-      error: 'unknown_ticker',
-      message: 'Ticker not found in live market listings.',
-      ticker,
-      source: validation.source || 'yahoo_lookup'
+  try {
+    const snapshot = await analyzeStockOutlook(ticker);
+    return res.json(buildRealStockOutlookPayload(snapshot));
+  } catch (error) {
+    if (error instanceof MarketDataServiceError) {
+      return res.status(error.status || 500).json({
+        error: error.code || 'market_data_error',
+        message: error.message || 'Stock outlook analysis failed.',
+        ticker
+      });
+    }
+    return res.status(500).json({
+      error: 'stock_outlook_failed',
+      message: 'Stock outlook analysis failed unexpectedly.',
+      ticker
     });
   }
-
-  return res.json(buildStockOutlookPayload(ticker));
 }
 
 async function stockSearchHandler(req, res) {
@@ -272,17 +333,23 @@ async function stockSearchHandler(req, res) {
   if (!ticker) {
     return res.status(400).json({ error: 'missing_query', message: 'Use ?q=TSLA' });
   }
-  const validation = await validateTickerSymbol(ticker);
-  if (!validation.valid) {
-    return res.status(404).json({
-      error: 'unknown_ticker',
-      message: 'Ticker not found in live market listings.',
-      ticker,
-      source: validation.source || 'yahoo_lookup'
+  try {
+    const snapshot = await analyzeStockOutlook(ticker);
+    return res.json(buildRealStockOutlookPayload(snapshot));
+  } catch (error) {
+    if (error instanceof MarketDataServiceError) {
+      return res.status(error.status || 500).json({
+        error: error.code || 'market_data_error',
+        message: error.message || 'Stock outlook analysis failed.',
+        ticker
+      });
+    }
+    return res.status(500).json({
+      error: 'stock_outlook_failed',
+      message: 'Stock outlook analysis failed unexpectedly.',
+      ticker
     });
   }
-
-  return res.json(buildStockOutlookPayload(ticker));
 }
 
 function scanHandler(req, res) {

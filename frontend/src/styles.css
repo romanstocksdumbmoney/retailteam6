@@ -1572,6 +1572,46 @@ h1 {
     inset 0 1px 0 rgba(255, 255, 255, 0.05);
 }
 
+.dashboard-main-nav a {
+  color: #e2e8f0;
+  text-decoration: none;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  padding: 0.35rem 0.5rem;
+}
+
+.dashboard-main-nav a:hover {
+  border-color: rgba(59, 130, 246, 0.5);
+  color: #dbeafe;
+}
+
+.dashboard-main-nav a:focus-visible {
+  border-color: rgba(59, 130, 246, 0.9);
+  color: #dbeafe;
+}
+
+.settings-placeholder {
+  margin-top: 0.4rem;
+  padding: 0.6rem 0.7rem;
+  border-radius: 10px;
+  border: 1px dashed rgba(148, 163, 184, 0.5);
+  background: rgba(15, 23, 42, 0.45);
+}
+
+.dashboard-next-step {
+  display: grid;
+  gap: 0.55rem;
+}
+
+.dashboard-next-step .small-note {
+  margin-bottom: 0.2rem;
+}
+
+#recent-analyses .stack-item h4 {
+  margin: 0 0 0.2rem;
+  color: #f8fafc;
+}
+
 .home-actions-card,
 .home-quick-start-card,
 .home-ai-tools-card {
@@ -2244,6 +2284,11 @@ h1 {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
   gap: 0.55rem;
+}
+
+.auth-grid.hidden,
+.social-auth-row.hidden {
+  display: none !important;
 }
 
 .auth-form {
@@ -3372,6 +3417,119 @@ button[aria-busy='true']::after {
   font-size: 0.92rem;
 }
 
+.outlook-loading-card {
+  display: grid;
+  gap: 0.45rem;
+}
+
+.outlook-loading-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+}
+
+.outlook-result-card {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.outlook-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+}
+
+.outlook-badges {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.outlook-badge,
+.risk-badge {
+  font-weight: 700;
+}
+
+.outlook-badge--bullish {
+  background: rgba(16, 185, 129, 0.2);
+  border-color: rgba(16, 185, 129, 0.6);
+  color: #86efac;
+}
+
+.outlook-badge--neutral {
+  background: rgba(148, 163, 184, 0.18);
+  border-color: rgba(148, 163, 184, 0.5);
+  color: #cbd5e1;
+}
+
+.outlook-badge--bearish {
+  background: rgba(239, 68, 68, 0.2);
+  border-color: rgba(239, 68, 68, 0.62);
+  color: #fca5a5;
+}
+
+.risk-badge--low {
+  background: rgba(34, 197, 94, 0.17);
+  border-color: rgba(34, 197, 94, 0.52);
+  color: #bbf7d0;
+}
+
+.risk-badge--medium {
+  background: rgba(245, 158, 11, 0.18);
+  border-color: rgba(245, 158, 11, 0.6);
+  color: #fde68a;
+}
+
+.risk-badge--high {
+  background: rgba(239, 68, 68, 0.2);
+  border-color: rgba(239, 68, 68, 0.62);
+  color: #fecaca;
+}
+
+.outlook-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 0.6rem;
+}
+
+.outlook-grid > div {
+  border: 1px solid rgba(250, 204, 21, 0.17);
+  border-radius: 10px;
+  padding: 0.55rem 0.62rem;
+  background: rgba(15, 23, 42, 0.45);
+}
+
+.outlook-grid > div h4 {
+  margin: 0 0 0.35rem;
+  font-size: 0.86rem;
+  color: #fde68a;
+}
+
+.outlook-grid > div p {
+  margin: 0.2rem 0;
+}
+
+.outlook-news-list li {
+  margin-bottom: 0.45rem;
+}
+
+@media (max-width: 680px) {
+  .outlook-header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .outlook-badges {
+    width: 100%;
+  }
+
+  .outlook-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
 .stack {
   display: grid;
   gap: 0.55rem;
@@ -4148,6 +4306,17 @@ button[aria-busy='true']::after {
 }
 
 @media (max-width: 680px) {
+  .dashboard-next-step .row-form {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .dashboard-next-step .row-form .open-link,
+  .dashboard-next-step .row-form button {
+    width: 100%;
+    text-align: center;
+  }
+
   .conversion-hero {
     text-align: center;
   }

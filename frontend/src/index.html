@@ -35,11 +35,11 @@
             aria-hidden="true"
           >
             <a class="browse-tools-link" role="menuitem" href="/">Dashboard</a>
-            <a class="browse-tools-link" role="menuitem" href="/portfolios.html">Portfolio</a>
             <a class="browse-tools-link" role="menuitem" href="#stock-outlook-module">Search</a>
             <a class="browse-tools-link" role="menuitem" href="#ai-tools-overview">AI Tools</a>
-            <a class="browse-tools-link" role="menuitem" href="/ai-trade.html">AI Trade</a>
-            <a class="browse-tools-link" role="menuitem" href="/ai-analyzer.html">AI Analyzer</a>
+            <a class="browse-tools-link" role="menuitem" href="/portfolios.html">Portfolio</a>
+            <a class="browse-tools-link" role="menuitem" href="#realized-patterns-section">Reports</a>
+            <a class="browse-tools-link" role="menuitem" href="#account-center">Settings</a>
             <a class="browse-tools-link" role="menuitem" href="/pro.html">Pro</a>
             <button
               id="fun-mode-toggle"
@@ -73,14 +73,39 @@
 
         <nav class="dashboard-main-nav" aria-label="Primary navigation">
           <a class="open-link" href="/">Dashboard</a>
-          <a class="open-link" href="/portfolios.html">Portfolio</a>
           <a class="open-link" href="#stock-outlook-module">Search</a>
           <a class="open-link" href="#ai-tools-overview">AI Tools</a>
+          <a class="open-link" href="/portfolios.html">Portfolio</a>
+          <a id="reports-nav-link" class="open-link" href="#realized-patterns-section">Reports</a>
+          <a id="settings-link-placeholder" class="open-link" href="#account-center">Settings</a>
         </nav>
 
         <section id="dashboard-greeting" class="dashboard-greeting hidden" aria-live="polite">
           <h2 id="dashboard-greeting-title" class="dashboard-greeting-title">Hello, Trader 👋</h2>
-          <p id="dashboard-greeting-subtext" class="small-note dashboard-greeting-subtext">Glad to have you back. Let's find your next trade.</p>
+          <p id="dashboard-greeting-subtext" class="small-note dashboard-greeting-subtext">Logged out. Log in to save your dashboard and history.</p>
+        </section>
+
+        <section id="dashboard-next-step" class="card dashboard-next-step" aria-labelledby="dashboard-next-step-title">
+          <div class="section-header">
+            <h2 id="dashboard-next-step-title">What do you want to do next?</h2>
+            <span class="chip">Quick Start</span>
+          </div>
+          <div class="row-form">
+            <a class="open-link cta-primary" href="#stock-outlook-module">Search a Stock</a>
+            <button id="quick-open-browse-tools" class="btn-secondary" type="button">Browse AI Tools</button>
+          </div>
+          <p class="small-note">Search a ticker to analyze real market data, then use AI tools to validate your setup.</p>
+          <div id="recent-analyses" class="stack" aria-live="polite">
+            <p class="small-note">Recent analyses will appear here after you run stock analysis.</p>
+          </div>
+        </section>
+
+        <section id="settings-placeholder" class="card dashboard-next-step" aria-labelledby="settings-placeholder-title">
+          <div class="section-header">
+            <h2 id="settings-placeholder-title">Settings</h2>
+            <span class="chip">Account</span>
+          </div>
+          <p class="small-note">Account preferences, billing, and notification controls are in Account, billing, and email automation below.</p>
         </section>
 
         <p id="status" class="status">Checking API status...</p>
@@ -567,6 +592,20 @@
               <p class="small-note">Upload screenshots and review if the setup was a good trade with AI scoring.</p>
               <button id="open-ai-analyzer" class="btn-secondary" type="button">Open AI Analyzer</button>
 
+              <div id="risk-planner-section" class="section-header">
+            <h2>Risk Planner</h2>
+            <span class="chip">Account</span>
+              </div>
+              <p class="small-note">Build trade plan: define entry, stop, target, and risk before execution.</p>
+              <button id="open-risk-planner" class="btn-secondary" type="button">Build Trade Plan</button>
+
+              <div id="copilot-tool-section" class="section-header">
+            <h2>AI Copilot</h2>
+            <span class="chip">Free</span>
+              </div>
+              <p class="small-note">Ask what to do next and get beginner-friendly guidance across tools.</p>
+              <button id="open-ai-copilot-tool" class="btn-secondary" type="button">Open AI Copilot</button>
+
               <div id="ai-implementation-section" class="section-header">
             <h2>Learn AI Implementation</h2>
             <span class="chip">Free</span>
@@ -579,7 +618,7 @@
         <div class="main-panels">
           <section id="stock-outlook-module" class="card module-card module-wide">
             <div class="section-header">
-              <h2>Stock Outlook Search</h2>
+              <h2>Search a Stock</h2>
               <span class="chip">Core</span>
             </div>
             <form id="stock-form" class="row-form">
@@ -587,10 +626,10 @@
                 Ticker
                 <input id="ticker-input" name="ticker" type="text" placeholder="AAPL" required />
               </label>
-              <button type="submit">Analyze</button>
+              <button type="submit">Analyze Stock</button>
             </form>
             <p class="small-note">
-              Combines analyst sentiment, article sentiment, event pressure, and flow.
+              Enter a ticker to fetch real quote, technical, news, earnings, and analyst context. You will get a clear outlook card or a setup error.
             </p>
             <div id="stock-results" class="prob-grid"></div>
           </section>
@@ -613,9 +652,10 @@
             <div class="advanced-modules-grid">
               <section id="scanner-module" class="card module-card">
                 <div class="section-header">
-                  <h2>x.com Scanner + Market Flow</h2>
+                  <h2>Find Patterns + Market Flow</h2>
                   <span class="chip pro">Pro</span>
                 </div>
+                <p class="small-note">Search a ticker or macro topic to scan recent chatter and flow context.</p>
                 <form id="scan-form" class="row-form">
                   <label>
                     Scan Query
@@ -630,16 +670,17 @@
                       <option value="flow-extractor">Flow extractor</option>
                     </select>
                   </label>
-                  <button type="submit">Run Scan</button>
+                  <button type="submit">Find Patterns</button>
                 </form>
                 <div id="scan-results" class="stack"></div>
               </section>
 
               <section id="options-module" class="card module-card">
                 <div class="section-header">
-                  <h2>Options Calculator + Gamma Exposure</h2>
+                  <h2>Build Trade Plan (Options)</h2>
                   <span class="chip pro">Pro</span>
                 </div>
+                <p class="small-note">Enter contract details to estimate premium, gamma exposure, and risk context.</p>
                 <form id="options-form" class="row-form multi">
                   <label>
                     Symbol

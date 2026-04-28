@@ -35,6 +35,7 @@ const AUTH_ACCESS_PATH = '/ai-trade-access.html';
 const EMAIL_AUTOMATION_FORM_IDLE_LABEL = 'Save Email Automation';
 const EMAIL_AUTOMATION_TEST_IDLE_LABEL = 'Send Test Email Now';
 const FUN_MODE_BACKGROUND_STORAGE_KEY = 'dumbdollars_fun_mode_background';
+const RECENT_ANALYSES_STORAGE_KEY = 'dumbdollars_recent_analyses_v1';
 let restoreSessionInFlight = false;
 const MODULE_NAV_TARGETS = Object.freeze([
   {
@@ -573,7 +574,9 @@ function renderDashboardGreeting() {
   }
   const name = resolveGreetingName(currentUser);
   titleNode.textContent = `Hello, ${name} 👋`;
-  welcomeNode.textContent = 'Glad to have you back. Let’s find your next trade.';
+  const email = String(currentUser?.email || '').trim().toLowerCase();
+  const loggedInLine = email ? `Logged in as ${email}. ` : '';
+  welcomeNode.textContent = `${loggedInLine}Glad to have you back. Let’s find your next trade.`;
   greetingNode.classList.remove('hidden');
   greetingNode.classList.add('dashboard-greeting--active');
 }
@@ -2155,6 +2158,20 @@ function setBrowseToolsMenuState(isOpen) {
   menuToggle.setAttribute('aria-expanded', 'false');
 }
 
+function openReportsPage() {
+  window.location.href = '/insider-trades.html';
+}
+
+function openSettingsPanel() {
+  const accountCenter = document.getElementById('account-center');
+  if (accountCenter instanceof HTMLDetailsElement) {
+    accountCenter.open = true;
+    accountCenter.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    return;
+  }
+  window.location.href = '/ai-trade-access.html?mode=login&next=%2F';
+}
+
 function ensureBrowseToolsFallbackMenuItems(browseMenu) {
   if (!(browseMenu instanceof HTMLElement)) {
     return;
@@ -2165,11 +2182,11 @@ function ensureBrowseToolsFallbackMenuItems(browseMenu) {
   }
   const fallbackLinks = [
     { label: 'Dashboard', href: '/' },
-    { label: 'Portfolio', href: '/portfolios.html' },
     { label: 'Search', href: '#stock-outlook-module' },
     { label: 'AI Tools', href: '#ai-tools-overview' },
-    { label: 'AI Trade', href: '/ai-trade.html' },
-    { label: 'AI Analyzer', href: '/ai-analyzer.html' },
+    { label: 'Portfolio', href: '/portfolios.html' },
+    { label: 'Reports', href: '#realized-patterns-section' },
+    { label: 'Settings', href: '#account-center' },
     { label: 'Pro', href: '/pro.html' }
   ];
   browseMenu.innerHTML = fallbackLinks
@@ -2621,6 +2638,9 @@ function renderAuthState() {
   const headerSignupLink = document.getElementById('header-signup-link');
   const headerProfileButton = document.getElementById('header-profile-btn');
   const headerLogoutButton = document.getElementById('header-logout-btn');
+  const authGrid = document.querySelector('#account-center .auth-grid');
+  const socialAuthRow = document.getElementById('social-auth-row');
+  const openAuthAccessPageLink = document.getElementById('open-auth-access-page');
   const hasOwnerAccess = Boolean(currentUser && currentUser.ownerAccess);
 
   activePlan = currentUser && currentUser.plan === PLAN_PRO ? PLAN_PRO : PLAN_FREE;
@@ -2632,7 +2652,7 @@ function renderAuthState() {
   setAuthMessage(
     currentUser
       ? `${currentUser.email} • ${hasOwnerAccess ? 'Owner access active' : (activePlan === PLAN_PRO ? 'Pro active' : 'Free plan')}`
-      : 'Not logged in'
+      : 'You are logged out. Log in or sign up to save your dashboard and analysis history.'
   );
 
   if (checkoutButton) {
@@ -2664,8 +2684,179 @@ function renderAuthState() {
     headerLogoutButton.classList.toggle('hidden', !currentUser);
     headerLogoutButton.disabled = !currentUser;
   }
+  if (authGrid instanceof HTMLElement) {
+    authGrid.classList.toggle('hidden', Boolean(currentUser));
+  }
+  if (socialAuthRow instanceof HTMLElement) {
+    socialAuthRow.classList.toggle('hidden', Boolean(currentUser));
+  }
+  if (openAuthAccessPageLink instanceof HTMLElement) {
+    openAuthAccessPageLink.classList.toggle('hidden', Boolean(currentUser));
+  }
   ensureEmailAutomationCardVisibility();
   renderDashboardGreeting();
+  renderRecentAnalyses();
+}
+
+function readRecentAnalysisCache() {
+  try {
+    const raw = localStorage.getItem(RECENT_ANALYSES_STORAGE_KEY);
+    if (!raw) {
+      return [];
+    }
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) {
+      return [];
+    }
+    return parsed
+      .map((item) => ({
+        ticker: String(item?.ticker || '').trim().toUpperCase(),
+        companyName: String(item?.companyName || '').trim(),
+        outlook: String(item?.outlook || '').trim(),
+        guidanceLabel: String(item?.guidanceLabel || '').trim(),
+        updatedAt: String(item?.updatedAt || '').trim()
+      }))
+      .filter((item) => item.ticker);
+  } catch (_error) {
+    return [];
+  }
+}
+
+function setRecentAnalysisCache(nextItems) {
+  const normalized = Array.isArray(nextItems) ? nextItems.slice(0, 6) : [];
+  try {
+    localStorage.setItem(RECENT_ANALYSES_STORAGE_KEY, JSON.stringify(normalized));
+  } catch (_error) {
+    // Ignore storage failures.
+  }
+}
+
+function buildRecentAnalysisItemHtml(item) {
+  const updated = item.updatedAt ? new Date(item.updatedAt) : null;
+  const updatedLabel = updated && !Number.isNaN(updated.getTime())
+    ? updated.toLocaleString()
+    : 'Unknown time';
+  return `
+    <article class="stack-item">
+      <p><strong>${escapeHtml(item.ticker)}</strong> • ${escapeHtml(item.companyName || 'Company')}</p>
+      <p class="small-note">${escapeHtml(item.outlook || 'Outlook unavailable')} • ${escapeHtml(item.guidanceLabel || 'No Clear Setup')}</p>
+      <p class="small-note">Last run: ${escapeHtml(updatedLabel)}</p>
+    </article>
+  `;
+}
+
+function renderRecentAnalyses() {
+  const target = document.getElementById('recent-analyses');
+  if (!target) {
+    return;
+  }
+  const items = readRecentAnalysisCache();
+  if (!items.length) {
+    target.innerHTML = '<p class="small-note">Recent analyses will appear here after you run stock analysis.</p>';
+    return;
+  }
+  target.innerHTML = items.map((item) => buildRecentAnalysisItemHtml(item)).join('');
+}
+
+function pushRecentAnalysis(payload) {
+  const ticker = String(payload?.ticker || '').trim().toUpperCase();
+  if (!ticker) {
+    return;
+  }
+  const item = {
+    ticker,
+    companyName: String(payload?.companyName || '').trim(),
+    outlook: String(payload?.outlook?.bias || '').trim() || 'Neutral',
+    guidanceLabel: String(payload?.outlook?.guidanceLabel || '').trim() || 'No Clear Setup',
+    updatedAt: String(payload?.lastUpdated || new Date().toISOString())
+  };
+  const existing = readRecentAnalysisCache().filter((entry) => entry.ticker !== ticker);
+  setRecentAnalysisCache([item, ...existing].slice(0, 6));
+}
+
+function isUnavailableValue(value) {
+  return value === null || value === undefined || String(value).trim() === '' || String(value).toLowerCase() === 'unavailable';
+}
+
+function formatNumberOrUnavailable(value, { decimals = 2, suffix = '' } = {}) {
+  if (isUnavailableValue(value)) {
+    return 'Unavailable';
+  }
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) {
+    return 'Unavailable';
+  }
+  return `${numeric.toFixed(decimals)}${suffix}`;
+}
+
+function formatLargeNumberOrUnavailable(value) {
+  if (isUnavailableValue(value)) {
+    return 'Unavailable';
+  }
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) {
+    return 'Unavailable';
+  }
+  return numeric.toLocaleString();
+}
+
+function formatCurrencyOrUnavailable(value) {
+  if (isUnavailableValue(value)) {
+    return 'Unavailable';
+  }
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) {
+    return 'Unavailable';
+  }
+  return `$${numeric.toLocaleString(undefined, {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2
+  })}`;
+}
+
+function formatCompactCurrencyOrUnavailable(value) {
+  if (isUnavailableValue(value)) {
+    return 'Unavailable';
+  }
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) {
+    return 'Unavailable';
+  }
+  if (Math.abs(numeric) >= 1_000_000_000) {
+    return `$${(numeric / 1_000_000_000).toFixed(2)}B`;
+  }
+  if (Math.abs(numeric) >= 1_000_000) {
+    return `$${(numeric / 1_000_000).toFixed(2)}M`;
+  }
+  if (Math.abs(numeric) >= 1_000) {
+    return `$${(numeric / 1_000).toFixed(2)}K`;
+  }
+  return `$${numeric.toFixed(2)}`;
+}
+
+function escapeHtml(value) {
+  return String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+function renderOutlookLoading() {
+  const target = document.getElementById('stock-results');
+  if (!target) {
+    return;
+  }
+  target.innerHTML = `
+    <article class="prob-card outlook-loading-card">
+      <div class="outlook-loading-row">
+        <span class="status-loading" aria-hidden="true"></span>
+        <strong>Analyzing real market data…</strong>
+      </div>
+      <p class="small-note">Fetching live quote, technicals, news, and earnings context.</p>
+    </article>
+  `;
 }
 
 function renderOutlook(payload) {
@@ -2673,65 +2864,105 @@ function renderOutlook(payload) {
   if (!target) {
     return;
   }
-  const outlook = payload.outlook;
-  const day = normalizePairPercents(outlook?.day?.up, outlook?.day?.down);
-  const week = normalizePairPercents(outlook?.week?.up, outlook?.week?.down);
-  const month = normalizePairPercents(outlook?.month?.up, outlook?.month?.down);
-  const year = normalizePairPercents(outlook?.year?.up, outlook?.year?.down);
-  const mode = getActiveTraderMode();
-  const details = TRADER_MODE_DETAILS[mode];
-  const timeframe = mode === 'scalper'
-    ? '1m / 5m'
-    : mode === 'day'
-      ? '5m / 15m'
-      : mode === 'swing'
-        ? '1H / 4H / Daily'
-        : 'Weekly / Monthly';
-  const aiLine = mode === 'scalper'
-    ? 'Enter now only when momentum + volume align. Exit quickly if momentum fades.'
-    : mode === 'day'
-      ? 'Intraday breakout forming with volume confirmation and VWAP alignment.'
-      : mode === 'swing'
-        ? 'Trend forming. Wait for confirmation near support/resistance before entry.'
-        : 'Valuation and earnings context suggest a long-horizon accumulation watch zone.';
+  const stock = payload?.stock || {};
+  const outlook = payload?.outlook || {};
+  const summary = payload?.summary || {};
+  const tradePlan = payload?.tradePlan || {};
+  const technicals = payload?.technicals || {};
+  const fundamentals = payload?.fundamentals || {};
+  const news = Array.isArray(payload?.news) ? payload.news : [];
+  const sourceLabel = escapeHtml(payload?.dataProvider || 'Market provider');
+  const updatedLabel = payload?.lastUpdated ? new Date(payload.lastUpdated).toLocaleString() : 'Unavailable';
+  const outlookBadgeClass = String(outlook?.bias || '').toLowerCase() === 'bullish'
+    ? 'outlook-badge--bullish'
+    : String(outlook?.bias || '').toLowerCase() === 'bearish'
+      ? 'outlook-badge--bearish'
+      : 'outlook-badge--neutral';
+  const riskBadgeClass = String(outlook?.riskLevel || '').toLowerCase() === 'high'
+    ? 'risk-badge--high'
+    : String(outlook?.riskLevel || '').toLowerCase() === 'medium'
+      ? 'risk-badge--medium'
+      : 'risk-badge--low';
+  const newsHtml = news.length
+    ? `<ul class="detail-list outlook-news-list">${news.slice(0, 5).map((item) => {
+      const title = escapeHtml(item?.title || 'Untitled headline');
+      const url = escapeHtml(item?.url || '#');
+      const source = escapeHtml(item?.source || 'news');
+      const published = item?.publishedAt ? new Date(item.publishedAt).toLocaleString() : 'Time unavailable';
+      return `<li><a href="${url}" target="_blank" rel="noopener noreferrer">${title}</a> <span class="small-note">(${source} • ${published})</span></li>`;
+    }).join('')}</ul>`
+    : '<p class="small-note">Recent news: Unavailable</p>';
+  const strengths = Array.isArray(summary?.strengths) ? summary.strengths : [];
+  const risks = Array.isArray(summary?.risks) ? summary.risks : [];
+  const keyLevels = Array.isArray(summary?.keyLevelsToWatch) ? summary.keyLevelsToWatch : [];
   target.innerHTML = `
-    <article class="prob-card">
-      <h3>${payload.ticker} Outlook</h3>
-      <p class="small-note"><strong>${details.title} focus:</strong> ${details.short}</p>
-      <p class="small-note"><strong>Primary chart window:</strong> ${timeframe}</p>
-      <p><strong>Day:</strong> ${fmtPct(day.up)} up / ${fmtPct(day.down)} down</p>
-      <p><strong>Week:</strong> ${fmtPct(week.up)} up / ${fmtPct(week.down)} down</p>
-      <p><strong>Month:</strong> ${fmtPct(month.up)} up / ${fmtPct(month.down)} down</p>
-      <p><strong>Year:</strong> ${fmtPct(year.up)} up / ${fmtPct(year.down)} down</p>
-      <p><strong>${details.aiPrefix}:</strong> ${aiLine}</p>
-      <p class="small-note">Analysts tracked: ${payload.coverage.analystsTracked.toLocaleString()}</p>
-      <p class="small-note">Articles analyzed: ${payload.coverage.articlesAnalyzed.toLocaleString()}</p>
+    <article class="prob-card outlook-result-card">
+      <div class="outlook-header">
+        <h3>${escapeHtml(payload?.ticker || activeTicker)} • ${escapeHtml(payload?.companyName || 'Company name unavailable')}</h3>
+        <div class="outlook-badges">
+          <span class="chip outlook-badge ${outlookBadgeClass}">${escapeHtml(outlook?.bias || 'Neutral')}</span>
+          <span class="chip risk-badge ${riskBadgeClass}">${escapeHtml(outlook?.riskLevel || 'Risk Unavailable')} Risk</span>
+          <span class="chip">${escapeHtml(outlook?.guidanceLabel || 'No Clear Setup')}</span>
+        </div>
+      </div>
+      <p class="small-note">Data from ${sourceLabel}. Last updated: ${escapeHtml(updatedLabel)}.${payload?.marketDataMayBeDelayed ? ' Market data may be delayed.' : ''}</p>
+
+      <div class="outlook-grid">
+        <div>
+          <h4>Stock</h4>
+          <p><strong>Current price:</strong> ${formatCurrencyOrUnavailable(stock.currentPrice)}</p>
+          <p><strong>Daily change:</strong> ${formatNumberOrUnavailable(stock.dailyChangePercent, { decimals: 2, suffix: '%' })}</p>
+          <p><strong>Volume:</strong> ${formatLargeNumberOrUnavailable(stock.volume)}</p>
+          <p><strong>Market cap:</strong> ${formatCompactCurrencyOrUnavailable(stock.marketCap)}</p>
+          <p><strong>52W high / low:</strong> ${formatCurrencyOrUnavailable(stock.fiftyTwoWeekHigh)} / ${formatCurrencyOrUnavailable(stock.fiftyTwoWeekLow)}</p>
+        </div>
+        <div>
+          <h4>Outlook</h4>
+          <p><strong>Confidence:</strong> ${formatNumberOrUnavailable(outlook.confidenceScore, { decimals: 0, suffix: '%' })}</p>
+          <p><strong>Risk score:</strong> ${formatNumberOrUnavailable(outlook.riskScore, { decimals: 0 })}</p>
+          <p><strong>Timeframe:</strong> ${escapeHtml(outlook.timeframe || 'Near-term swing (days to weeks)')}</p>
+          <p><strong>Bullish score:</strong> ${formatNumberOrUnavailable(outlook.bullishScore, { decimals: 0 })}</p>
+          <p><strong>Bearish score:</strong> ${formatNumberOrUnavailable(outlook.bearishScore, { decimals: 0 })}</p>
+        </div>
+        <div>
+          <h4>Technicals</h4>
+          <p><strong>50-day MA:</strong> ${formatCurrencyOrUnavailable(technicals.movingAverage50Day)}</p>
+          <p><strong>200-day MA:</strong> ${formatCurrencyOrUnavailable(technicals.movingAverage200Day)}</p>
+          <p><strong>RSI (14):</strong> ${formatNumberOrUnavailable(technicals.rsi14, { decimals: 2 })}</p>
+          <p><strong>Avg volume (20d):</strong> ${formatLargeNumberOrUnavailable(technicals.averageVolume20Day)}</p>
+          <p><strong>Volatility:</strong> ${formatNumberOrUnavailable(technicals.volatilityDailyPercent, { decimals: 2, suffix: '%' })}</p>
+        </div>
+      </div>
+
+      <h4>AI Summary</h4>
+      <p>${escapeHtml(summary.plainEnglish || 'No summary is available yet because live inputs are incomplete.')}</p>
+      <p class="small-note"><strong>Strengths:</strong> ${strengths.length ? strengths.map((line) => escapeHtml(line)).join(' ') : 'Unavailable'}</p>
+      <p class="small-note"><strong>Risks:</strong> ${risks.length ? risks.map((line) => escapeHtml(line)).join(' ') : 'Unavailable'}</p>
+
+      <h4>Trade Plan (for research only)</h4>
+      <p><strong>Entry zone:</strong> ${isUnavailableValue(tradePlan.entryZone) ? 'Unavailable' : escapeHtml(tradePlan.entryZone)}</p>
+      <p><strong>Stop-loss idea:</strong> ${formatCurrencyOrUnavailable(tradePlan.stopLoss)}</p>
+      <p><strong>Target idea:</strong> ${formatCurrencyOrUnavailable(tradePlan.target)}</p>
+      <p><strong>Wait recommendation:</strong> ${escapeHtml(tradePlan.waitRecommendation || 'No Clear Setup')}</p>
+      <p class="small-note"><strong>Invalidation:</strong> ${escapeHtml(tradePlan.invalidation || 'Unavailable')}</p>
+      <p class="small-note">This is educational research, not financial advice. Use position sizing and risk limits before acting.</p>
+
+      <h4>Key levels to watch</h4>
+      ${keyLevels.length
+    ? `<ul class="detail-list">${keyLevels.map((line) => `<li>${escapeHtml(line)}</li>`).join('')}</ul>`
+    : '<p class="small-note">Data unavailable for key levels.</p>'}
+
+      <h4>Earnings and analyst context</h4>
+      <p><strong>Earnings date:</strong> ${isUnavailableValue(fundamentals.earningsDate) ? 'Unavailable' : escapeHtml(new Date(fundamentals.earningsDate).toLocaleDateString())}</p>
+      <p><strong>Analyst rating:</strong> ${isUnavailableValue(fundamentals.analystRating) ? 'Unavailable' : escapeHtml(fundamentals.analystRating)}</p>
+      <p><strong>Analyst mean / count:</strong> ${formatNumberOrUnavailable(fundamentals.analystRatingMean, { decimals: 2 })} / ${formatNumberOrUnavailable(fundamentals.analystCount, { decimals: 0 })}</p>
+
+      <h4>Recent news</h4>
+      ${newsHtml}
     </article>
   `;
-}
-
-function renderModeAwareInsights() {
-  const mode = getActiveTraderMode();
-  const details = TRADER_MODE_DETAILS[mode];
-  const target = document.getElementById('trader-mode-routing');
-  if (!(target instanceof HTMLElement) || !details) {
-    return;
-  }
-  const chartWindow = mode === 'scalper'
-    ? '1m / 5m'
-    : mode === 'day'
-      ? '5m / 15m'
-      : mode === 'swing'
-        ? '1H / 4H / Daily'
-        : 'Weekly / Monthly';
-  const aiTone = mode === 'scalper'
-    ? 'AI style: short, fast, direct signals.'
-    : mode === 'day'
-      ? 'AI style: intraday setup + confirmation language.'
-      : mode === 'swing'
-        ? 'AI style: trend explanation with confirmation steps.'
-        : 'AI style: analytical, valuation and risk outlook focused.';
-  target.textContent = `Active route: ${details.route} • Chart focus: ${chartWindow}. ${aiTone}`;
+  pushRecentAnalysis(payload);
+  renderRecentAnalyses();
 }
 
 function renderScanner(payload) {
@@ -2933,36 +3164,6 @@ function renderPremiumSpikesLocked(message) {
     return;
   }
   target.innerHTML = `<div class="pro-lock">${message}</div>`;
-}
-
-function renderModeAwareInsights() {
-  const mode = getActiveTraderMode();
-  const details = TRADER_MODE_DETAILS[mode];
-  const meta = document.getElementById('trader-mode-meta');
-  if (meta instanceof HTMLElement && details) {
-    meta.innerHTML = `
-      <p><strong>${details.title}</strong> • Risk: ${details.risk} • Horizon: ${details.horizon}</p>
-      <p class="small-note">${details.short}</p>
-    `;
-  }
-  const cards = document.getElementById('trader-mode-cards');
-  if (cards instanceof HTMLElement) {
-    const rows = details.quickSignals
-      .map((line) => `<li>${line}</li>`)
-      .join('');
-    cards.innerHTML = `
-      <article class="trader-mode-option trader-mode-option--active">
-        <h4>${details.aiPrefix}</h4>
-        <p>${details.short}</p>
-        <p><strong>Workflow:</strong> ${MODE_LAYOUT_TEXT[details.dashboardLayout] || MODE_LAYOUT_TEXT.intraday}</p>
-        <ul class="detail-list">${rows}</ul>
-      </article>
-    `;
-  }
-  const routeNote = document.getElementById('trader-mode-routing');
-  if (routeNote instanceof HTMLElement) {
-    routeNote.innerHTML = `Mode route: <a class="open-link" href="${details.route}">${details.route}</a>`;
-  }
 }
 
 function renderEarningsBoard(payload) {
@@ -3549,8 +3750,16 @@ async function refreshBaseline() {
   const health = await fetchJson('/health');
   renderStatus(`API status: ${health.status}`);
   applyTraderModeUI(getActiveTraderMode(), { save: false, persistToServer: false });
+  try {
+    await loadOutlook(activeTicker);
+  } catch (error) {
+    const target = document.getElementById('stock-results');
+    if (target) {
+      target.innerHTML = `<div class="pro-lock">${escapeHtml(error?.message || 'Could not load stock analysis right now.')}</div>`;
+    }
+    renderStatus(error?.message || 'Stock analysis is unavailable right now.');
+  }
   await Promise.all([
-    loadOutlook(activeTicker),
     loadEarningsBoard(),
     loadAiSidebar(activeTicker)
   ]);
@@ -4308,6 +4517,11 @@ function setupModuleDeepLinks() {
 function setupSidebarMenu() {
   const sidebar = document.getElementById('sidebar-panel');
   const closeButton = document.getElementById('sidebar-close-btn');
+  const riskPlannerButton = document.getElementById('open-risk-planner');
+  const copilotToolButton = document.getElementById('open-ai-copilot-tool');
+  const patternsRefreshButton = document.getElementById('patterns-refresh');
+  const insiderRefreshButton = document.getElementById('insider-trades-refresh');
+  const trendRefreshButton = document.getElementById('trend-trades-refresh');
   if (!sidebar) {
     return;
   }
@@ -4326,6 +4540,73 @@ function setupSidebarMenu() {
       closeSidebarMenu();
     }
   });
+
+  if (riskPlannerButton instanceof HTMLButtonElement) {
+    riskPlannerButton.addEventListener('click', () => {
+      openAiOrderSetupAssistantPage();
+      renderStatus('Opened Build Trade Plan.');
+    });
+  }
+
+  if (copilotToolButton instanceof HTMLButtonElement) {
+    copilotToolButton.addEventListener('click', () => {
+      window.dispatchEvent(new CustomEvent('dumbdollars:copilot-open', {
+        detail: {
+          message: 'Copilot opened. Ask what to do next and I will guide you.'
+        }
+      }));
+      renderStatus('Opened AI Copilot.');
+    });
+  }
+
+  if (patternsRefreshButton instanceof HTMLButtonElement) {
+    patternsRefreshButton.addEventListener('click', () => {
+      renderStatus('Finding patterns...');
+    });
+  }
+  if (insiderRefreshButton instanceof HTMLButtonElement) {
+    insiderRefreshButton.addEventListener('click', () => {
+      renderStatus('Loading insider trades...');
+    });
+  }
+  if (trendRefreshButton instanceof HTMLButtonElement) {
+    trendRefreshButton.addEventListener('click', () => {
+      renderStatus('Loading trend trades...');
+    });
+  }
+}
+
+function setupQuickActions() {
+  const browseToolsButton = document.getElementById('quick-open-browse-tools');
+  const reportsLink = document.getElementById('reports-nav-link');
+  const settingsLink = document.getElementById('settings-link-placeholder');
+  if (browseToolsButton instanceof HTMLButtonElement) {
+    browseToolsButton.addEventListener('click', () => {
+      const nextState = !browseToolsMenuOpen;
+      setBrowseToolsMenuState(nextState);
+      if (nextState) {
+        const menuToggle = document.getElementById('sidebar-menu-toggle');
+        const browseMenu = document.getElementById('browse-tools-menu');
+        if (menuToggle instanceof HTMLElement && browseMenu instanceof HTMLElement) {
+          positionBrowseToolsMenu(menuToggle, browseMenu);
+        }
+      }
+    });
+  }
+  if (reportsLink instanceof HTMLAnchorElement) {
+    reportsLink.addEventListener('click', (event) => {
+      event.preventDefault();
+      openReportsPage();
+      renderStatus('Opened reports.');
+    });
+  }
+  if (settingsLink instanceof HTMLAnchorElement) {
+    settingsLink.addEventListener('click', (event) => {
+      event.preventDefault();
+      openSettingsPanel();
+      renderStatus('Opened settings panel.');
+    });
+  }
 }
 
 function setupSidebarDropdowns() {
@@ -4405,16 +4686,32 @@ function setupStockForm() {
   form.addEventListener('submit', async (event) => {
     event.preventDefault();
     const input = document.getElementById('ticker-input');
+    if (!(input instanceof HTMLInputElement)) {
+      return;
+    }
     const next = (input.value || '').trim().toUpperCase();
+    console.log('Analyze clicked:', next);
     if (!next) {
+      const target = document.getElementById('stock-results');
+      if (target) {
+        target.innerHTML = '<div class="pro-lock">Enter a ticker (example: AAPL) to analyze real market data.</div>';
+      }
+      renderStatus('Enter a ticker to run analysis.');
       return;
     }
     activeTicker = next;
     try {
+      renderOutlookLoading();
+      renderStatus('Analyzing real market data...');
       await loadOutlook(activeTicker);
       await loadEarningsBoard();
+      renderStatus(`Real market analysis loaded for ${activeTicker}.`);
     } catch (error) {
       console.error(error);
+      const target = document.getElementById('stock-results');
+      if (target) {
+        target.innerHTML = `<div class="pro-lock">${escapeHtml(error?.message || 'Failed to load stock outlook from live data.')}</div>`;
+      }
       renderStatus(error?.message || 'Failed to load stock outlook.');
     }
   });
@@ -4547,6 +4844,7 @@ async function init() {
   setupAuthForms();
   setupProPopup();
   setupSidebarMenu();
+  setupQuickActions();
   setupSidebarDropdowns();
   setupStartHereRoutingGuard();
   setupInstantAiLaunchpad();
