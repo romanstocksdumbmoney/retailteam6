@@ -35,8 +35,10 @@ function getMarketDataApiKey() {
   const candidateKeys = [
     process.env.ALPHAVANTAGE_API_KEY,
     process.env.MARKET_DATA_API_KEY,
+    process.env.MARKET_API_KEY,
     process.env.VITE_MARKET_API_KEY,
     process.env.NEXT_PUBLIC_MARKET_API_KEY,
+    process.env.REACT_APP_MARKET_API_KEY,
     process.env.FMP_API_KEY,
     process.env.UNUSUAL_WHALES_API_KEY
   ];
