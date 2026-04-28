@@ -661,6 +661,11 @@ function getUserByStripeCustomerId(customerId) {
   return user ? sanitizeUser(user) : null;
 }
 
+function setUserTraderModeById(userId, traderMode) {
+  const updated = updateUser(userId, { traderMode });
+  return updated ? sanitizeUser(updated) : null;
+}
+
 function setUserPlanById(userId, { plan, stripeSubscriptionId = null }) {
   const updated = updateUser(userId, { plan, stripeSubscriptionId });
   return updated ? sanitizeUser(updated) : null;
@@ -698,6 +703,7 @@ module.exports = {
   setStripeCustomerForUser,
   setStripeCustomerId,
   getUserByStripeCustomerId,
+  setUserTraderModeById,
   setUserPlanById,
   setUserPlanByCustomerId,
   setSubscriptionStatus,
