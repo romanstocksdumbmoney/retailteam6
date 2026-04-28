@@ -1,5 +1,3 @@
-require('dotenv').config();
-
 const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
@@ -7,6 +5,7 @@ const rateLimit = require('express-rate-limit');
 const path = require('path');
 const fs = require('fs');
 const { execFileSync } = require('child_process');
+require('dotenv').config({ path: path.join(__dirname, '.env') });
 const newsRoutes = require('./routes/news');
 const earningsRoutes = require('./routes/earnings');
 const marketRoutes = require('./routes/market');
