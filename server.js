@@ -13,6 +13,7 @@ const authRoutes = require('./routes/auth');
 const { runAutoTraderAutopilotSweep } = require('./services/autoTraderService');
 
 const app = express();
+console.log('Restart the dev server for .env changes to load.');
 const buildDir = path.join(__dirname, 'frontend', 'build');
 const hasFrontendBuild = fs.existsSync(path.join(buildDir, 'index.html'));
 

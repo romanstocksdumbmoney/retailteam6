@@ -3027,6 +3027,26 @@ function renderOutlookLoading() {
   `;
 }
 
+function mapStockOutlookErrorMessage(error) {
+  const code = String(error?.body?.error || '').trim().toLowerCase();
+  if (code === 'no_api_key') {
+    return 'Market data API key is missing. Add it to your .env file and restart the dev server.';
+  }
+  if (code === 'invalid_ticker') {
+    return 'Ticker not found. Check the symbol and try again.';
+  }
+  if (code === 'api_limit') {
+    return 'Market data limit reached. Try again later.';
+  }
+  if (code === 'market_data_unavailable' || code === 'market_data_provider_unreachable' || code === 'market_data_provider_error') {
+    return 'Could not fetch market data right now. Try again.';
+  }
+  if (error instanceof TypeError || Number(error?.status || 0) === 0) {
+    return 'Could not fetch market data right now. Try again.';
+  }
+  return String(error?.message || '').trim() || 'Could not fetch market data right now. Try again.';
+}
+
 function renderOutlook(payload) {
   const target = document.getElementById('stock-results');
   if (!target) {
@@ -3078,11 +3098,13 @@ function renderOutlook(payload) {
       <div class="outlook-grid">
         <div>
           <h4>Stock</h4>
-          <p><strong>Current price:</strong> ${formatCurrencyOrUnavailable(stock.currentPrice)}</p>
-          <p><strong>Daily change:</strong> ${formatNumberOrUnavailable(stock.dailyChangePercent, { decimals: 2, suffix: '%' })}</p>
-          <p><strong>Volume:</strong> ${formatLargeNumberOrUnavailable(stock.volume)}</p>
-          <p><strong>Market cap:</strong> ${formatCompactCurrencyOrUnavailable(stock.marketCap)}</p>
-          <p><strong>52W high / low:</strong> ${formatCurrencyOrUnavailable(stock.fiftyTwoWeekHigh)} / ${formatCurrencyOrUnavailable(stock.fiftyTwoWeekLow)}</p>
+      <p><strong>Current price:</strong> ${formatCurrencyOrUnavailable(stock.currentPrice)}</p>
+      <p><strong>Change:</strong> ${formatCurrencyOrUnavailable(stock.dailyChange)}</p>
+      <p><strong>Change %:</strong> ${formatNumberOrUnavailable(stock.dailyChangePercent, { decimals: 2, suffix: '%' })}</p>
+      <p><strong>Volume:</strong> ${formatLargeNumberOrUnavailable(stock.volume)}</p>
+      <p><strong>Previous close:</strong> ${formatCurrencyOrUnavailable(stock.previousClose)}</p>
+      <p><strong>Latest trading day:</strong> ${isUnavailableValue(stock.latestTradingDay) ? 'Unavailable' : escapeHtml(stock.latestTradingDay)}</p>
+      <p><strong>Market cap:</strong> ${formatCompactCurrencyOrUnavailable(stock.marketCap)}</p>
         </div>
         <div>
           <h4>Outlook</h4>
@@ -3113,7 +3135,7 @@ function renderOutlook(payload) {
       <p><strong>Target idea:</strong> ${formatCurrencyOrUnavailable(tradePlan.target)}</p>
       <p><strong>Wait recommendation:</strong> ${escapeHtml(tradePlan.waitRecommendation || 'No Clear Setup')}</p>
       <p class="small-note"><strong>Invalidation:</strong> ${escapeHtml(tradePlan.invalidation || 'Unavailable')}</p>
-      <p class="small-note">This is educational research, not financial advice. Use position sizing and risk limits before acting.</p>
+      <p class="small-note">This is educational market research, not financial advice. Always do your own research and manage risk.</p>
 
       <h4>Key levels to watch</h4>
       ${keyLevels.length
@@ -4988,9 +5010,9 @@ function setupStockForm() {
     if (!next) {
       const target = document.getElementById('stock-results');
       if (target) {
-        target.innerHTML = '<div class="pro-lock">Enter a ticker (example: AAPL) to analyze real market data.</div>';
+        target.innerHTML = '<div class="pro-lock">Enter a ticker symbol.</div>';
       }
-      renderStatus('Enter a ticker to run analysis.');
+      renderStatus('Enter a ticker symbol.');
       return;
     }
     activeTicker = next;
@@ -5002,11 +5024,12 @@ function setupStockForm() {
       renderStatus(`Real market analysis loaded for ${activeTicker}.`);
     } catch (error) {
       console.error(error);
+      const message = mapStockOutlookErrorMessage(error);
       const target = document.getElementById('stock-results');
       if (target) {
-        target.innerHTML = `<div class="pro-lock">${escapeHtml(error?.message || 'Failed to load stock outlook from live data.')}</div>`;
+        target.innerHTML = `<div class="pro-lock">${escapeHtml(message)}</div>`;
       }
-      renderStatus(error?.message || 'Failed to load stock outlook.');
+      renderStatus(message);
     }
   });
 }

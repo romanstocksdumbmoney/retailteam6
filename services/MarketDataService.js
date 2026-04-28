@@ -7,6 +7,7 @@ const NEWS_REQUEST_HEADERS = Object.freeze({
   accept: 'application/rss+xml, application/xml, text/xml;q=0.9, */*;q=0.8',
   'user-agent': 'Mozilla/5.0 (DumbDollars MarketDataService)'
 });
+const ALPHA_VANTAGE_BASE_URL = 'https://www.alphavantage.co/query';
 
 const LOOKBACK_DAYS_FOR_TREND = 260;
 const RSI_PERIOD = 14;
@@ -30,14 +31,20 @@ function normalizeTicker(ticker) {
     .replace(/\./g, '-');
 }
 
-function hasConfiguredMarketDataApiKey() {
+function getMarketDataApiKey() {
   const candidateKeys = [
-    process.env.MARKET_DATA_API_KEY,
     process.env.ALPHAVANTAGE_API_KEY,
+    process.env.MARKET_DATA_API_KEY,
+    process.env.VITE_MARKET_API_KEY,
+    process.env.NEXT_PUBLIC_MARKET_API_KEY,
     process.env.FMP_API_KEY,
     process.env.UNUSUAL_WHALES_API_KEY
   ];
-  return candidateKeys.some((value) => String(value || '').trim());
+  return String(candidateKeys.find((value) => String(value || '').trim()) || '').trim();
+}
+
+function hasConfiguredMarketDataApiKey() {
+  return Boolean(getMarketDataApiKey());
 }
 
 async function fetchJson(url, { timeoutMs = 9000, headers = {} } = {}) {
@@ -106,6 +113,25 @@ function parseRawNumber(value) {
     return Number.isFinite(fromRaw) ? fromRaw : null;
   }
   const numeric = Number(value);
+  return Number.isFinite(numeric) ? numeric : null;
+}
+
+function parseAlphaVantageNumber(value) {
+  const normalized = String(value ?? '').trim();
+  if (!normalized) {
+    return null;
+  }
+  const numeric = Number(normalized.replace(/,/g, ''));
+  return Number.isFinite(numeric) ? numeric : null;
+}
+
+function parseAlphaVantagePercent(value) {
+  const raw = String(value ?? '').trim();
+  if (!raw) {
+    return null;
+  }
+  const normalized = raw.replace('%', '');
+  const numeric = Number(normalized);
   return Number.isFinite(numeric) ? numeric : null;
 }
 
@@ -244,55 +270,76 @@ function buildNewsSentiment(newsItems) {
 async function getQuote(ticker) {
   const symbol = normalizeTicker(ticker);
   if (!symbol) {
-    throw new MarketDataServiceError('invalid_ticker', 'Enter a valid ticker symbol to analyze.', 400);
+    throw new MarketDataServiceError('invalid_ticker', 'Enter a ticker symbol.', 400);
   }
 
-  const url = `https://query1.finance.yahoo.com/v7/finance/quote?symbols=${encodeURIComponent(symbol)}`;
+  const apiKey = getMarketDataApiKey();
+  if (!apiKey) {
+    throw new MarketDataServiceError(
+      'no_api_key',
+      'Market data API key is missing. Add it to your .env file and restart the dev server.',
+      503
+    );
+  }
+
+  const url = `${ALPHA_VANTAGE_BASE_URL}?function=GLOBAL_QUOTE&symbol=${encodeURIComponent(symbol)}&apikey=${encodeURIComponent(apiKey)}`;
   let payload;
   try {
     payload = await fetchJson(url, {
       timeoutMs: 10000,
-      headers: YAHOO_REQUEST_HEADERS
+      headers: {
+        accept: 'application/json, text/plain, */*',
+        'user-agent': 'Mozilla/5.0 (DumbDollars Alpha Vantage Quote Client)'
+      }
     });
   } catch (error) {
-    if (error instanceof MarketDataServiceError && !hasConfiguredMarketDataApiKey()) {
+    if (error instanceof MarketDataServiceError) {
       throw new MarketDataServiceError(
-        'market_data_api_not_connected',
-        'Market data API is not connected yet. Add a valid API key to enable real analysis.',
+        'market_data_unavailable',
+        'Could not fetch market data right now. Try again.',
         503
       );
     }
     throw error;
   }
 
-  const rows = Array.isArray(payload?.quoteResponse?.result) ? payload.quoteResponse.result : [];
-  if (!rows.length) {
-    throw new MarketDataServiceError('unknown_ticker', 'Ticker not found in live market listings.', 404);
+  const apiLimitMessage = String(payload?.Note || payload?.Information || '').trim();
+  if (apiLimitMessage && /call frequency|api call frequency|rate limit|thank you for using alpha vantage/i.test(apiLimitMessage)) {
+    throw new MarketDataServiceError('api_limit', 'Market data limit reached. Try again later.', 429);
   }
 
-  const row = rows.find((entry) => String(entry?.symbol || '').toUpperCase() === symbol) || rows[0];
-  const price = parseRawNumber(row?.regularMarketPrice);
+  const quote = payload?.['Global Quote'] || {};
+  const price = parseAlphaVantageNumber(quote?.['05. price']);
   if (!Number.isFinite(price)) {
-    throw new MarketDataServiceError('unknown_ticker', 'Ticker does not have live quote data right now.', 404);
+    throw new MarketDataServiceError('invalid_ticker', 'Ticker not found. Check the symbol and try again.', 404);
   }
+
+  const latestTradingDay = String(quote?.['07. latest trading day'] || '').trim();
+  const dailyChange = parseAlphaVantageNumber(quote?.['09. change']);
+  const changePercent = parseAlphaVantagePercent(quote?.['10. change percent']);
+  const parsedLatestDate = latestTradingDay ? new Date(`${latestTradingDay}T21:00:00Z`) : null;
+  const timestamp = parsedLatestDate && !Number.isNaN(parsedLatestDate.getTime())
+    ? parsedLatestDate.toISOString()
+    : new Date().toISOString();
 
   return {
     symbol,
-    companyName: String(row?.longName || row?.shortName || symbol),
+    companyName: symbol,
     price,
-    currency: String(row?.currency || 'USD'),
-    changePercent: parseRawNumber(row?.regularMarketChangePercent),
-    volume: parseRawNumber(row?.regularMarketVolume),
-    averageVolume: parseRawNumber(row?.averageDailyVolume3Month),
-    marketCap: parseRawNumber(row?.marketCap),
-    fiftyTwoWeekHigh: parseRawNumber(row?.fiftyTwoWeekHigh),
-    fiftyTwoWeekLow: parseRawNumber(row?.fiftyTwoWeekLow),
-    marketState: String(row?.marketState || ''),
-    exchange: String(row?.fullExchangeName || row?.exchange || ''),
-    timestamp: Number.isFinite(Number(row?.regularMarketTime))
-      ? new Date(Number(row.regularMarketTime) * 1000).toISOString()
-      : new Date().toISOString(),
-    source: 'Yahoo Finance quote endpoint (v7/finance/quote)'
+    currency: 'USD',
+    dailyChange,
+    changePercent,
+    volume: parseAlphaVantageNumber(quote?.['06. volume']),
+    previousClose: parseAlphaVantageNumber(quote?.['08. previous close']),
+    latestTradingDay: latestTradingDay || null,
+    averageVolume: null,
+    marketCap: null,
+    fiftyTwoWeekHigh: null,
+    fiftyTwoWeekLow: null,
+    marketState: '',
+    exchange: '',
+    timestamp,
+    source: 'Alpha Vantage GLOBAL_QUOTE'
   };
 }
 
@@ -706,109 +753,113 @@ function buildTradePlan({ quote, technical, outlook }) {
 }
 
 function valueOrUnavailable(value) {
-  return Number.isFinite(Number(value)) ? Number(value) : null;
+  if (value === null || value === undefined || value === '') {
+    return null;
+  }
+  const numeric = Number(value);
+  return Number.isFinite(numeric) ? numeric : null;
 }
 
 async function analyzeStockOutlook(ticker) {
   const symbol = normalizeTicker(ticker);
   if (!symbol) {
-    throw new MarketDataServiceError('invalid_ticker', 'Enter a ticker symbol (example: AAPL).', 400);
+    throw new MarketDataServiceError('invalid_ticker', 'Enter a ticker symbol.', 400);
   }
   if (!hasConfiguredMarketDataApiKey()) {
     throw new MarketDataServiceError(
-      'market_data_api_not_connected',
-      'Market data API is not connected yet. Add a valid API key to enable real analysis.',
+      'no_api_key',
+      'Market data API key is missing. Add it to your .env file and restart the dev server.',
       503
     );
   }
 
   const quote = await getQuote(symbol);
+  const changePercent = Number(quote?.changePercent || 0);
+  const absoluteMove = Math.abs(changePercent);
 
-  const [profile, technical, news, earnings] = await Promise.all([
-    getCompanyProfile(symbol),
-    getTechnicalIndicators(symbol),
-    getNews(symbol),
-    getEarnings(symbol)
-  ]);
+  let bias = 'Neutral / wait';
+  let guidanceLabel = 'Neutral / wait';
+  let riskLevel = 'Medium';
+  let riskScore = Math.min(95, Math.max(10, Math.round(25 + (absoluteMove * 8))));
+  let plainEnglish = 'No strong directional edge from today\'s quote alone. Wait for better confirmation.';
 
-  const outlook = computeOutlookFromData({
-    quote,
-    technical,
-    news,
-    earnings
-  });
+  if (changePercent > 2) {
+    bias = 'Bullish momentum';
+    guidanceLabel = 'Bullish momentum';
+    riskLevel = 'Medium';
+    riskScore = Math.min(95, Math.max(30, Math.round(35 + (absoluteMove * 7))));
+    plainEnglish = 'The stock is showing strong positive movement today. Watch for confirmation before entering.';
+  } else if (changePercent < -2) {
+    bias = 'Bearish pressure';
+    guidanceLabel = 'Bearish pressure';
+    riskLevel = 'High';
+    riskScore = Math.min(98, Math.max(50, Math.round(55 + (absoluteMove * 7))));
+    plainEnglish = 'The stock is under pressure today. Avoid chasing unless it stabilizes.';
+  }
 
-  const tradePlan = buildTradePlan({
-    quote,
-    technical,
-    outlook
-  });
-
-  const keyLevelsToWatch = [
-    Number.isFinite(technical?.supportLevel) ? `Support: ${technical.supportLevel}` : null,
-    Number.isFinite(technical?.resistanceLevel) ? `Resistance: ${technical.resistanceLevel}` : null,
-    Number.isFinite(technical?.sma50) ? `50-day MA: ${technical.sma50}` : null,
-    Number.isFinite(technical?.sma200) ? `200-day MA: ${technical.sma200}` : null
-  ].filter(Boolean);
+  const confidenceScore = Math.min(95, Math.max(35, Math.round(40 + (absoluteMove * 10))));
+  const bullishScore = Math.max(0, Math.min(100, Math.round(changePercent > 0 ? 50 + (absoluteMove * 10) : 35 - (absoluteMove * 6))));
+  const bearishScore = Math.max(0, Math.min(100, Math.round(changePercent < 0 ? 50 + (absoluteMove * 10) : 35 - (absoluteMove * 6))));
 
   return {
     ticker: symbol,
-    companyName: profile.companyName || quote.companyName || symbol,
+    companyName: quote.companyName || symbol,
     stock: {
       currentPrice: valueOrUnavailable(quote.price),
+      dailyChange: valueOrUnavailable(quote.dailyChange),
       dailyChangePercent: valueOrUnavailable(quote.changePercent),
-      volume: valueOrUnavailable(technical.latestVolume ?? quote.volume),
-      marketCap: valueOrUnavailable(profile.marketCap ?? quote.marketCap),
+      volume: valueOrUnavailable(quote.volume),
+      previousClose: valueOrUnavailable(quote.previousClose),
+      latestTradingDay: quote.latestTradingDay || null,
+      marketCap: valueOrUnavailable(null),
       fiftyTwoWeekHigh: valueOrUnavailable(quote.fiftyTwoWeekHigh),
       fiftyTwoWeekLow: valueOrUnavailable(quote.fiftyTwoWeekLow)
     },
     technicals: {
-      movingAverage50Day: valueOrUnavailable(technical.sma50),
-      movingAverage200Day: valueOrUnavailable(technical.sma200),
-      rsi14: valueOrUnavailable(technical.rsi14),
-      averageVolume20Day: valueOrUnavailable(technical.averageVolume20),
-      volatilityDailyPercent: valueOrUnavailable(technical.volatilityDailyPct),
-      supportLevel: valueOrUnavailable(technical.supportLevel),
-      resistanceLevel: valueOrUnavailable(technical.resistanceLevel)
+      movingAverage50Day: valueOrUnavailable(null),
+      movingAverage200Day: valueOrUnavailable(null),
+      rsi14: valueOrUnavailable(null),
+      averageVolume20Day: valueOrUnavailable(null),
+      volatilityDailyPercent: valueOrUnavailable(null),
+      supportLevel: valueOrUnavailable(null),
+      resistanceLevel: valueOrUnavailable(null)
     },
     fundamentals: {
-      earningsDate: earnings.earningsDate || profile.earningsDate || null,
-      analystRating: profile.analystRating || null,
-      analystRatingMean: valueOrUnavailable(profile.analystRatingMean),
-      analystCount: valueOrUnavailable(profile.analystCount),
-      sector: profile.sector || null,
-      industry: profile.industry || null
+      earningsDate: null,
+      analystRating: null,
+      analystRatingMean: valueOrUnavailable(null),
+      analystCount: valueOrUnavailable(null),
+      sector: null,
+      industry: null
     },
-    news: news.items,
+    news: [],
     outlook: {
-      bias: outlook.bias,
-      confidenceScore: outlook.confidence,
-      riskLevel: outlook.riskLevel,
-      riskScore: outlook.risk,
-      bullishScore: outlook.bullishScore,
-      bearishScore: outlook.bearishScore,
-      guidanceLabel: outlook.guidanceLabel,
-      timeframe: 'Near-term swing (days to weeks)'
+      bias,
+      confidenceScore,
+      riskLevel,
+      riskScore,
+      bullishScore,
+      bearishScore,
+      guidanceLabel,
+      timeframe: 'Today\'s quote context'
     },
     summary: {
-      plainEnglish: outlook.bias === 'Bullish'
-        ? 'Setup looks bullish if support holds, but this is not a guaranteed move and risk controls still matter.'
-        : outlook.bias === 'Bearish'
-          ? 'Current setup leans bearish, so avoiding aggressive entries may be safer until trend conditions improve.'
-          : 'Setup is mixed and does not have enough confirmation yet.',
-      strengths: outlook.strengths,
-      risks: outlook.risks,
-      keyLevelsToWatch
+      plainEnglish,
+      strengths: [],
+      risks: [],
+      keyLevelsToWatch: []
     },
-    tradePlan,
+    tradePlan: {
+      entryZone: null,
+      stopLoss: null,
+      target: null,
+      invalidation: null,
+      waitRecommendation: 'Use additional confirmation before acting on a quote-only read.'
+    },
     dataSources: [
-      quote.source,
-      technical.source,
-      profile.source,
-      news.source,
-      earnings.source
-    ].filter((value) => value && value !== 'Unavailable'),
-    dataProvider: 'Yahoo Finance',
+      quote.source
+    ],
+    dataProvider: 'Alpha Vantage',
     lastUpdated: quote.timestamp || new Date().toISOString(),
     marketDataMayBeDelayed: true
   };

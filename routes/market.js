@@ -18,6 +18,7 @@ const {
   analyzeAiOrderSetupAssistant
 } = require('../services/marketEngine');
 const {
+  normalizeTicker: normalizeMarketDataTicker,
   analyzeStockOutlook,
   MarketDataServiceError
 } = require('../services/MarketDataService');
@@ -177,8 +178,11 @@ function buildRealStockOutlookPayload(snapshot) {
     companyName: snapshot.companyName || snapshot.ticker,
     stock: {
       currentPrice: toUnavailable(snapshot.stock?.currentPrice),
+      dailyChange: toUnavailable(snapshot.stock?.dailyChange),
       dailyChangePercent: toUnavailable(snapshot.stock?.dailyChangePercent),
       volume: toUnavailable(snapshot.stock?.volume),
+      previousClose: toUnavailable(snapshot.stock?.previousClose),
+      latestTradingDay: toUnavailable(snapshot.stock?.latestTradingDay),
       marketCap: toUnavailable(snapshot.stock?.marketCap),
       fiftyTwoWeekHigh: toUnavailable(snapshot.stock?.fiftyTwoWeekHigh),
       fiftyTwoWeekLow: toUnavailable(snapshot.stock?.fiftyTwoWeekLow)
@@ -225,9 +229,9 @@ function buildRealStockOutlookPayload(snapshot) {
       waitRecommendation: 'Wait until more confirmation is available.'
     },
     dataNature: 'live',
-    sourceDisclosure: 'Real market outlook generated from live Yahoo Finance quote, chart, profile, and RSS news data.',
+    sourceDisclosure: 'Real market outlook generated from live Alpha Vantage quote data.',
     dataSources: Array.isArray(snapshot.dataSources) ? snapshot.dataSources : [],
-    dataProvider: snapshot.dataProvider || 'Yahoo Finance',
+    dataProvider: snapshot.dataProvider || 'Alpha Vantage',
     lastUpdated: snapshot.lastUpdated || new Date().toISOString(),
     marketDataMayBeDelayed: Boolean(snapshot.marketDataMayBeDelayed)
   };
@@ -281,9 +285,10 @@ function buildScannerPayload({ ticker, method, plan }) {
 }
 
 async function stockOutlookHandler(req, res) {
-  const ticker = normalizeTicker(req.query.ticker || req.query.q || 'AAPL');
+  const rawTicker = String(req.query.ticker || req.query.q || '').trim();
+  const ticker = normalizeMarketDataTicker(rawTicker);
   if (!ticker) {
-    return res.status(400).json({ error: 'invalid_ticker', message: 'Provide ?ticker=TSLA' });
+    return res.status(400).json({ error: 'invalid_ticker', message: 'Enter a ticker symbol.' });
   }
   try {
     const snapshot = await analyzeStockOutlook(ticker);
@@ -305,7 +310,7 @@ async function stockOutlookHandler(req, res) {
 }
 
 async function stockByParamHandler(req, res) {
-  const ticker = normalizeTicker(req.params.ticker);
+  const ticker = normalizeMarketDataTicker(req.params.ticker);
   if (!ticker) {
     return res.status(400).json({ error: 'invalid_ticker' });
   }
@@ -329,9 +334,9 @@ async function stockByParamHandler(req, res) {
 }
 
 async function stockSearchHandler(req, res) {
-  const ticker = normalizeTicker(req.query.q || req.query.ticker);
+  const ticker = normalizeMarketDataTicker(req.query.q || req.query.ticker);
   if (!ticker) {
-    return res.status(400).json({ error: 'missing_query', message: 'Use ?q=TSLA' });
+    return res.status(400).json({ error: 'missing_query', message: 'Enter a ticker symbol.' });
   }
   try {
     const snapshot = await analyzeStockOutlook(ticker);
