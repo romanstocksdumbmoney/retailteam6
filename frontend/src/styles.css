@@ -44,6 +44,267 @@ body {
   -moz-osx-font-smoothing: grayscale;
 }
 
+body.fun-mode-off {
+  background:
+    radial-gradient(circle at 20% -20%, rgba(59, 130, 246, 0.14), transparent 45%),
+    radial-gradient(circle at 90% 10%, rgba(15, 23, 42, 0.3), transparent 35%),
+    #05070d;
+}
+
+.fun-mode-background {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  z-index: -1;
+  pointer-events: none;
+  overflow: hidden;
+  background:
+    radial-gradient(circle at 20% -20%, rgba(16, 185, 129, 0.22), transparent 45%),
+    radial-gradient(circle at 85% 5%, rgba(6, 182, 212, 0.2), transparent 36%),
+    linear-gradient(180deg, #02040a 0%, #040812 100%);
+}
+
+.fun-mode-overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.68);
+}
+
+.fun-mode-grid {
+  position: absolute;
+  inset: 0;
+  opacity: 0.25;
+  background-image:
+    linear-gradient(rgba(16, 185, 129, 0.12) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(6, 182, 212, 0.12) 1px, transparent 1px);
+  background-size: 80px 80px;
+  animation: fun-mode-grid-drift 24s linear infinite;
+}
+
+.fun-mode-candles {
+  position: absolute;
+  inset: 0;
+  opacity: 0.26;
+  background-image:
+    repeating-linear-gradient(
+      90deg,
+      transparent 0 18px,
+      rgba(16, 185, 129, 0.24) 18px 21px,
+      transparent 21px 44px,
+      rgba(239, 68, 68, 0.2) 44px 47px,
+      transparent 47px 68px
+    );
+  mask-image: linear-gradient(to bottom, transparent 0%, rgba(0, 0, 0, 0.95) 40%, transparent 100%);
+  animation: fun-mode-candle-slide 30s linear infinite;
+}
+
+.fun-mode-diamonds,
+.fun-mode-arrows {
+  position: absolute;
+  inset: 0;
+}
+
+.fun-diamond,
+.fun-arrow {
+  position: absolute;
+  filter: drop-shadow(0 0 10px rgba(34, 211, 238, 0.45));
+  opacity: 0.42;
+  will-change: transform, opacity;
+}
+
+.fun-diamond {
+  font-size: clamp(1.1rem, 2vw, 2rem);
+  color: rgba(103, 232, 249, 0.9);
+  animation: fun-mode-float-up 16s ease-in-out infinite;
+}
+
+.fun-mode-diamonds .fun-diamond:nth-child(1) {
+  left: 8%;
+  top: 78%;
+  animation-delay: 0s;
+}
+
+.fun-mode-diamonds .fun-diamond:nth-child(2) {
+  left: 24%;
+  top: 86%;
+  animation-delay: 3s;
+}
+
+.fun-mode-diamonds .fun-diamond:nth-child(3) {
+  left: 42%;
+  top: 82%;
+  animation-delay: 6s;
+}
+
+.fun-mode-diamonds .fun-diamond:nth-child(4) {
+  left: 61%;
+  top: 88%;
+  animation-delay: 1.5s;
+}
+
+.fun-mode-diamonds .fun-diamond:nth-child(5) {
+  left: 77%;
+  top: 80%;
+  animation-delay: 4.5s;
+}
+
+.fun-mode-diamonds .fun-diamond:nth-child(6) {
+  left: 90%;
+  top: 84%;
+  animation-delay: 7.5s;
+}
+
+.fun-arrow {
+  font-size: clamp(1rem, 1.8vw, 1.6rem);
+  color: rgba(74, 222, 128, 0.9);
+  animation: fun-mode-arrow-rise 18s ease-in-out infinite;
+}
+
+.fun-mode-arrows .fun-arrow:nth-child(1) {
+  left: 14%;
+  top: 70%;
+  animation-delay: 0.5s;
+}
+
+.fun-mode-arrows .fun-arrow:nth-child(2) {
+  left: 56%;
+  top: 74%;
+  animation-delay: 4.5s;
+}
+
+.fun-mode-arrows .fun-arrow:nth-child(3) {
+  left: 82%;
+  top: 66%;
+  animation-delay: 8.5s;
+}
+
+.fun-mode-trader {
+  position: absolute;
+  right: 8%;
+  bottom: 7%;
+  width: min(240px, 34vw);
+  height: min(300px, 44vh);
+  opacity: 0.33;
+  filter: drop-shadow(0 0 26px rgba(6, 182, 212, 0.35));
+  animation: fun-mode-trader-bob 8s ease-in-out infinite;
+}
+
+.fun-trader-head {
+  position: absolute;
+  top: 0;
+  left: 43%;
+  width: 22%;
+  height: 20%;
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 35%, rgba(125, 211, 252, 0.95), rgba(15, 23, 42, 0.96) 72%);
+}
+
+.fun-trader-body {
+  position: absolute;
+  top: 18%;
+  left: 22%;
+  width: 56%;
+  height: 52%;
+  border-radius: 16px 16px 26px 26px;
+  background: linear-gradient(180deg, rgba(30, 41, 59, 0.96), rgba(15, 23, 42, 0.96));
+  border: 1px solid rgba(103, 232, 249, 0.35);
+}
+
+.fun-trader-arm {
+  position: absolute;
+  top: 26%;
+  width: 22%;
+  height: 36%;
+  border-radius: 14px;
+  background: linear-gradient(180deg, rgba(30, 41, 59, 0.92), rgba(15, 23, 42, 0.94));
+}
+
+.fun-trader-arm-left {
+  left: 4%;
+  transform: rotate(18deg);
+}
+
+.fun-trader-arm-right {
+  right: 4%;
+  transform: rotate(-18deg);
+}
+
+body.fun-mode-off .fun-mode-background {
+  background:
+    linear-gradient(180deg, rgba(3, 7, 18, 0.98), rgba(2, 6, 23, 0.98)),
+    radial-gradient(circle at 15% -10%, rgba(30, 64, 175, 0.22), transparent 46%);
+}
+
+body.fun-mode-off .fun-mode-grid,
+body.fun-mode-off .fun-mode-candles,
+body.fun-mode-off .fun-mode-diamonds,
+body.fun-mode-off .fun-mode-arrows,
+body.fun-mode-off .fun-mode-trader {
+  opacity: 0;
+  animation: none;
+}
+
+.browse-tools-toggle {
+  text-align: left;
+  width: 100%;
+  cursor: pointer;
+}
+
+@keyframes fun-mode-grid-drift {
+  0% {
+    transform: translate3d(0, 0, 0);
+  }
+  100% {
+    transform: translate3d(40px, 30px, 0);
+  }
+}
+
+@keyframes fun-mode-candle-slide {
+  0% {
+    transform: translate3d(0, 0, 0);
+  }
+  100% {
+    transform: translate3d(-120px, 0, 0);
+  }
+}
+
+@keyframes fun-mode-float-up {
+  0% {
+    transform: translate3d(0, 0, 0) scale(1);
+    opacity: 0.3;
+  }
+  45% {
+    opacity: 0.55;
+  }
+  100% {
+    transform: translate3d(12px, -160px, 0) scale(1.08);
+    opacity: 0.08;
+  }
+}
+
+@keyframes fun-mode-arrow-rise {
+  0% {
+    transform: translate3d(0, 0, 0) scale(1);
+    opacity: 0.28;
+  }
+  100% {
+    transform: translate3d(24px, -120px, 0) scale(1.15);
+    opacity: 0.05;
+  }
+}
+
+@keyframes fun-mode-trader-bob {
+  0%,
+  100% {
+    transform: translate3d(0, 0, 0);
+  }
+  50% {
+    transform: translate3d(0, -10px, 0);
+  }
+}
+
 h1,
 h2,
 h3,
@@ -3746,6 +4007,21 @@ button[aria-busy='true']::after {
 }
 
 @media (max-width: 960px) {
+  .fun-mode-overlay {
+    background: rgba(0, 0, 0, 0.74);
+  }
+
+  .fun-diamond,
+  .fun-arrow {
+    opacity: 0.28;
+  }
+
+  .fun-mode-trader {
+    opacity: 0.2;
+    right: 2%;
+    bottom: 4%;
+  }
+
   .sidebar {
     width: 100%;
   }
@@ -3780,6 +4056,19 @@ button[aria-busy='true']::after {
 }
 
 @media (max-width: 680px) {
+  .fun-mode-grid,
+  .fun-mode-candles,
+  .fun-mode-diamonds,
+  .fun-mode-arrows,
+  .fun-mode-trader {
+    animation-duration: 0s;
+    opacity: 0.08;
+  }
+
+  .fun-mode-overlay {
+    background: rgba(0, 0, 0, 0.78);
+  }
+
   .conversion-hero {
     text-align: center;
   }

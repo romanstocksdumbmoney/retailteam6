@@ -7,6 +7,30 @@
     <link rel="stylesheet" href="./styles.css" />
   </head>
   <body>
+    <div id="fun-mode-background" class="fun-mode-background" aria-hidden="true">
+      <div class="fun-mode-overlay"></div>
+      <div class="fun-mode-grid"></div>
+      <div class="fun-mode-candles"></div>
+      <div class="fun-mode-diamonds">
+        <span class="fun-diamond">💎</span>
+        <span class="fun-diamond">💎</span>
+        <span class="fun-diamond">💎</span>
+        <span class="fun-diamond">💎</span>
+        <span class="fun-diamond">💎</span>
+        <span class="fun-diamond">💎</span>
+      </div>
+      <div class="fun-mode-arrows">
+        <span class="fun-arrow">↗</span>
+        <span class="fun-arrow">↗</span>
+        <span class="fun-arrow">↗</span>
+      </div>
+      <div class="fun-mode-trader" role="presentation">
+        <div class="fun-trader-head"></div>
+        <div class="fun-trader-body"></div>
+        <div class="fun-trader-arm fun-trader-arm-left"></div>
+        <div class="fun-trader-arm fun-trader-arm-right"></div>
+      </div>
+    </div>
     <main class="container">
       <header class="hero">
         <div class="menu-bar">
@@ -39,6 +63,15 @@
             <a class="browse-tools-link" role="menuitem" href="/ai-trade.html">AI Trade</a>
             <a class="browse-tools-link" role="menuitem" href="/ai-analyzer.html">AI Analyzer</a>
             <a class="browse-tools-link" role="menuitem" href="/pro.html">Pro</a>
+            <button
+              id="fun-mode-toggle"
+              class="browse-tools-link browse-tools-toggle"
+              type="button"
+              role="menuitem"
+              aria-pressed="true"
+            >
+              Fun Mode Background: ON
+            </button>
           </div>
         </div>
 

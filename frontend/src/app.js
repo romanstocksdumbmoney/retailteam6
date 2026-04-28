@@ -32,6 +32,7 @@ const CHECKOUT_RETURN_PATH_STORAGE_KEY = 'dumbdollars_return_after_checkout';
 const AUTH_ACCESS_PATH = '/ai-trade-access.html';
 const EMAIL_AUTOMATION_FORM_IDLE_LABEL = 'Save Email Automation';
 const EMAIL_AUTOMATION_TEST_IDLE_LABEL = 'Send Test Email Now';
+const FUN_MODE_BACKGROUND_STORAGE_KEY = 'dumbdollars_fun_mode_background';
 let restoreSessionInFlight = false;
 const MODULE_NAV_TARGETS = Object.freeze([
   {
@@ -1764,7 +1765,7 @@ function ensureBrowseToolsFallbackMenuItems(browseMenu) {
   if (!(browseMenu instanceof HTMLElement)) {
     return;
   }
-  const existingLinks = browseMenu.querySelectorAll('.browse-tools-link');
+  const existingLinks = browseMenu.querySelectorAll('a.browse-tools-link');
   if (existingLinks.length > 0) {
     return;
   }
@@ -1817,6 +1818,7 @@ function setupBrowseToolsMenu() {
   }
   const menuToggle = document.getElementById('sidebar-menu-toggle');
   const browseMenu = document.getElementById('browse-tools-menu');
+  const funModeToggle = document.getElementById('fun-mode-toggle');
   if (!(menuToggle instanceof HTMLButtonElement) || !(browseMenu instanceof HTMLElement)) {
     return;
   }
@@ -1824,6 +1826,7 @@ function setupBrowseToolsMenu() {
   browseToolsMenuInitialized = true;
   ensureBrowseToolsFallbackMenuItems(browseMenu);
   setBrowseToolsMenuState(false);
+  setupFunModeBackgroundToggle(funModeToggle);
 
   menuToggle.addEventListener('click', (event) => {
     event.preventDefault();
@@ -1870,6 +1873,56 @@ function setupBrowseToolsMenu() {
       return;
     }
     positionBrowseToolsMenu(menuToggle, browseMenu);
+  });
+}
+
+function setFunModeBackgroundState(enabled) {
+  const isEnabled = Boolean(enabled);
+  document.body.classList.toggle('fun-mode-off', !isEnabled);
+  const toggle = document.getElementById('fun-mode-toggle');
+  if (toggle instanceof HTMLButtonElement) {
+    toggle.setAttribute('aria-pressed', isEnabled ? 'true' : 'false');
+    toggle.textContent = `Fun Mode Background: ${isEnabled ? 'ON' : 'OFF'}`;
+  }
+}
+
+function getInitialFunModeBackgroundPreference() {
+  try {
+    const stored = String(localStorage.getItem(FUN_MODE_BACKGROUND_STORAGE_KEY) || '').trim().toLowerCase();
+    if (stored === 'on') {
+      return true;
+    }
+    if (stored === 'off') {
+      return false;
+    }
+  } catch (_error) {
+    // Ignore storage failures in restrictive browser contexts.
+  }
+  if (window.matchMedia('(max-width: 680px)').matches) {
+    return false;
+  }
+  return true;
+}
+
+function persistFunModeBackgroundPreference(enabled) {
+  try {
+    localStorage.setItem(FUN_MODE_BACKGROUND_STORAGE_KEY, enabled ? 'on' : 'off');
+  } catch (_error) {
+    // Ignore storage failures in restrictive browser contexts.
+  }
+}
+
+function setupFunModeBackgroundToggle(funModeToggle) {
+  const initialState = getInitialFunModeBackgroundPreference();
+  setFunModeBackgroundState(initialState);
+  persistFunModeBackgroundPreference(initialState);
+  if (!(funModeToggle instanceof HTMLButtonElement)) {
+    return;
+  }
+  funModeToggle.addEventListener('click', () => {
+    const nextEnabled = document.body.classList.contains('fun-mode-off');
+    setFunModeBackgroundState(nextEnabled);
+    persistFunModeBackgroundPreference(nextEnabled);
   });
 }
 
