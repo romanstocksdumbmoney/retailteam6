@@ -5,6 +5,11 @@ let activePlan = PLAN_FREE;
 let activeTicker = 'AAPL';
 let authToken = '';
 let currentUser = null;
+const authState = {
+  user: null,
+  session: null,
+  loading: true
+};
 let activeAiPlatform = 'x-com';
 let activeTrendSource = 'all';
 let activePatternFilter = 'all';
@@ -27,6 +32,7 @@ let activeTraderMode = 'day';
 let traderModeShowAll = false;
 const AUTH_EMAIL_STORAGE_KEY = 'dumbdollars_saved_email';
 const SAVED_EMAIL_KEY = 'dumbdollars_saved_email';
+const AUTH_TOKEN_STORAGE_KEY = 'dumbdollars_token';
 const REMEMBER_TOKEN_STORAGE_KEY = 'dumbdollars_remember_token';
 const PREMIUM_SPIKE_PROOF_STORAGE_KEY = 'dumbdollars_premium_spike_proofs_v1';
 const FALLBACK_AI_DISCOVERY_LINK = 'https://x.com';
@@ -37,6 +43,109 @@ const EMAIL_AUTOMATION_TEST_IDLE_LABEL = 'Send Test Email Now';
 const FUN_MODE_BACKGROUND_STORAGE_KEY = 'dumbdollars_fun_mode_background';
 const RECENT_ANALYSES_STORAGE_KEY = 'dumbdollars_recent_analyses_v1';
 let restoreSessionInFlight = false;
+
+function normalizeAuthToken(token) {
+  return String(token || '').trim();
+}
+
+function buildAuthSession(token) {
+  const normalizedToken = normalizeAuthToken(token);
+  if (!normalizedToken) {
+    return null;
+  }
+  return {
+    token: normalizedToken
+  };
+}
+
+function syncLegacyAuthVarsFromState() {
+  currentUser = authState.user || null;
+  authToken = normalizeAuthToken(authState.session?.token || '');
+}
+
+function persistAuthSessionToken() {
+  const token = normalizeAuthToken(authState.session?.token || '');
+  if (!token) {
+    localStorage.removeItem(AUTH_TOKEN_STORAGE_KEY);
+    return;
+  }
+  localStorage.setItem(AUTH_TOKEN_STORAGE_KEY, token);
+}
+
+function getAuthStateSnapshot() {
+  const user = authState.user || null;
+  const session = buildAuthSession(authState.session?.token || '');
+  const loading = Boolean(authState.loading);
+  return {
+    user,
+    session,
+    loading,
+    isAuthenticated: Boolean(user && session)
+  };
+}
+
+function logAuthDebugState() {
+  const snapshot = getAuthStateSnapshot();
+  console.log('AUTH USER:', snapshot.user);
+  console.log('AUTH SESSION:', snapshot.session);
+  console.log('IS AUTHENTICATED:', snapshot.isAuthenticated);
+}
+
+function applyAuthStatePatch(patch = {}, options = {}) {
+  const { skipRender = false, skipLog = false, persistToken = true } = options;
+  if (Object.prototype.hasOwnProperty.call(patch, 'loading')) {
+    authState.loading = Boolean(patch.loading);
+  }
+  if (Object.prototype.hasOwnProperty.call(patch, 'user')) {
+    authState.user = patch.user || null;
+  }
+  if (Object.prototype.hasOwnProperty.call(patch, 'session')) {
+    authState.session = patch.session ? buildAuthSession(patch.session.token) : null;
+  }
+  if (Object.prototype.hasOwnProperty.call(patch, 'token')) {
+    authState.session = buildAuthSession(patch.token);
+  }
+  syncLegacyAuthVarsFromState();
+  if (persistToken) {
+    persistAuthSessionToken();
+  }
+  if (!skipRender) {
+    renderAuthState();
+  }
+  if (!skipLog) {
+    logAuthDebugState();
+  }
+  return getAuthStateSnapshot();
+}
+
+function hasAuthenticatedSession() {
+  return getAuthStateSnapshot().isAuthenticated;
+}
+
+function promptLoginForProtectedTool(toolLabel, nextPath = getCurrentAppPath()) {
+  const label = String(toolLabel || 'this tool').trim() || 'this tool';
+  setAuthMessage(`Please log in to use ${label}.`, true);
+  renderStatus(`Please log in to use ${label}.`);
+  window.location.href = getAuthAccessUrl('login', nextPath);
+}
+
+function withCurrentPath() {
+  return `${window.location.pathname || '/'}${window.location.search || ''}${window.location.hash || ''}`;
+}
+
+function guardAuthenticatedToolAccess(toolLabel, nextPath = getCurrentAppPath()) {
+  const snapshot = getAuthStateSnapshot();
+  if (snapshot.loading) {
+    setAuthMessage('Checking your session...');
+    renderStatus('Checking your session...');
+    return false;
+  }
+  if (snapshot.isAuthenticated) {
+    return true;
+  }
+  promptLoginForProtectedTool(toolLabel, nextPath);
+  return false;
+}
 const MODULE_NAV_TARGETS = Object.freeze([
   {
     key: 'stock-outlook',
@@ -358,9 +467,9 @@ async function handleCheckoutReturn() {
     clearCheckoutQueryParams();
     return;
   }
-  if (!authToken) {
+  if (!authState.session?.token) {
     const restored = await restoreAuthSessionFromRememberToken();
-    if (!restored || !authToken) {
+    if (!restored || !authState.session?.token) {
       setAuthMessage('Please sign in again to finish activating Pro after checkout.', true);
       if (typeof window.redirectToSignIn === 'function') {
         window.redirectToSignIn(checkoutSearch);
@@ -378,15 +487,14 @@ async function handleCheckoutReturn() {
       },
       body: JSON.stringify({ sessionId })
     });
-    if (payload?.token) {
-      authToken = payload.token;
-      localStorage.setItem('dumbdollars_token', authToken);
-    }
-    if (payload?.user) {
-      currentUser = payload.user;
+    if (payload?.token || payload?.user) {
+      applyAuthStatePatch({
+        token: payload?.token || '',
+        user: payload?.user || null,
+        loading: false
+      });
     }
     clearCheckoutQueryParams();
-    renderAuthState();
     setAuthMessage('Payment confirmed. Pro access is now active.');
 
     const returnAfterCheckout = String(sessionStorage.getItem('dumbdollars_return_after_checkout') || '').trim();
@@ -461,8 +569,9 @@ async function fetchJson(url, options = {}) {
 
 function headersWithPlan() {
   const headers = {};
-  if (authToken) {
-    headers.authorization = `Bearer ${authToken}`;
+  const sessionToken = normalizeAuthToken(authState.session?.token || authToken);
+  if (sessionToken) {
+    headers.authorization = `Bearer ${sessionToken}`;
   }
   return headers;
 }
@@ -562,19 +671,27 @@ function renderDashboardGreeting() {
   const greetingNode = document.getElementById('dashboard-greeting');
   const titleNode = document.getElementById('dashboard-greeting-title');
   const welcomeNode = document.getElementById('dashboard-greeting-subtext');
+  const authSnapshot = getAuthStateSnapshot();
   if (!(greetingNode instanceof HTMLElement) || !(titleNode instanceof HTMLElement) || !(welcomeNode instanceof HTMLElement)) {
     return;
   }
-  if (!currentUser) {
+  if (authSnapshot.loading) {
+    greetingNode.classList.remove('hidden');
+    greetingNode.classList.add('dashboard-greeting--active');
+    titleNode.textContent = 'Checking your session...';
+    welcomeNode.textContent = 'Loading your account and workspace preferences.';
+    return;
+  }
+  if (!authSnapshot.user) {
     greetingNode.classList.add('hidden');
     greetingNode.classList.remove('dashboard-greeting--active');
     titleNode.textContent = 'Hello, Trader 👋';
     welcomeNode.textContent = 'Sign in to load your personalized market workspace.';
     return;
   }
-  const name = resolveGreetingName(currentUser);
+  const name = resolveGreetingName(authSnapshot.user);
   titleNode.textContent = `Hello, ${name} 👋`;
-  const email = String(currentUser?.email || '').trim().toLowerCase();
+  const email = String(authSnapshot.user?.email || '').trim().toLowerCase();
   const loggedInLine = email ? `Logged in as ${email}. ` : '';
   welcomeNode.textContent = `${loggedInLine}Glad to have you back. Let’s find your next trade.`;
   greetingNode.classList.remove('hidden');
@@ -583,13 +700,11 @@ function renderDashboardGreeting() {
 
 function applyAuthPayload(payload, fallbackEmail = '') {
   const token = String(payload?.token || '').trim();
-  if (token) {
-    authToken = token;
-    localStorage.setItem('dumbdollars_token', token);
-  }
-  if (payload?.user) {
-    currentUser = payload.user;
-  }
+  applyAuthStatePatch({
+    session: token ? { token } : null,
+    user: payload?.user || null,
+    loading: false
+  }, { skipRender: true, skipLog: false, persistToken: true });
   const rememberToken = String(payload?.rememberToken || '').trim();
   if (rememberToken) {
     saveRememberToken(rememberToken);
@@ -934,7 +1049,7 @@ function renderTraderModeCards(activeMode, showAllModes) {
 
 async function saveTraderMode(mode) {
   const normalized = persistTraderMode(mode);
-  if (!authToken) {
+  if (!authState.session?.token) {
     return normalized;
   }
   try {
@@ -947,7 +1062,7 @@ async function saveTraderMode(mode) {
       body: JSON.stringify({ traderMode: normalized })
     });
     if (payload?.user) {
-      currentUser = payload.user;
+      applyAuthStatePatch({ user: payload.user }, { skipRender: true });
     }
     return normalizeTraderMode(payload?.traderMode || normalized);
   } catch (_error) {
@@ -1204,6 +1319,7 @@ function setupQuickAccessHub() {
   const openAiInsightsButton = document.getElementById('home-open-ai-insights');
   const aiOverviewButtons = Array.from(document.querySelectorAll('.home-ai-tool-button'));
   const openCopilotInlineButton = document.getElementById('open-copilot-inline');
+  const menuToggle = document.getElementById('sidebar-menu-toggle');
   if (!(searchButton instanceof HTMLButtonElement)) {
     // Keep compatibility on pages where quick access search is absent.
   } else {
@@ -1246,7 +1362,8 @@ function setupQuickAccessHub() {
 
   if (orderSetupButton instanceof HTMLButtonElement) {
     orderSetupButton.addEventListener('click', () => {
-      window.location.href = '/ai-trade.html#ai-order-setup-title';
+      console.log('Build Trade Plan clicked');
+      openAiOrderSetupAssistantPage();
     });
   }
 
@@ -1279,6 +1396,9 @@ function setupQuickAccessHub() {
 
   if (openAiInsightsButton instanceof HTMLButtonElement) {
     openAiInsightsButton.addEventListener('click', () => {
+      if (!guardAuthenticatedToolAccess('AI Discovery', '/#ai-discovery-section')) {
+        return;
+      }
       const target = getModuleTargetByKey('ai-discovery');
       if (target) {
         const jumped = jumpToModule(target);
@@ -1292,6 +1412,24 @@ function setupQuickAccessHub() {
   aiOverviewButtons.forEach((button) => {
     button.addEventListener('click', () => {
       const key = String(button.getAttribute('data-module-key') || '').trim();
+      const protectedToolLabelByKey = {
+        'realized-patterns': 'Pattern Analyzer',
+        'ai-analyzer': 'AI Analyzer',
+        'ai-trade': 'AI Trade',
+        'view-portfolios': 'Portfolio Tracker',
+        'order-setup-assistant': 'Order Setup Assistant'
+      };
+      const protectedToolNextPathByKey = {
+        'realized-patterns': '/#realized-patterns-section',
+        'ai-analyzer': '/ai-analyzer.html',
+        'ai-trade': '/ai-trade.html',
+        'view-portfolios': '/portfolios.html',
+        'order-setup-assistant': '/ai-trade.html#ai-order-setup-title'
+      };
+      const protectedLabel = protectedToolLabelByKey[key];
+      if (protectedLabel && !guardAuthenticatedToolAccess(protectedLabel, protectedToolNextPathByKey[key])) {
+        return;
+      }
       const target = getModuleTargetByKey(key);
       if (!target) {
         return;
@@ -1305,6 +1443,10 @@ function setupQuickAccessHub() {
 
   if (openCopilotInlineButton instanceof HTMLButtonElement) {
     openCopilotInlineButton.addEventListener('click', () => {
+      console.log('Open Copilot clicked');
+      if (!guardAuthenticatedToolAccess('AI Copilot', `${window.location.pathname || '/'}${window.location.search || ''}${window.location.hash || ''}`)) {
+        return;
+      }
       window.dispatchEvent(new CustomEvent('dumbdollars:copilot-open', {
         detail: {
           message: 'Copilot opened. Ask what to do next and I will guide you.'
@@ -1838,8 +1980,7 @@ async function openSmartAiSetupPath() {
     }
   };
 
-  const hasSignedIn = Boolean(authToken || currentUser || localStorage.getItem('dumbdollars_token'));
-  if (!hasSignedIn) {
+  if (!guardAuthenticatedToolAccess('Auto Guide', '/ai-simple-setup.html')) {
     setBusy(false, 'AI guide: sign in first, then I will guide each next step.');
     guideWithAiAndFallback({
       message: 'You are not signed in yet. I will guide you through setup after sign in.',
@@ -2069,23 +2210,17 @@ function setupInstantAiLaunchpad() {
 }
 
 function openAiTradeEntryPage() {
-  const hasStoredToken = Boolean(authToken || localStorage.getItem('dumbdollars_token'));
-  if (currentUser || hasStoredToken) {
-    window.location.href = '/ai-trade.html';
+  if (!guardAuthenticatedToolAccess('AI Trade', '/ai-trade.html')) {
     return;
   }
-  const next = encodeURIComponent('/ai-trade.html');
-  window.location.href = `/ai-trade-access.html?next=${next}`;
+  window.location.href = '/ai-trade.html';
 }
 
 function openAiOrderSetupAssistantPage() {
-  const hasStoredToken = Boolean(authToken || localStorage.getItem('dumbdollars_token'));
-  if (currentUser || hasStoredToken) {
-    window.location.href = '/ai-trade.html#ai-order-setup-title';
+  if (!guardAuthenticatedToolAccess('Order Setup Assistant', '/ai-trade.html#ai-order-setup-title')) {
     return;
   }
-  const next = encodeURIComponent('/ai-trade.html#ai-order-setup-title');
-  window.location.href = `/ai-trade-access.html?next=${next}`;
+  window.location.href = '/ai-trade.html#ai-order-setup-title';
 }
 
 function openInsiderTradesPage() {
@@ -2093,7 +2228,29 @@ function openInsiderTradesPage() {
 }
 
 function openPortfoliosPage() {
+  if (!guardAuthenticatedToolAccess('Portfolio Tracker', '/portfolios.html')) {
+    return;
+  }
   window.location.href = '/portfolios.html';
+}
+
+function openAiAnalyzerPage() {
+  if (!guardAuthenticatedToolAccess('AI Analyzer', '/ai-analyzer.html')) {
+    return;
+  }
+  window.location.href = '/ai-analyzer.html';
+}
+
+function openAiCopilotTool() {
+  const nextPath = `${window.location.pathname || '/'}${window.location.search || ''}${window.location.hash || ''}`;
+  if (!guardAuthenticatedToolAccess('AI Copilot', nextPath)) {
+    return;
+  }
+  window.dispatchEvent(new CustomEvent('dumbdollars:copilot-open', {
+    detail: {
+      message: 'Copilot opened. Ask what to do next and I will guide you.'
+    }
+  }));
 }
 
 async function focusPremiumSpikesSection(options = {}) {
@@ -2425,7 +2582,8 @@ function populateEmailAutomationFormFromSettings(payload) {
 }
 
 async function loadEmailAutomationSettings() {
-  if (!currentUser) {
+  const authSnapshot = getAuthStateSnapshot();
+  if (authSnapshot.loading || !authSnapshot.user) {
     toggleEmailAutomationCardVisibility(false);
     setEmailAutomationStatus('Sign in to configure email automation.', false);
     return;
@@ -2451,7 +2609,8 @@ function setupEmailAutomationCard() {
 
   form.addEventListener('submit', async (event) => {
     event.preventDefault();
-    if (!currentUser) {
+    const authSnapshot = getAuthStateSnapshot();
+    if (authSnapshot.loading || !authSnapshot.user) {
       setEmailAutomationStatus('Sign in first to save email automation.', true);
       return;
     }
@@ -2485,7 +2644,8 @@ function setupEmailAutomationCard() {
   });
 
   sendTestButton.addEventListener('click', async () => {
-    if (!currentUser) {
+    const authSnapshot = getAuthStateSnapshot();
+    if (authSnapshot.loading || !authSnapshot.user) {
       setEmailAutomationStatus('Sign in first to send a test email.', true);
       return;
     }
@@ -2520,8 +2680,9 @@ function setupEmailAutomationCard() {
 }
 
 function ensureEmailAutomationCardVisibility() {
-  toggleEmailAutomationCardVisibility(Boolean(currentUser));
-  if (!currentUser) {
+  const authSnapshot = getAuthStateSnapshot();
+  toggleEmailAutomationCardVisibility(!authSnapshot.loading && Boolean(authSnapshot.user));
+  if (authSnapshot.loading || !authSnapshot.user) {
     setEmailAutomationStatus('Sign in to configure email automation.', false);
   }
 }
@@ -2630,6 +2791,7 @@ function openAllAiPlatforms(query) {
 }
 
 function renderAuthState() {
+  const authSnapshot = getAuthStateSnapshot();
   const planBadge = document.getElementById('plan-badge');
   const checkoutButton = document.getElementById('upgrade-pro-btn');
   const billingPortalButton = document.getElementById('billing-portal-btn');
@@ -2641,57 +2803,63 @@ function renderAuthState() {
   const authGrid = document.querySelector('#account-center .auth-grid');
   const socialAuthRow = document.getElementById('social-auth-row');
   const openAuthAccessPageLink = document.getElementById('open-auth-access-page');
-  const hasOwnerAccess = Boolean(currentUser && currentUser.ownerAccess);
+  const hasOwnerAccess = Boolean(authSnapshot.user && authSnapshot.user.ownerAccess);
 
-  activePlan = currentUser && currentUser.plan === PLAN_PRO ? PLAN_PRO : PLAN_FREE;
-  planBadge.textContent = hasOwnerAccess
-    ? 'OWNER PRO ACCESS'
-    : (activePlan === PLAN_PRO ? 'PRO ACCESS' : 'FREE ACCESS');
-  planBadge.className = activePlan === PLAN_PRO ? 'plan-badge plan-pro' : 'plan-badge plan-free';
+  activePlan = authSnapshot.user && authSnapshot.user.plan === PLAN_PRO ? PLAN_PRO : PLAN_FREE;
 
-  setAuthMessage(
-    currentUser
-      ? `${currentUser.email} • ${hasOwnerAccess ? 'Owner access active' : (activePlan === PLAN_PRO ? 'Pro active' : 'Free plan')}`
-      : 'You are logged out. Log in or sign up to save your dashboard and analysis history.'
-  );
+  if (authSnapshot.loading) {
+    planBadge.textContent = 'CHECKING SESSION';
+    planBadge.className = 'plan-badge plan-free';
+    setAuthMessage('Checking your session...');
+  } else {
+    planBadge.textContent = hasOwnerAccess
+      ? 'OWNER PRO ACCESS'
+      : (activePlan === PLAN_PRO ? 'PRO ACCESS' : 'FREE ACCESS');
+    planBadge.className = activePlan === PLAN_PRO ? 'plan-badge plan-pro' : 'plan-badge plan-free';
+    setAuthMessage(
+      authSnapshot.user
+        ? `${authSnapshot.user.email} • ${hasOwnerAccess ? 'Owner access active' : (activePlan === PLAN_PRO ? 'Pro active' : 'Free plan')}`
+        : 'You are logged out. Log in or sign up to save your dashboard and analysis history.'
+    );
+  }
 
   if (checkoutButton) {
-    checkoutButton.disabled = !currentUser || activePlan === PLAN_PRO || hasOwnerAccess;
+    checkoutButton.disabled = authSnapshot.loading || !authSnapshot.user || activePlan === PLAN_PRO || hasOwnerAccess;
     checkoutButton.textContent = hasOwnerAccess
       ? 'Owner Access Active'
       : (activePlan === PLAN_PRO ? 'Pro Active' : `Upgrade to Pro (${PRO_MONTHLY_PRICE})`);
   }
 
   if (billingPortalButton) {
-    billingPortalButton.disabled = !currentUser;
+    billingPortalButton.disabled = authSnapshot.loading || !authSnapshot.user;
   }
 
   if (logoutButton) {
-    logoutButton.disabled = !currentUser;
+    logoutButton.disabled = authSnapshot.loading || !authSnapshot.user;
   }
 
   if (headerLoginLink) {
-    headerLoginLink.classList.toggle('hidden', Boolean(currentUser));
+    headerLoginLink.classList.toggle('hidden', authSnapshot.loading || Boolean(authSnapshot.user));
   }
   if (headerSignupLink) {
-    headerSignupLink.classList.toggle('hidden', Boolean(currentUser));
+    headerSignupLink.classList.toggle('hidden', authSnapshot.loading || Boolean(authSnapshot.user));
   }
   if (headerProfileButton instanceof HTMLButtonElement) {
-    headerProfileButton.classList.toggle('hidden', !currentUser);
-    headerProfileButton.disabled = !currentUser;
+    headerProfileButton.classList.toggle('hidden', authSnapshot.loading || !authSnapshot.user);
+    headerProfileButton.disabled = authSnapshot.loading || !authSnapshot.user;
   }
   if (headerLogoutButton instanceof HTMLButtonElement) {
-    headerLogoutButton.classList.toggle('hidden', !currentUser);
-    headerLogoutButton.disabled = !currentUser;
+    headerLogoutButton.classList.toggle('hidden', authSnapshot.loading || !authSnapshot.user);
+    headerLogoutButton.disabled = authSnapshot.loading || !authSnapshot.user;
   }
   if (authGrid instanceof HTMLElement) {
-    authGrid.classList.toggle('hidden', Boolean(currentUser));
+    authGrid.classList.toggle('hidden', authSnapshot.loading || Boolean(authSnapshot.user));
   }
   if (socialAuthRow instanceof HTMLElement) {
-    socialAuthRow.classList.toggle('hidden', Boolean(currentUser));
+    socialAuthRow.classList.toggle('hidden', authSnapshot.loading || Boolean(authSnapshot.user));
   }
   if (openAuthAccessPageLink instanceof HTMLElement) {
-    openAuthAccessPageLink.classList.toggle('hidden', Boolean(currentUser));
+    openAuthAccessPageLink.classList.toggle('hidden', authSnapshot.loading || Boolean(authSnapshot.user));
   }
   ensureEmailAutomationCardVisibility();
   renderDashboardGreeting();
@@ -3784,12 +3952,16 @@ async function fetchBillingInfo() {
 }
 
 async function fetchCurrentUser() {
+  applyAuthStatePatch({ loading: true }, { skipRender: false, skipLog: true });
   let restoredFromRemember = false;
-  if (!authToken) {
+  if (!authState.session?.token) {
     const restored = await restoreAuthSessionFromRememberToken();
     if (!restored) {
-      currentUser = null;
-      renderAuthState();
+      applyAuthStatePatch({
+        loading: false,
+        session: null,
+        user: null
+      });
       return;
     }
     restoredFromRemember = true;
@@ -3797,48 +3969,61 @@ async function fetchCurrentUser() {
 
   try {
     const payload = await fetchJson('/api/auth/me', { headers: headersWithPlan() });
-    currentUser = payload.user;
-    if (currentUser && restoredFromRemember) {
-      setAuthMessage(`Welcome back, ${currentUser.email}. Session restored.`);
+    applyAuthStatePatch({
+      loading: false,
+      user: payload.user || null
+    });
+    if (payload?.user && restoredFromRemember) {
+      setAuthMessage(`Welcome back, ${payload.user.email}. Session restored.`);
     }
-    renderAuthState();
     return;
   } catch (error) {
     const status = Number(error?.status || 0);
     if (status !== 401) {
       // Avoid logging users out for transient API failures.
-      renderAuthState();
+      applyAuthStatePatch({ loading: false }, { skipRender: false, skipLog: true });
       return;
     }
   }
 
   // Token was rejected; clear only after confirmed 401.
-  authToken = '';
-  localStorage.removeItem('dumbdollars_token');
+  applyAuthStatePatch({
+    loading: true,
+    session: null,
+    user: null
+  });
   const restored = await restoreAuthSessionFromRememberToken();
   if (restored) {
     try {
       const retryPayload = await fetchJson('/api/auth/me', { headers: headersWithPlan() });
-      currentUser = retryPayload.user;
-      if (currentUser) {
-        setAuthMessage(`Welcome back, ${currentUser.email}. Session restored.`);
+      applyAuthStatePatch({
+        loading: false,
+        user: retryPayload.user || null
+      });
+      if (retryPayload?.user) {
+        setAuthMessage(`Welcome back, ${retryPayload.user.email}. Session restored.`);
       }
-      renderAuthState();
       return;
     } catch (retryError) {
       const retryStatus = Number(retryError?.status || 0);
       if (retryStatus === 401) {
-        currentUser = null;
         clearRememberToken();
         setAuthMessage('Session expired. Please sign in again.', true);
       }
-      renderAuthState();
+      applyAuthStatePatch({
+        loading: false,
+        session: null,
+        user: null
+      });
       return;
     }
   }
-  currentUser = null;
   setAuthMessage('Session expired. Please sign in again.', true);
-  renderAuthState();
+  applyAuthStatePatch({
+    loading: false,
+    session: null,
+    user: null
+  });
 }
 
 // One place to refresh post-auth UI/data so login/signup flows stay consistent.
@@ -3965,7 +4150,8 @@ function setupAuthForms() {
 
   if (headerProfileButton instanceof HTMLButtonElement) {
     headerProfileButton.addEventListener('click', () => {
-      if (!currentUser) {
+      const authSnapshot = getAuthStateSnapshot();
+      if (authSnapshot.loading || !authSnapshot.user) {
         openAuthAccessPage('login');
         return;
       }
@@ -4022,9 +4208,12 @@ function setupAuthForms() {
     try {
       setButtonBusy(submitButton, true, idleLabel, 'Signing in...');
       const remember = !(loginRememberInput instanceof HTMLInputElement) || loginRememberInput.checked;
-      await login(email, password, { remember });
+      const payload = await login(email, password, { remember });
       savePreferredEmail(email);
-      setAuthMessage('Logged in successfully.');
+      if (!hasAuthenticatedSession()) {
+        throw new Error('Login succeeded but session did not persist. Please try again.');
+      }
+      setAuthMessage(`Logged in successfully as ${payload?.user?.email || email}.`);
       await refreshAfterAuth();
     } catch (error) {
       setAuthMessage(error.message || 'Login failed.', true);
@@ -4050,10 +4239,23 @@ function setupAuthForms() {
     try {
       setButtonBusy(submitButton, true, idleLabel, 'Creating...');
       const remember = !(signupRememberInput instanceof HTMLInputElement) || signupRememberInput.checked;
-      await signup(email, password, { remember });
+      const payload = await signup(email, password, { remember });
       savePreferredEmail(email);
-      setAuthMessage('Account created and logged in.');
-      await refreshAfterAuth();
+      if (hasAuthenticatedSession()) {
+        setAuthMessage('Account created and logged in.');
+        await refreshAfterAuth();
+        return;
+      }
+      const requiresEmailConfirmation = Boolean(
+        payload?.requiresEmailConfirmation
+        || payload?.emailConfirmationRequired
+        || (!payload?.token && !payload?.rememberToken)
+      );
+      if (requiresEmailConfirmation) {
+        setAuthMessage('Check your email to confirm your account.');
+        return;
+      }
+      setAuthMessage('Account created. Please log in to continue.', true);
     } catch (error) {
       if (error?.status === 409 || String(error?.body?.error || '').trim().toLowerCase() === 'email_in_use') {
         setAuthMessage('That email already has an account. Please use Log in with your existing password.', true);
@@ -4093,12 +4295,13 @@ function setupAuthForms() {
         // Best-effort revoke only.
       }
     }
-    authToken = '';
-    currentUser = null;
-    localStorage.removeItem('dumbdollars_token');
+    applyAuthStatePatch({
+      session: null,
+      user: null,
+      loading: false
+    });
     clearRememberToken();
     closeBillingCard();
-    renderAuthState();
     setAuthMessage('Logged out.');
     await refreshAfterAuth();
   });
@@ -4110,11 +4313,12 @@ function setupAuthForms() {
         return;
       }
       // Fallback safety path if inline logout button is unavailable.
-      authToken = '';
-      currentUser = null;
-      localStorage.removeItem('dumbdollars_token');
+      applyAuthStatePatch({
+        session: null,
+        user: null,
+        loading: false
+      });
       clearRememberToken();
-      renderAuthState();
       setAuthMessage('Logged out.');
     });
   }
@@ -4125,7 +4329,8 @@ function setupAuthForms() {
 
   if (billingContinueButton) {
     billingContinueButton.addEventListener('click', async () => {
-      if (!currentUser) {
+      const authSnapshot = getAuthStateSnapshot();
+      if (authSnapshot.loading || !authSnapshot.user) {
         setAuthMessage('Please login first.', true);
         closeBillingCard();
         return;
@@ -4153,7 +4358,8 @@ function setupAuthForms() {
   }
 
   checkoutButton.addEventListener('click', async () => {
-    if (!currentUser) {
+    const authSnapshot = getAuthStateSnapshot();
+    if (authSnapshot.loading || !authSnapshot.user) {
       setAuthMessage('Please login first.', true);
       return;
     }
@@ -4181,7 +4387,8 @@ function setupAuthForms() {
   });
 
   billingPortalButton.addEventListener('click', async () => {
-    if (!currentUser) {
+    const authSnapshot = getAuthStateSnapshot();
+    if (authSnapshot.loading || !authSnapshot.user) {
       setAuthMessage('Please login first.', true);
       return;
     }
@@ -4266,6 +4473,7 @@ function setupAiSidebar() {
 
   if (aiTradeButton) {
     aiTradeButton.addEventListener('click', () => {
+      console.log('Open AI Trade clicked');
       openAiTradeEntryPage();
       renderStatus('Opening AI Trade...');
     });
@@ -4308,7 +4516,8 @@ function setupAiSidebar() {
 
   if (aiAnalyzerButton) {
     aiAnalyzerButton.addEventListener('click', () => {
-      window.location.href = '/ai-analyzer.html';
+      console.log('Open AI Analyzer clicked');
+      openAiAnalyzerPage();
       renderStatus('Opening AI Analyzer...');
     });
   }
@@ -4339,6 +4548,9 @@ function setupAiSidebar() {
   }
 
   function syncAndLoadInsiders() {
+    if (!guardAuthenticatedToolAccess('Insider Trades', '/#insider-trades-section')) {
+      throw new Error('Insider Trades requires login.');
+    }
     activeInsiderSide = String(insiderSideSelect.value || 'all').trim().toLowerCase();
     activeInsiderSymbol = String(insiderSymbolInput.value || '').trim().toUpperCase();
     const parsedMin = Number(insiderMinValueInput.value || 0);
@@ -4352,6 +4564,9 @@ function setupAiSidebar() {
 
   form.addEventListener('submit', async (event) => {
     event.preventDefault();
+    if (!guardAuthenticatedToolAccess('AI Discovery', '/#ai-discovery-section')) {
+      return;
+    }
     const query = document.getElementById('ai-search-query').value.trim() || activeTicker;
     try {
       renderStatus('Searching AI tools...');
@@ -4367,6 +4582,9 @@ function setupAiSidebar() {
   });
 
   select.addEventListener('change', async () => {
+    if (!guardAuthenticatedToolAccess('AI Discovery', '/#ai-discovery-section')) {
+      return;
+    }
     activeAiPlatform = select.value || 'x-com';
     const query = document.getElementById('ai-search-query').value.trim() || activeTicker;
     await loadAiSidebar(query);
@@ -4374,6 +4592,10 @@ function setupAiSidebar() {
 
   trendForm.addEventListener('submit', async (event) => {
     event.preventDefault();
+    console.log('Analyze Trends clicked');
+    if (!guardAuthenticatedToolAccess('Trend Trades', '/#trend-trades-section')) {
+      return;
+    }
     activeTrendSource = trendSourceSelect.value || 'all';
     try {
       renderStatus('Loading trend trades...');
@@ -4389,6 +4611,9 @@ function setupAiSidebar() {
   });
 
   trendSourceSelect.addEventListener('change', async () => {
+    if (!guardAuthenticatedToolAccess('Trend Trades', '/#trend-trades-section')) {
+      return;
+    }
     activeTrendSource = trendSourceSelect.value || 'all';
     try {
       await loadTrendTrades();
@@ -4402,6 +4627,10 @@ function setupAiSidebar() {
 
   patternForm.addEventListener('submit', async (event) => {
     event.preventDefault();
+    console.log('Analyze Patterns clicked');
+    if (!guardAuthenticatedToolAccess('Pattern Analyzer', '/#realized-patterns-section')) {
+      return;
+    }
     activePatternFilter = patternTypeSelect.value || 'all';
     try {
       renderStatus('Finding patterns...');
@@ -4415,6 +4644,9 @@ function setupAiSidebar() {
   });
 
   patternTypeSelect.addEventListener('change', async () => {
+    if (!guardAuthenticatedToolAccess('Pattern Analyzer', '/#realized-patterns-section')) {
+      return;
+    }
     activePatternFilter = patternTypeSelect.value || 'all';
     try {
       await loadRealizedPatterns();
@@ -4425,6 +4657,9 @@ function setupAiSidebar() {
   });
 
   wildTakesButton.addEventListener('click', async () => {
+    if (!guardAuthenticatedToolAccess('Wild Takes', '/#wild-takes-section')) {
+      return;
+    }
     try {
       renderStatus('Loading wild takes...');
       await loadWildTakes();
@@ -4438,6 +4673,9 @@ function setupAiSidebar() {
 
   insiderForm.addEventListener('submit', async (event) => {
     event.preventDefault();
+    if (!guardAuthenticatedToolAccess('Insider Trades', '/#insider-trades-section')) {
+      return;
+    }
     try {
       renderStatus('Loading insider trades...');
       await syncAndLoadInsiders();
@@ -4577,6 +4815,10 @@ function setupSidebarMenu() {
 
   if (copilotToolButton instanceof HTMLButtonElement) {
     copilotToolButton.addEventListener('click', () => {
+      console.log('Open AI Copilot clicked');
+      if (!guardAuthenticatedToolAccess('AI Copilot', `${window.location.pathname || '/'}${window.location.search || ''}${window.location.hash || ''}`)) {
+        return;
+      }
       window.dispatchEvent(new CustomEvent('dumbdollars:copilot-open', {
         detail: {
           message: 'Copilot opened. Ask what to do next and I will guide you.'
@@ -4663,6 +4905,9 @@ function setupToolLibraryEntryPoints() {
 
   if (openAiInsightsButton instanceof HTMLButtonElement) {
     openAiInsightsButton.addEventListener('click', () => {
+      if (!guardAuthenticatedToolAccess('AI Discovery', '/#ai-discovery-section')) {
+        return;
+      }
       const target = getModuleTargetByKey('ai-discovery');
       if (!target) {
         return;
@@ -4677,6 +4922,24 @@ function setupToolLibraryEntryPoints() {
   aiOverviewButtons.forEach((button) => {
     button.addEventListener('click', () => {
       const key = String(button.getAttribute('data-module-key') || '').trim();
+      const protectedToolLabelByKey = {
+        'realized-patterns': 'Pattern Analyzer',
+        'ai-analyzer': 'AI Analyzer',
+        'ai-trade': 'AI Trade',
+        'view-portfolios': 'Portfolio Tracker',
+        'order-setup-assistant': 'Order Setup Assistant'
+      };
+      const protectedToolNextPathByKey = {
+        'realized-patterns': '/#realized-patterns-section',
+        'ai-analyzer': '/ai-analyzer.html',
+        'ai-trade': '/ai-trade.html',
+        'view-portfolios': '/portfolios.html',
+        'order-setup-assistant': '/ai-trade.html#ai-order-setup-title'
+      };
+      const protectedLabel = protectedToolLabelByKey[key];
+      if (protectedLabel && !guardAuthenticatedToolAccess(protectedLabel, protectedToolNextPathByKey[key])) {
+        return;
+      }
       const target = getModuleTargetByKey(key);
       if (!target) {
         return;
@@ -4712,6 +4975,10 @@ function setupStockForm() {
   }
   form.addEventListener('submit', async (event) => {
     event.preventDefault();
+    console.log('Analyze clicked');
+    if (!guardAuthenticatedToolAccess('Stock Outlook Scanner', '/#stock-outlook-module')) {
+      return;
+    }
     const input = document.getElementById('ticker-input');
     if (!(input instanceof HTMLInputElement)) {
       return;
@@ -4847,7 +5114,11 @@ function setupProPopup() {
 async function init() {
   setupBrowseToolsMenu();
   setupTraderModeControls();
-  authToken = localStorage.getItem('dumbdollars_token') || '';
+  applyAuthStatePatch({
+    token: localStorage.getItem(AUTH_TOKEN_STORAGE_KEY) || '',
+    user: null,
+    loading: true
+  }, { skipRender: true, skipLog: true, persistToken: false });
   renderAuthState();
   setAuthMessage('Checking your session...');
   const authMessageNode = document.getElementById('auth-message');
