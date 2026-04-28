@@ -73,6 +73,38 @@ function normalizeTraderMode(mode) {
   return DEFAULT_TRADER_MODE;
 }
 
+function getUsernameFromEmail(email) {
+  const normalizedEmail = normalizeEmail(email);
+  if (!normalizedEmail || !normalizedEmail.includes('@')) {
+    return 'Trader';
+  }
+  const username = String(normalizedEmail.split('@')[0] || '').trim();
+  return username || 'Trader';
+}
+
+function formatDisplayName(name) {
+  const raw = String(name || '').trim();
+  if (!raw) {
+    return 'Trader';
+  }
+  const normalized = raw
+    .replace(/[._]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  if (!normalized) {
+    return 'Trader';
+  }
+  return normalized.replace(/\b\w/g, (char) => char.toUpperCase());
+}
+
+function normalizeDisplayName(email, displayName) {
+  const preferred = String(displayName || '').trim();
+  if (preferred) {
+    return formatDisplayName(preferred);
+  }
+  return formatDisplayName(getUsernameFromEmail(email));
+}
+
 function hashRememberToken(token) {
   return crypto.createHash('sha256').update(String(token || ''), 'utf8').digest('hex');
 }
@@ -120,6 +152,7 @@ function persistUsersToDisk(options = {}) {
       stripeCustomerId: user.stripeCustomerId || null,
       stripeSubscriptionId: user.stripeSubscriptionId || null,
       subscriptionStatus: user.subscriptionStatus || (user.plan === 'pro' ? 'active' : 'inactive'),
+      displayName: normalizeDisplayName(user.email, user.displayName),
       traderMode: normalizeTraderMode(user.traderMode),
       rememberSessions: normalizeRememberSessions(user.rememberSessions),
       createdAt: user.createdAt || nowIso(),
@@ -167,6 +200,7 @@ function loadUsersFromDisk() {
         stripeCustomerId: record?.stripeCustomerId ? String(record.stripeCustomerId).trim() : null,
         stripeSubscriptionId: record?.stripeSubscriptionId ? String(record.stripeSubscriptionId).trim() : null,
         subscriptionStatus: String(record?.subscriptionStatus || (record?.plan === 'pro' ? 'active' : 'inactive')),
+        displayName: normalizeDisplayName(email, record?.displayName),
         traderMode: normalizeTraderMode(record?.traderMode),
         rememberSessions: normalizeRememberSessions(record?.rememberSessions),
         createdAt: String(record?.createdAt || nowIso()),
@@ -263,6 +297,7 @@ function sanitizeUser(user) {
     stripeCustomerId: user.stripeCustomerId || null,
     stripeSubscriptionId: user.stripeSubscriptionId || null,
     subscriptionStatus: user.subscriptionStatus || 'inactive',
+    displayName: normalizeDisplayName(user.email, user.displayName),
     traderMode: normalizeTraderMode(user.traderMode),
     createdAt: user.createdAt,
     updatedAt: user.updatedAt
@@ -346,6 +381,7 @@ function createUser({ email, password, passwordHash, authProvider = 'password', 
     stripeCustomerId: null,
     stripeSubscriptionId: null,
     subscriptionStatus: 'inactive',
+    displayName: normalizeDisplayName(normalizedEmail),
     traderMode: normalizeTraderMode(traderMode),
     rememberSessions: [],
     createdAt: nowIso(),
@@ -495,6 +531,10 @@ function updateUser(userId, patch) {
       user.authProviders = [...new Set(normalizedProviders)];
       user.lastAuthProvider = user.authProviders[user.authProviders.length - 1] || user.lastAuthProvider || 'password';
     }
+  }
+
+  if (Object.prototype.hasOwnProperty.call(patch, 'displayName')) {
+    user.displayName = normalizeDisplayName(user.email, patch.displayName);
   }
 
   if (Object.prototype.hasOwnProperty.call(patch, 'traderMode')) {

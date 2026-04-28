@@ -1211,6 +1211,58 @@ h1 {
   max-width: 68ch;
 }
 
+.dashboard-greeting {
+  margin: 0.15rem 0 0;
+  padding: 0.68rem 0.78rem;
+  border: 1px solid rgba(96, 165, 250, 0.36);
+  border-radius: 12px;
+  background:
+    radial-gradient(circle at 8% 18%, rgba(59, 130, 246, 0.15), transparent 52%),
+    rgba(10, 18, 36, 0.72);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  box-shadow:
+    0 10px 28px rgba(2, 6, 23, 0.35),
+    inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  animation: greeting-fade-in 260ms ease-out;
+}
+
+.dashboard-greeting.hidden {
+  display: none;
+}
+
+.dashboard-greeting--active {
+  box-shadow:
+    0 12px 30px rgba(37, 99, 235, 0.22),
+    0 10px 28px rgba(2, 6, 23, 0.35),
+    inset 0 1px 0 rgba(255, 255, 255, 0.04);
+}
+
+.dashboard-greeting-title {
+  margin: 0;
+  color: #dbeafe;
+  font-size: clamp(1.04rem, 1.6vw + 0.35rem, 1.3rem);
+  font-weight: 760;
+  letter-spacing: 0.01em;
+}
+
+.dashboard-greeting-subtext {
+  margin: 0.2rem 0 0;
+  color: #bfdbfe;
+  font-size: 0.9rem;
+}
+
+@keyframes greeting-fade-in {
+  0% {
+    opacity: 0;
+    transform: translateY(5px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
 .conversion-hero {
   margin-top: 0.35rem;
   display: grid;

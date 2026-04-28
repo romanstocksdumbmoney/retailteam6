@@ -536,6 +536,48 @@ function getAuthAccessUrl(mode = 'login', nextPath = getCurrentAppPath()) {
   return `${AUTH_ACCESS_PATH}?mode=${encodeURIComponent(normalizedMode)}&next=${encodeURIComponent(safeNext)}`;
 }
 
+function resolveGreetingName(user) {
+  const preferred = String(user?.displayName || '').trim();
+  if (preferred) {
+    return preferred;
+  }
+  const email = String(user?.email || '').trim().toLowerCase();
+  if (!email.includes('@')) {
+    return 'Trader';
+  }
+  const localPart = String(email.split('@')[0] || '').trim();
+  if (!localPart) {
+    return 'Trader';
+  }
+  return localPart
+    .replace(/[._]+/g, ' ')
+    .split(' ')
+    .filter(Boolean)
+    .map((segment) => segment.charAt(0).toUpperCase() + segment.slice(1))
+    .join(' ') || 'Trader';
+}
+
+function renderDashboardGreeting() {
+  const greetingNode = document.getElementById('dashboard-greeting');
+  const titleNode = document.getElementById('dashboard-greeting-title');
+  const welcomeNode = document.getElementById('dashboard-greeting-subtext');
+  if (!(greetingNode instanceof HTMLElement) || !(titleNode instanceof HTMLElement) || !(welcomeNode instanceof HTMLElement)) {
+    return;
+  }
+  if (!currentUser) {
+    greetingNode.classList.add('hidden');
+    greetingNode.classList.remove('dashboard-greeting--active');
+    titleNode.textContent = 'Hello, Trader 👋';
+    welcomeNode.textContent = 'Sign in to load your personalized market workspace.';
+    return;
+  }
+  const name = resolveGreetingName(currentUser);
+  titleNode.textContent = `Hello, ${name} 👋`;
+  welcomeNode.textContent = 'Glad to have you back. Let’s find your next trade.';
+  greetingNode.classList.remove('hidden');
+  greetingNode.classList.add('dashboard-greeting--active');
+}
+
 function applyAuthPayload(payload, fallbackEmail = '') {
   const token = String(payload?.token || '').trim();
   if (token) {
@@ -2623,6 +2665,7 @@ function renderAuthState() {
     headerLogoutButton.disabled = !currentUser;
   }
   ensureEmailAutomationCardVisibility();
+  renderDashboardGreeting();
 }
 
 function renderOutlook(payload) {
