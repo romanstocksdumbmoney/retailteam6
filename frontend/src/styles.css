@@ -55,6 +55,7 @@ body {
   background-position: center center;
   background-repeat: no-repeat;
   background-attachment: fixed;
+  filter: brightness(0.85) contrast(1.1);
 }
 
 .diamond-bg-overlay {
@@ -62,7 +63,10 @@ body {
   inset: 0;
   z-index: -1;
   pointer-events: none;
-  background: rgba(0, 0, 0, 0.68);
+  background: linear-gradient(
+    rgba(0, 0, 0, 0.45),
+    rgba(0, 0, 0, 0.65)
+  );
 }
 
 body.fun-mode-off .diamond-bg {
@@ -857,6 +861,7 @@ textarea,
   margin-bottom: 1rem;
   display: grid;
   gap: 0.85rem;
+  background: transparent;
 }
 
 .menu-bar {
@@ -979,9 +984,13 @@ textarea,
   padding: 0.5rem;
   border: 1px solid rgba(148, 163, 184, 0.36);
   border-radius: 12px;
-  background: linear-gradient(180deg, rgba(15, 23, 42, 0.98), rgba(2, 6, 23, 0.98));
-  box-shadow: 0 20px 44px rgba(2, 6, 23, 0.58);
-  z-index: 1500;
+  background: rgba(15, 20, 35, 0.6);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  box-shadow:
+    0 14px 32px rgba(0, 0, 0, 0.45),
+    inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  z-index: 9999;
   opacity: 0;
   transform: translateY(-8px) scale(0.98);
   pointer-events: none;
@@ -1004,19 +1013,21 @@ textarea,
   display: block;
   text-decoration: none;
   color: #e2e8f0;
-  border: 1px solid rgba(148, 163, 184, 0.34);
+  border: 1px solid rgba(255, 215, 0, 0.28);
   border-radius: 10px;
   padding: 0.58rem 0.65rem;
   font-size: 0.9rem;
   font-weight: 650;
-  background: rgba(15, 23, 42, 0.72);
+  background: rgba(15, 20, 35, 0.58);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
 }
 
 .browse-tools-link:hover,
 .browse-tools-link:focus-visible {
-  border-color: rgba(96, 165, 250, 0.72);
-  color: #dbeafe;
-  background: rgba(30, 41, 59, 0.84);
+  border-color: rgba(255, 215, 0, 0.46);
+  color: #fef08a;
+  background: rgba(255, 215, 0, 0.2);
 }
 
 .sidebar-header-row {
@@ -1486,7 +1497,12 @@ h1 {
   border: 1px solid rgba(148, 163, 184, 0.22);
   border-radius: 12px;
   padding: 0.6rem 0.7rem;
-  background: rgba(15, 23, 42, 0.68);
+  background: rgba(15, 20, 35, 0.55);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  box-shadow:
+    0 8px 25px rgba(0, 0, 0, 0.4),
+    inset 0 1px 0 rgba(255, 255, 255, 0.05);
 }
 
 .home-actions-card,
@@ -2124,18 +2140,24 @@ button:focus-visible {
 
 button {
   cursor: pointer;
-  background: linear-gradient(180deg, #3b82f6, #2563eb);
-  color: #eff6ff;
-  border-color: rgba(37, 99, 235, 0.85);
+  background: rgba(255, 215, 0, 0.15);
+  color: #ffd54a;
+  border-color: rgba(255, 215, 0, 0.4);
   font-weight: 700;
-  box-shadow: 0 8px 18px rgba(37, 99, 235, 0.28);
+  box-shadow:
+    0 8px 22px rgba(0, 0, 0, 0.32),
+    inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
   will-change: transform;
 }
 
 button:hover {
-  filter: brightness(1.05);
+  background: rgba(255, 215, 0, 0.25);
   transform: translateY(-1px);
-  box-shadow: 0 12px 22px rgba(37, 99, 235, 0.34);
+  box-shadow:
+    0 12px 24px rgba(0, 0, 0, 0.36),
+    0 0 10px rgba(255, 215, 0, 0.3);
 }
 
 button:active {
@@ -2151,14 +2173,18 @@ button:disabled {
 }
 
 .btn-secondary {
-  background: linear-gradient(180deg, #111827, #0f172a);
+  background: rgba(15, 20, 35, 0.55);
   color: #fde68a;
-  border-color: rgba(234, 179, 8, 0.5);
-  box-shadow: 0 8px 18px rgba(2, 6, 23, 0.36);
+  border-color: rgba(255, 215, 0, 0.35);
+  box-shadow:
+    0 8px 22px rgba(0, 0, 0, 0.36),
+    inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
 }
 
 .btn-secondary:hover {
-  background: linear-gradient(180deg, #1f2937, #111827);
+  background: rgba(255, 215, 0, 0.22);
 }
 
 #upgrade-pro-btn,
@@ -2167,10 +2193,14 @@ button:disabled {
 #pro-plan-start,
 #payment-start-checkout,
 .sidebar-menu-toggle {
-  background: linear-gradient(180deg, #facc15, #e3aa0d);
-  color: #0f172a;
-  border-color: rgba(202, 138, 4, 0.86);
-  box-shadow: 0 8px 18px rgba(202, 138, 4, 0.28);
+  background: rgba(255, 215, 0, 0.18);
+  color: #ffd54a;
+  border-color: rgba(255, 215, 0, 0.46);
+  box-shadow:
+    0 10px 24px rgba(0, 0, 0, 0.34),
+    0 0 10px rgba(255, 215, 0, 0.22);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
 }
 
 #upgrade-pro-btn:hover,
@@ -2710,6 +2740,13 @@ button[aria-busy='true']::after {
   box-shadow: var(--shadow-soft);
   display: grid;
   gap: 1rem;
+  background: rgba(15, 20, 35, 0.55);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 215, 0, 0.25);
+  box-shadow:
+    0 8px 25px rgba(0, 0, 0, 0.4),
+    inset 0 1px 0 rgba(255, 255, 255, 0.05);
 }
 
 .sidebar.sidebar-collapsed {
@@ -2723,10 +2760,15 @@ button[aria-busy='true']::after {
 }
 
 .module-dropdown {
-  border: 1px solid rgba(250, 204, 21, 0.28);
+  border: 1px solid rgba(255, 215, 0, 0.25);
   border-radius: 12px;
-  background: rgba(2, 6, 23, 0.7);
+  background: rgba(15, 20, 35, 0.55);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
   overflow: hidden;
+  box-shadow:
+    0 8px 25px rgba(0, 0, 0, 0.35),
+    inset 0 1px 0 rgba(255, 255, 255, 0.04);
 }
 
 .module-dropdown[open] {
@@ -2742,7 +2784,7 @@ button[aria-busy='true']::after {
   gap: 0.7rem;
   padding: 0.72rem 0.84rem;
   cursor: pointer;
-  background: linear-gradient(180deg, rgba(30, 41, 59, 0.82), rgba(15, 23, 42, 0.78));
+  background: rgba(15, 20, 35, 0.46);
   border-bottom: 1px solid rgba(148, 163, 184, 0.22);
 }
 
@@ -2887,17 +2929,23 @@ button[aria-busy='true']::after {
 }
 
 .card {
-  background: linear-gradient(180deg, rgba(15, 23, 42, 0.92), rgba(3, 7, 18, 0.92));
-  border: 1px solid rgba(250, 204, 21, 0.22);
+  background: rgba(15, 20, 35, 0.55);
+  border: 1px solid rgba(255, 215, 0, 0.25);
   border-radius: var(--radius-card);
   padding: 1rem;
-  box-shadow: var(--shadow-soft);
+  box-shadow:
+    0 8px 25px rgba(0, 0, 0, 0.4),
+    inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
   animation: card-fade-up 0.32s ease both;
 }
 
 .card:hover {
-  border-color: rgba(250, 204, 21, 0.42);
-  box-shadow: var(--shadow-lifted);
+  border-color: rgba(255, 215, 0, 0.4);
+  box-shadow:
+    0 12px 28px rgba(0, 0, 0, 0.42),
+    0 0 10px rgba(255, 215, 0, 0.25);
   transform: translateY(-2px);
 }
 
