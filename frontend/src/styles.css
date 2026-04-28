@@ -16,6 +16,7 @@
 
 html {
   scroll-behavior: smooth;
+  background: transparent !important;
 }
 
 body {
@@ -43,20 +44,16 @@ body {
 
 .diamond-bg {
   position: fixed;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
+  inset: 0;
   z-index: 0;
   pointer-events: none;
   overflow: hidden;
   background-image: url('/diamond-hands.png');
-  background-size: contain;
+  background-size: min(70vw, 700px) auto;
   background-position: center center;
   background-repeat: no-repeat;
-  background-attachment: fixed;
-  opacity: 0.62;
-  filter: brightness(0.9) contrast(1.14);
+  opacity: 0.72;
+  filter: brightness(0.9) contrast(1.08);
 }
 
 .diamond-bg-overlay {
@@ -64,9 +61,7 @@ body {
   inset: 0;
   z-index: 1;
   pointer-events: none;
-  background:
-    radial-gradient(circle at center, rgba(0, 0, 0, 0.15), rgba(0, 0, 0, 0.72)),
-    rgba(0, 0, 0, 0.35);
+  background: rgba(0, 0, 0, 0.35);
 }
 
 body.fun-mode-off .diamond-bg {
@@ -84,6 +79,21 @@ body.fun-mode-off .diamond-bg-overlay {
   position: relative;
   z-index: 2;
   background: transparent !important;
+}
+
+#root,
+main {
+  background: transparent !important;
+}
+
+.card,
+.panel,
+.section,
+.nav {
+  background: rgba(8, 12, 25, 0.62) !important;
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 220, 70, 0.25);
 }
 
 .browse-tools-toggle {
@@ -4104,15 +4114,6 @@ button[aria-busy='true']::after {
 }
 
 @media (max-width: 960px) {
-  .diamond-bg {
-    background-position: center center;
-    background-size: cover;
-  }
-
-  .diamond-bg-overlay {
-    background: rgba(0, 0, 0, 0.74);
-  }
-
   .sidebar {
     width: 100%;
   }
@@ -4147,15 +4148,6 @@ button[aria-busy='true']::after {
 }
 
 @media (max-width: 680px) {
-  .diamond-bg {
-    background-position: center top;
-    background-size: cover;
-  }
-
-  .diamond-bg-overlay {
-    background: rgba(0, 0, 0, 0.78);
-  }
-
   .conversion-hero {
     text-align: center;
   }
