@@ -768,6 +768,15 @@ function normalizeTraderMode(mode) {
   return 'day';
 }
 
+function getTraderModeFromRoutePath() {
+  const path = String(window.location.pathname || '').trim().toLowerCase();
+  const match = path.match(/^\/ai-tools\/(scalper|day|swing|long)\/?$/);
+  if (!match) {
+    return '';
+  }
+  return normalizeTraderMode(match[1]);
+}
+
 function getStoredTraderMode() {
   try {
     return normalizeTraderMode(localStorage.getItem(TRADER_MODE_STORAGE_KEY) || '');
@@ -777,6 +786,10 @@ function getStoredTraderMode() {
 }
 
 function getActiveTraderMode() {
+  const routeMode = getTraderModeFromRoutePath();
+  if (routeMode) {
+    return routeMode;
+  }
   if (currentUser?.traderMode) {
     return normalizeTraderMode(currentUser.traderMode);
   }
@@ -3637,10 +3650,10 @@ async function socialSignIn(provider, email, options = {}) {
   return payload;
 }
 
-function openSocialAuthPage(provider, email, redirectPath, remember = true) {
+function openSocialAuthPage(provider, email, redirectPath, remember = true, traderMode = getActiveTraderMode()) {
   const normalizedProvider = String(provider || '').trim().toLowerCase();
   const params = new URLSearchParams();
-  const traderMode = getActiveTraderMode();
+  const normalizedTraderMode = normalizeTraderMode(traderMode);
   if (normalizedProvider) {
     params.set('provider', normalizedProvider);
   }
@@ -3648,7 +3661,7 @@ function openSocialAuthPage(provider, email, redirectPath, remember = true) {
   if (normalizedEmail) {
     params.set('email', normalizedEmail);
   }
-  params.set('traderMode', traderMode);
+  params.set('traderMode', normalizedTraderMode);
   if (redirectPath && String(redirectPath).startsWith('/')) {
     params.set('next', String(redirectPath));
   }
@@ -3811,7 +3824,7 @@ function setupAuthForms() {
         || (signupRememberInput instanceof HTMLInputElement && signupRememberInput.checked)
         || (!(loginRememberInput instanceof HTMLInputElement) && !(signupRememberInput instanceof HTMLInputElement));
       button.disabled = true;
-      openSocialAuthPage(provider, preferred, window.location.pathname || '/', remember);
+      openSocialAuthPage(provider, preferred, window.location.pathname || '/', remember, getActiveTraderMode());
     });
   });
 
