@@ -169,6 +169,9 @@ function toUnavailable(value) {
   if (value === null || value === undefined || value === '') {
     return 'Unavailable';
   }
+  if (typeof value === 'number' && !Number.isFinite(value)) {
+    return 'Unavailable';
+  }
   return value;
 }
 

@@ -269,6 +269,54 @@ function buildNewsSentiment(newsItems) {
   };
 }
 
+async function fetchYahooQuoteFallback(symbol) {
+  const url = `https://query1.finance.yahoo.com/v7/finance/quote?symbols=${encodeURIComponent(symbol)}`;
+  const payload = await fetchJson(url, {
+    timeoutMs: 10000,
+    headers: YAHOO_REQUEST_HEADERS
+  });
+
+  const rows = Array.isArray(payload?.quoteResponse?.result) ? payload.quoteResponse.result : [];
+  if (!rows.length) {
+    throw new MarketDataServiceError('invalid_ticker', 'Ticker not found. Check the symbol and try again.', 404);
+  }
+
+  const row = rows.find((entry) => String(entry?.symbol || '').toUpperCase() === symbol) || rows[0];
+  const price = parseRawNumber(row?.regularMarketPrice);
+  if (!Number.isFinite(price)) {
+    throw new MarketDataServiceError('invalid_ticker', 'Ticker not found. Check the symbol and try again.', 404);
+  }
+
+  const marketTimeSeconds = Number(row?.regularMarketTime);
+  const marketDate = Number.isFinite(marketTimeSeconds)
+    ? new Date(marketTimeSeconds * 1000)
+    : null;
+
+  return {
+    symbol,
+    companyName: String(row?.longName || row?.shortName || symbol),
+    price,
+    currency: String(row?.currency || 'USD'),
+    dailyChange: parseRawNumber(row?.regularMarketChange),
+    changePercent: parseRawNumber(row?.regularMarketChangePercent),
+    volume: parseRawNumber(row?.regularMarketVolume),
+    previousClose: parseRawNumber(row?.regularMarketPreviousClose),
+    latestTradingDay: marketDate && !Number.isNaN(marketDate.getTime())
+      ? marketDate.toISOString().slice(0, 10)
+      : null,
+    averageVolume: parseRawNumber(row?.averageDailyVolume3Month),
+    marketCap: parseRawNumber(row?.marketCap),
+    fiftyTwoWeekHigh: parseRawNumber(row?.fiftyTwoWeekHigh),
+    fiftyTwoWeekLow: parseRawNumber(row?.fiftyTwoWeekLow),
+    marketState: String(row?.marketState || ''),
+    exchange: String(row?.fullExchangeName || row?.exchange || ''),
+    timestamp: marketDate && !Number.isNaN(marketDate.getTime())
+      ? marketDate.toISOString()
+      : new Date().toISOString(),
+    source: 'Yahoo Finance quote endpoint (fallback)'
+  };
+}
+
 async function getQuote(ticker) {
   const symbol = normalizeTicker(ticker);
   if (!symbol) {
@@ -296,24 +344,32 @@ async function getQuote(ticker) {
     });
   } catch (error) {
     if (error instanceof MarketDataServiceError) {
-      throw new MarketDataServiceError(
-        'market_data_unavailable',
-        'Could not fetch market data right now. Try again.',
-        503
-      );
+      try {
+        return await fetchYahooQuoteFallback(symbol);
+      } catch (_fallbackError) {
+        throw new MarketDataServiceError(
+          'market_data_unavailable',
+          'Could not fetch market data right now. Try again.',
+          503
+        );
+      }
     }
     throw error;
   }
 
   const apiLimitMessage = String(payload?.Note || payload?.Information || '').trim();
   if (apiLimitMessage && /call frequency|api call frequency|rate limit|thank you for using alpha vantage/i.test(apiLimitMessage)) {
-    throw new MarketDataServiceError('api_limit', 'Market data limit reached. Try again later.', 429);
+    try {
+      return await fetchYahooQuoteFallback(symbol);
+    } catch (_fallbackError) {
+      throw new MarketDataServiceError('api_limit', 'Market data limit reached. Try again later.', 429);
+    }
   }
 
   const quote = payload?.['Global Quote'] || {};
   const price = parseAlphaVantageNumber(quote?.['05. price']);
   if (!Number.isFinite(price)) {
-    throw new MarketDataServiceError('invalid_ticker', 'Ticker not found. Check the symbol and try again.', 404);
+    return fetchYahooQuoteFallback(symbol);
   }
 
   const latestTradingDay = String(quote?.['07. latest trading day'] || '').trim();
@@ -861,7 +917,7 @@ async function analyzeStockOutlook(ticker) {
     dataSources: [
       quote.source
     ],
-    dataProvider: 'Alpha Vantage',
+    dataProvider: /yahoo/i.test(String(quote?.source || '')) ? 'Yahoo Finance (fallback)' : 'Alpha Vantage',
     lastUpdated: quote.timestamp || new Date().toISOString(),
     marketDataMayBeDelayed: true
   };
