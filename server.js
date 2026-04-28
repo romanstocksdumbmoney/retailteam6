@@ -6,6 +6,7 @@ const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
 const path = require('path');
 const fs = require('fs');
+const { execFileSync } = require('child_process');
 const newsRoutes = require('./routes/news');
 const earningsRoutes = require('./routes/earnings');
 const marketRoutes = require('./routes/market');
@@ -15,6 +16,57 @@ const { runAutoTraderAutopilotSweep } = require('./services/autoTraderService');
 const app = express();
 console.log('Restart the dev server for .env changes to load.');
 const buildDir = path.join(__dirname, 'frontend', 'build');
+const frontendSrcDir = path.join(__dirname, 'frontend', 'src');
+const frontendBuildScript = path.join(__dirname, 'frontend', 'scripts', 'build.js');
+
+function safeMtimeMs(filePath) {
+    try {
+        return fs.statSync(filePath).mtimeMs;
+    } catch (_error) {
+        return 0;
+    }
+}
+
+function shouldRebuildFrontend() {
+    const sourceFiles = [
+        path.join(frontendSrcDir, 'index.html'),
+        path.join(frontendSrcDir, 'app.js'),
+        path.join(frontendSrcDir, 'styles.css')
+    ];
+    const buildFiles = [
+        path.join(buildDir, 'index.html'),
+        path.join(buildDir, 'app.js'),
+        path.join(buildDir, 'styles.css')
+    ];
+
+    const hasAllBuildFiles = buildFiles.every((filePath) => fs.existsSync(filePath));
+    if (!hasAllBuildFiles) {
+        return true;
+    }
+
+    const latestSourceMtime = Math.max(...sourceFiles.map((filePath) => safeMtimeMs(filePath)));
+    const earliestBuildMtime = Math.min(...buildFiles.map((filePath) => safeMtimeMs(filePath)));
+    return latestSourceMtime > earliestBuildMtime;
+}
+
+function ensureFrontendBuildFresh() {
+    if (!shouldRebuildFrontend()) {
+        return;
+    }
+    console.log('Frontend build missing or stale. Rebuilding from frontend/src...');
+    execFileSync(process.execPath, [frontendBuildScript], {
+        cwd: __dirname,
+        stdio: 'inherit'
+    });
+}
+
+try {
+    ensureFrontendBuildFresh();
+} catch (error) {
+    console.error('Frontend build refresh failed. Falling back to API-only mode.');
+    console.error(error?.message || error);
+}
+
 const hasFrontendBuild = fs.existsSync(path.join(buildDir, 'index.html'));
 
 const isProduction = String(process.env.NODE_ENV || '').toLowerCase() === 'production';
