@@ -4231,9 +4231,12 @@ function setupAiSidebar() {
   if (highIvButton) {
     highIvButton.addEventListener('click', async () => {
       try {
+        renderStatus('Loading High IV Tracker...');
         await loadHighIvTracker();
+        renderStatus('High IV Tracker updated.');
       } catch (error) {
         renderHighIvLocked(error.message || 'Could not load High IV Tracker.');
+        renderStatus(error.message || 'Could not load High IV Tracker.');
         if (error.status === 403) {
           openProPopup('Pro access needed for High IV Tracker.');
         }
@@ -4243,7 +4246,9 @@ function setupAiSidebar() {
 
   if (premiumSpikesButton) {
     premiumSpikesButton.addEventListener('click', async () => {
+      renderStatus('Loading premium spikes...');
       await focusPremiumSpikesSection();
+      renderStatus('Premium spikes updated.');
     });
   }
 
@@ -4262,42 +4267,49 @@ function setupAiSidebar() {
   if (aiTradeButton) {
     aiTradeButton.addEventListener('click', () => {
       openAiTradeEntryPage();
+      renderStatus('Opening AI Trade...');
     });
   }
 
   if (orderSetupAssistantButton) {
     orderSetupAssistantButton.addEventListener('click', () => {
       openAiOrderSetupAssistantPage();
+      renderStatus('Opening Build Trade Plan...');
     });
   }
 
   if (autoTraderButton) {
     autoTraderButton.addEventListener('click', () => {
       openAutoTraderPage();
+      renderStatus('Opening AI Trading Bot...');
     });
   }
 
   if (liveBrokerageButton) {
     liveBrokerageButton.addEventListener('click', () => {
       openBrokerageOnboardingPage();
+      renderStatus('Opening live brokerage setup...');
     });
   }
 
   if (aiImplementationStepsButton) {
     aiImplementationStepsButton.addEventListener('click', () => {
       openAiImplementationGuidePage();
+      renderStatus('Opening AI implementation guide...');
     });
   }
 
   if (aiLiveAccountSetupButton) {
     aiLiveAccountSetupButton.addEventListener('click', () => {
       openAiLiveAccountSetupPage();
+      renderStatus('Opening easy AI setup...');
     });
   }
 
   if (aiAnalyzerButton) {
     aiAnalyzerButton.addEventListener('click', () => {
       window.location.href = '/ai-analyzer.html';
+      renderStatus('Opening AI Analyzer...');
     });
   }
 
@@ -4342,12 +4354,15 @@ function setupAiSidebar() {
     event.preventDefault();
     const query = document.getElementById('ai-search-query').value.trim() || activeTicker;
     try {
+      renderStatus('Searching AI tools...');
       activeAiPlatform = select.value || activeAiPlatform;
       await loadAiSidebar(query);
       await runScanner(query, 'llm-sentiment');
+      renderStatus('AI search completed.');
     } catch (error) {
       const target = document.getElementById('scan-results');
       target.innerHTML = `<div class="pro-lock">${error.message || 'AI search failed.'}</div>`;
+      renderStatus(error.message || 'AI search failed.');
     }
   });
 
@@ -4361,9 +4376,12 @@ function setupAiSidebar() {
     event.preventDefault();
     activeTrendSource = trendSourceSelect.value || 'all';
     try {
+      renderStatus('Loading trend trades...');
       await loadTrendTrades();
+      renderStatus('Trend trades updated.');
     } catch (error) {
       renderTrendTradesLocked(error.message || 'Could not load trend trades.');
+      renderStatus(error.message || 'Could not load trend trades.');
       if (error.status === 403) {
         openProPopup('Pro access needed for Trend Trades.');
       }
@@ -4386,10 +4404,13 @@ function setupAiSidebar() {
     event.preventDefault();
     activePatternFilter = patternTypeSelect.value || 'all';
     try {
+      renderStatus('Finding patterns...');
       await loadRealizedPatterns();
+      renderStatus('Pattern scan complete.');
     } catch (error) {
       const target = document.getElementById('patterns-results');
       target.innerHTML = `<div class="pro-lock">${error.message || 'Could not load realized patterns.'}</div>`;
+      renderStatus(error.message || 'Could not load realized patterns.');
     }
   });
 
@@ -4405,22 +4426,28 @@ function setupAiSidebar() {
 
   wildTakesButton.addEventListener('click', async () => {
     try {
+      renderStatus('Loading wild takes...');
       await loadWildTakes();
+      renderStatus('Wild takes updated.');
     } catch (error) {
       const target = document.getElementById('wild-takes-results');
       target.innerHTML = `<div class="pro-lock">${error.message || 'Could not load wild takes.'}</div>`;
+      renderStatus(error.message || 'Could not load wild takes.');
     }
   });
 
   insiderForm.addEventListener('submit', async (event) => {
     event.preventDefault();
     try {
+      renderStatus('Loading insider trades...');
       await syncAndLoadInsiders();
+      renderStatus('Insider trades updated.');
     } catch (error) {
       const target = document.getElementById('insider-trades-results');
       if (target) {
         target.innerHTML = `<div class="pro-lock">${error.message || 'Could not load insider trades.'}</div>`;
       }
+      renderStatus(error.message || 'Could not load insider trades.');
     }
   });
 

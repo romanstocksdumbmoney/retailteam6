@@ -359,6 +359,7 @@ function setupActions() {
   const guideButton = document.getElementById('ai-simple-guide-button');
   const linkForm = document.getElementById('ai-simple-link-form');
   const linkInput = document.getElementById('ai-simple-link-input');
+  const linkOpenButton = document.getElementById('ai-simple-link-open');
   let activeNextStep = null;
   const autoGuideRequested = wantsAutoGuideFromQuery();
   let autoGuideHandled = false;
@@ -425,9 +426,19 @@ function setupActions() {
   if (linkForm instanceof HTMLFormElement && linkInput instanceof HTMLInputElement) {
     linkForm.addEventListener('submit', (event) => {
       event.preventDefault();
+      if (linkOpenButton instanceof HTMLButtonElement) {
+        linkOpenButton.disabled = true;
+        linkOpenButton.classList.add('is-loading');
+        linkOpenButton.setAttribute('aria-busy', 'true');
+      }
       const route = resolveSetupLinkInput(linkInput.value);
       if (!route) {
         setStatus('Could not recognize that setup link. Try a page like /brokerage-onboarding.html or text like "broker connect".', true);
+        if (linkOpenButton instanceof HTMLButtonElement) {
+          linkOpenButton.disabled = false;
+          linkOpenButton.classList.remove('is-loading');
+          linkOpenButton.removeAttribute('aria-busy');
+        }
         return;
       }
       setStatus('Opening setup link...');
