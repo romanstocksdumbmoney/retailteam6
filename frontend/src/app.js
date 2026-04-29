@@ -3036,7 +3036,7 @@ function mapStockOutlookErrorMessage(error) {
     return 'Ticker not found. Check the symbol and try again.';
   }
   if (code === 'api_limit') {
-    return 'Market data limit reached. Try again later.';
+    return 'Could not fetch market data right now. Try again.';
   }
   if (code === 'market_data_unavailable' || code === 'market_data_provider_unreachable' || code === 'market_data_provider_error') {
     return 'Could not fetch market data right now. Try again.';

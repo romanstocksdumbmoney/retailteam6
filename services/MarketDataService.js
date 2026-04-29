@@ -8,6 +8,7 @@ const NEWS_REQUEST_HEADERS = Object.freeze({
   'user-agent': 'Mozilla/5.0 (DumbDollars MarketDataService)'
 });
 const ALPHA_VANTAGE_BASE_URL = 'https://www.alphavantage.co/query';
+const STOOQ_QUOTE_URL = 'https://stooq.com/q/l/';
 
 const LOOKBACK_DAYS_FOR_TREND = 260;
 const RSI_PERIOD = 14;
@@ -32,17 +33,21 @@ function normalizeTicker(ticker) {
 }
 
 function getMarketDataApiKey() {
-  const candidateKeys = [
-    process.env.ALPHAVANTAGE_API_KEY,
-    process.env.MARKET_DATA_API_KEY,
-    process.env.MARKET_API_KEY,
-    process.env.VITE_MARKET_API_KEY,
-    process.env.NEXT_PUBLIC_MARKET_API_KEY,
-    process.env.REACT_APP_MARKET_API_KEY,
-    process.env.FMP_API_KEY,
-    process.env.UNUSUAL_WHALES_API_KEY
-  ];
-  return String(candidateKeys.find((value) => String(value || '').trim()) || '').trim();
+  const apiKey = process.env.VITE_MARKET_API_KEY
+    || process.env.MARKET_API_KEY
+    || process.env.NEXT_PUBLIC_MARKET_API_KEY
+    || process.env.REACT_APP_MARKET_API_KEY
+    || process.env.ALPHAVANTAGE_API_KEY
+    || process.env.MARKET_DATA_API_KEY
+    || process.env.FMP_API_KEY
+    || process.env.UNUSUAL_WHALES_API_KEY
+    || globalThis?.import?.meta?.env?.VITE_MARKET_API_KEY
+    || 'XK10T6I58YPTGMWE';
+  if (!getMarketDataApiKey._loggedOnce) {
+    console.log('API KEY LOADED:', apiKey ? `${String(apiKey).slice(0, 4)}***` : '(empty)');
+    getMarketDataApiKey._loggedOnce = true;
+  }
+  return String(apiKey || '').trim();
 }
 
 function hasConfiguredMarketDataApiKey() {
@@ -317,6 +322,82 @@ async function fetchYahooQuoteFallback(symbol) {
   };
 }
 
+async function fetchStooqQuoteFallback(symbol) {
+  const normalized = String(symbol || '').trim().toLowerCase();
+  const primaryUrl = `${STOOQ_QUOTE_URL}?s=${encodeURIComponent(normalized)}.us&i=d`;
+  let csv = '';
+  try {
+    csv = await fetchText(primaryUrl, {
+      timeoutMs: 10000,
+      headers: {
+        accept: 'text/plain, */*',
+        'user-agent': 'Mozilla/5.0 (DumbDollars Stooq Fallback Client)'
+      }
+    });
+  } catch (_error) {
+    const secondaryUrl = `${STOOQ_QUOTE_URL}?s=${encodeURIComponent(normalized)}&i=d`;
+    csv = await fetchText(secondaryUrl, {
+      timeoutMs: 10000,
+      headers: {
+        accept: 'text/plain, */*',
+        'user-agent': 'Mozilla/5.0 (DumbDollars Stooq Fallback Client)'
+      }
+    });
+  }
+
+  const line = String(csv || '').trim().split('\n')[0] || '';
+  const parts = line.split(',');
+  if (parts.length < 8) {
+    throw new MarketDataServiceError('invalid_ticker', 'Ticker not found. Check the symbol and try again.', 404);
+  }
+  if (String(parts[1] || '').trim().toUpperCase() === 'N/D') {
+    throw new MarketDataServiceError('invalid_ticker', 'Ticker not found. Check the symbol and try again.', 404);
+  }
+
+  const close = parseRawNumber(parts[6]);
+  const prevClose = parseRawNumber(parts[5]);
+  if (!Number.isFinite(close)) {
+    throw new MarketDataServiceError('invalid_ticker', 'Ticker not found. Check the symbol and try again.', 404);
+  }
+  const dailyChange = Number.isFinite(prevClose) ? roundTo(close - prevClose, 2) : null;
+  const changePercent = Number.isFinite(prevClose) && prevClose !== 0
+    ? roundTo(((close - prevClose) / Math.abs(prevClose)) * 100, 4)
+    : null;
+
+  const dateRaw = String(parts[1] || '').trim();
+  const latestTradingDay = /^\d{8}$/.test(dateRaw)
+    ? `${dateRaw.slice(0, 4)}-${dateRaw.slice(4, 6)}-${dateRaw.slice(6, 8)}`
+    : null;
+
+  return {
+    symbol,
+    companyName: symbol,
+    price: close,
+    currency: 'USD',
+    dailyChange,
+    changePercent,
+    volume: parseRawNumber(parts[7]),
+    previousClose: prevClose,
+    latestTradingDay,
+    averageVolume: null,
+    marketCap: null,
+    fiftyTwoWeekHigh: null,
+    fiftyTwoWeekLow: null,
+    marketState: '',
+    exchange: '',
+    timestamp: latestTradingDay ? new Date(`${latestTradingDay}T21:00:00Z`).toISOString() : new Date().toISOString(),
+    source: 'Stooq quote endpoint (fallback)'
+  };
+}
+
+async function fetchQuoteWithFallback(symbol) {
+  try {
+    return await fetchYahooQuoteFallback(symbol);
+  } catch (_yahooError) {
+    return fetchStooqQuoteFallback(symbol);
+  }
+}
+
 async function getQuote(ticker) {
   const symbol = normalizeTicker(ticker);
   if (!symbol) {
@@ -345,7 +426,7 @@ async function getQuote(ticker) {
   } catch (error) {
     if (error instanceof MarketDataServiceError) {
       try {
-        return await fetchYahooQuoteFallback(symbol);
+        return await fetchQuoteWithFallback(symbol);
       } catch (_fallbackError) {
         throw new MarketDataServiceError(
           'market_data_unavailable',
@@ -360,16 +441,16 @@ async function getQuote(ticker) {
   const apiLimitMessage = String(payload?.Note || payload?.Information || '').trim();
   if (apiLimitMessage && /call frequency|api call frequency|rate limit|thank you for using alpha vantage/i.test(apiLimitMessage)) {
     try {
-      return await fetchYahooQuoteFallback(symbol);
+      return await fetchQuoteWithFallback(symbol);
     } catch (_fallbackError) {
-      throw new MarketDataServiceError('api_limit', 'Market data limit reached. Try again later.', 429);
+      throw new MarketDataServiceError('market_data_unavailable', 'Could not fetch market data right now. Try again.', 503);
     }
   }
 
   const quote = payload?.['Global Quote'] || {};
   const price = parseAlphaVantageNumber(quote?.['05. price']);
   if (!Number.isFinite(price)) {
-    return fetchYahooQuoteFallback(symbol);
+    return fetchQuoteWithFallback(symbol);
   }
 
   const latestTradingDay = String(quote?.['07. latest trading day'] || '').trim();

@@ -1,5 +1,6 @@
 const params = new URLSearchParams(window.location.search);
 const ticker = String(params.get('ticker') || '').trim().toUpperCase();
+let hasRunApiKeyProbe = false;
 
 function fmtNumber(value, digits = 2) {
   const n = Number(value);

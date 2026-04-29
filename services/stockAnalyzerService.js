@@ -5,16 +5,29 @@ const ALPHA_VANTAGE_BASE_URL = 'https://www.alphavantage.co/query';
 const YAHOO_QUOTE_URL = 'https://query1.finance.yahoo.com/v7/finance/quote';
 const STOOQ_QUOTE_URL = 'https://stooq.com/q/l/';
 
+async function testAPIKey() {
+  const apiKey = getMarketDataApiKey();
+  const url = `https://www.alphavantage.co/query?function=GLOBAL_QUOTE&symbol=AAPL&apikey=${encodeURIComponent(apiKey)}`;
+  const res = await fetch(url, { signal: AbortSignal.timeout(12000) });
+  const data = await res.json();
+  console.log('ALPHA VANTAGE TEST RESPONSE:', data);
+}
+
 function getMarketDataApiKey() {
-  const candidateKeys = [
-    process.env.ALPHAVANTAGE_API_KEY,
-    process.env.MARKET_DATA_API_KEY,
-    process.env.MARKET_API_KEY,
-    process.env.VITE_MARKET_API_KEY,
-    process.env.NEXT_PUBLIC_MARKET_API_KEY,
-    process.env.REACT_APP_MARKET_API_KEY
-  ];
-  return String(candidateKeys.find((value) => String(value || '').trim()) || '').trim();
+  const apiKey = String(
+    process.env.VITE_MARKET_API_KEY
+    || process.env.MARKET_API_KEY
+    || process.env.NEXT_PUBLIC_MARKET_API_KEY
+    || process.env.REACT_APP_MARKET_API_KEY
+    || process.env.ALPHAVANTAGE_API_KEY
+    || process.env.MARKET_DATA_API_KEY
+    || 'XK10T6I58YPTGMWE'
+  ).trim();
+  if (!getMarketDataApiKey._loggedOnce) {
+    console.log('API KEY LOADED:', apiKey ? `${apiKey.slice(0, 4)}***` : '(empty)');
+    getMarketDataApiKey._loggedOnce = true;
+  }
+  return apiKey;
 }
 
 function parseNumber(value) {
