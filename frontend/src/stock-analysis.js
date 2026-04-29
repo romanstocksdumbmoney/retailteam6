@@ -1,6 +1,16 @@
-const params = new URLSearchParams(window.location.search);
-const ticker = String(params.get('ticker') || '').trim().toUpperCase();
+function getTickerFromRoute() {
+  const pathname = String(window.location.pathname || '');
+  const pathMatch = pathname.match(/^\/stock\/([A-Za-z0-9.\-]+)$/);
+  if (pathMatch?.[1]) {
+    return String(pathMatch[1]).trim().toUpperCase();
+  }
+  const params = new URLSearchParams(window.location.search);
+  return String(params.get('ticker') || '').trim().toUpperCase();
+}
+
+const ticker = getTickerFromRoute();
 let hasRunApiKeyTest = false;
+let backButtonWired = false;
 
 function safeImportMetaEnv() {
   try {
@@ -446,7 +456,7 @@ function setLoading(state, label = '') {
   }
 }
 
-function setError(message) {
+function setError(message, { showRetry = false } = {}) {
   const el = document.getElementById('analysis-error');
   if (!el) {
     return;
@@ -454,6 +464,23 @@ function setError(message) {
   const hasMessage = Boolean(message);
   el.hidden = !hasMessage;
   el.classList.toggle('hidden', !hasMessage);
+  if (!hasMessage) {
+    el.textContent = '';
+    return;
+  }
+  if (showRetry) {
+    el.innerHTML = `
+      <p>${message}</p>
+      <button id="analysis-retry-button" class="btn-secondary" type="button">Try Again</button>
+    `;
+    const retryButton = document.getElementById('analysis-retry-button');
+    if (retryButton instanceof HTMLButtonElement) {
+      retryButton.addEventListener('click', () => {
+        fetchAnalysis();
+      });
+    }
+    return;
+  }
   el.textContent = message || '';
 }
 
@@ -652,17 +679,18 @@ function renderData(payload) {
 }
 
 function wireBackButton() {
+  if (backButtonWired) {
+    return;
+  }
   const button = document.getElementById('analysis-back-button');
   if (!(button instanceof HTMLButtonElement)) {
     return;
   }
   button.addEventListener('click', () => {
-    if (window.history.length > 1) {
-      window.history.back();
-      return;
-    }
+    console.log('ROUTE TRACE: analysis back -> /#stock-outlook-module');
     window.location.href = '/#stock-outlook-module';
   });
+  backButtonWired = true;
 }
 
 async function fetchAnalysis() {
@@ -684,11 +712,11 @@ async function fetchAnalysis() {
   } catch (error) {
     console.error('Stock fetch error:', error);
     if (error?.message === 'Invalid ticker') {
-      setError(`Ticker "${ticker}" not found. Check the symbol and try again.`);
+      setError(`Ticker "${ticker}" not found. Check the symbol and try again.`, { showRetry: true });
     } else if (String(error?.message || '').toLowerCase().includes('fetch')) {
-      setError('Network error. Check your internet connection.');
+      setError('Network error. Check your internet connection.', { showRetry: true });
     } else {
-      setError(`Error: ${error?.message || 'Unknown error'}`);
+      setError(`Error: ${error?.message || 'Unknown error'}`, { showRetry: true });
     }
   } finally {
     setLoading(false);
@@ -696,3 +724,8 @@ async function fetchAnalysis() {
 }
 
 fetchAnalysis();
+
+console.log('NAV DEBUG stock-analysis: route loaded', {
+  path: window.location.pathname,
+  search: window.location.search
+});

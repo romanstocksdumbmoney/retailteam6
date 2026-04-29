@@ -4996,6 +4996,7 @@ function setupStockForm() {
     return;
   }
   const analyzeButton = document.getElementById('analyze-stock-button');
+  const inlineError = document.getElementById('stock-inline-error');
   form.addEventListener('submit', async (event) => {
     event.preventDefault();
     if (!guardAuthenticatedToolAccess('Stock Outlook Scanner', '/#stock-outlook-module')) {
@@ -5025,10 +5026,19 @@ function setupStockForm() {
       console.error('RAW FETCH FAILED:', e);
     }
 
+    if (inlineError) {
+      inlineError.textContent = '';
+      inlineError.classList.add('hidden');
+    }
     if (!ticker) {
-      const target = document.getElementById('stock-results');
-      if (target) {
-        target.innerHTML = '<div class="pro-lock">Enter a ticker symbol.</div>';
+      input.classList.remove('ticker-input-shake');
+      // Force reflow so repeated empty submits replay animation.
+      void input.offsetWidth;
+      input.classList.add('ticker-input-shake');
+      window.setTimeout(() => input.classList.remove('ticker-input-shake'), 450);
+      if (inlineError) {
+        inlineError.textContent = 'Enter a ticker symbol.';
+        inlineError.classList.remove('hidden');
       }
       renderStatus('Enter a ticker symbol.');
       return;
@@ -5041,10 +5051,17 @@ function setupStockForm() {
       analyzeButton.classList.add('is-loading');
       analyzeButton.innerHTML = '<span class="button-spinner" aria-hidden="true"></span>Analyzing...';
     }
+    // Kick off prefetch but do not await; results page fetches from URL ticker on mount.
+    fetch(`/api/market/stock-analysis?ticker=${encodeURIComponent(activeTicker)}`).catch((error) => {
+      console.warn('Stock prefetch failed before route transition:', error);
+    });
+
     try {
-      const destination = `/stock-analysis.html?ticker=${encodeURIComponent(activeTicker)}`;
+      const destination = `/stock/${encodeURIComponent(activeTicker)}`;
+      console.log('STOCK NAVIGATION:', destination);
       window.location.href = destination;
-    } finally {
+    } catch (error) {
+      console.error('Stock navigation failed:', error);
       if (analyzeButton instanceof HTMLButtonElement) {
         analyzeButton.disabled = false;
         analyzeButton.classList.remove('is-loading');

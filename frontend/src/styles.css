@@ -3727,6 +3727,33 @@ button[aria-busy='true']::after {
   animation: analysis-pulse 1.2s ease-in-out infinite;
 }
 
+.analysis-inline-error {
+  margin: 0.35rem 0 0;
+  color: #fca5a5;
+  font-size: 0.85rem;
+}
+
+.analysis-inline-error.hidden {
+  display: none;
+}
+
+.ticker-input-shake {
+  animation: ticker-shake 0.34s ease-in-out;
+}
+
+.ticker-shake {
+  animation: ticker-shake 0.34s ease-in-out;
+}
+
+@keyframes ticker-shake {
+  0% { transform: translateX(0); }
+  20% { transform: translateX(-6px); }
+  40% { transform: translateX(6px); }
+  60% { transform: translateX(-4px); }
+  80% { transform: translateX(4px); }
+  100% { transform: translateX(0); }
+}
+
 @keyframes analysis-pulse {
   from { background-position: 220% 0; }
   to { background-position: -220% 0; }

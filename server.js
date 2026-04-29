@@ -197,6 +197,19 @@ async function runAutopilotSweepSafe() {
 
 if (hasFrontendBuild) {
     app.use(express.static(buildDir));
+    /**
+     * ROUTING RULES — DO NOT CHANGE WITHOUT REVIEW
+     * / or /dashboard → Dashboard/home page (module list)
+     * /stock/:ticker  → Stock analysis results page
+     *
+     * The Analyze Stock button ALWAYS navigates to /stock/:ticker
+     * It NEVER navigates to / or /dashboard
+     * The StockAnalysisPage fetches its own data from URL params
+     * Do not pass stock data via navigation state — use URL params only
+     */
+    app.get('/stock/:ticker', (_req, res) => {
+        return res.sendFile(path.join(buildDir, 'stock-analysis.html'));
+    });
     app.get('*', (req, res, next) => {
         if (req.path.startsWith('/api') || req.path === '/health') {
             return next();
