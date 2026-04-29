@@ -1,714 +1,577 @@
+const AV_KEY = 'XK10T6I58YPTGMWE';
+
 function getTickerFromRoute() {
   const pathname = String(window.location.pathname || '');
-  const pathMatch = pathname.match(/^\/stock\/([A-Za-z0-9.\-]+)$/);
-  if (pathMatch?.[1]) {
-    return String(pathMatch[1]).trim().toUpperCase();
+  const parts = pathname.split('/stock/');
+  if (parts[1]) {
+    return decodeURIComponent(parts[1].split('/')[0]).trim().toUpperCase();
   }
-  const params = new URLSearchParams(window.location.search);
-  return String(params.get('ticker') || '').trim().toUpperCase();
-}
-
-const ticker = getTickerFromRoute();
-let backButtonWired = false;
-
-function safeImportMetaEnv() {
-  try {
-    return (0, eval)('import.meta.env');
-  } catch (_error) {
-    return {};
-  }
-}
-
-function resolveApiKey() {
-  const viteEnv = safeImportMetaEnv();
-  const apiKey = (typeof process !== 'undefined' && process?.env?.VITE_MARKET_API_KEY)
-    || (typeof process !== 'undefined' && process?.env?.MARKET_API_KEY)
-    || (typeof process !== 'undefined' && process?.env?.NEXT_PUBLIC_MARKET_API_KEY)
-    || (typeof process !== 'undefined' && process?.env?.REACT_APP_MARKET_API_KEY)
-    || (typeof process !== 'undefined' && process?.env?.ALPHAVANTAGE_API_KEY)
-    || viteEnv?.VITE_MARKET_API_KEY
-    || 'XK10T6I58YPTGMWE';
-  console.log('API KEY LOADED:', apiKey);
-  return String(apiKey || '').trim();
-}
-
-function fmtNumber(value, digits = 2) {
-  const n = Number(value);
-  if (!Number.isFinite(n)) {
-    return 'Unavailable';
-  }
-  return n.toLocaleString(undefined, {
-    maximumFractionDigits: digits,
-    minimumFractionDigits: digits
-  });
-}
-
-function fmtUsd(value, digits = 2) {
-  const n = Number(value);
-  if (!Number.isFinite(n)) {
-    return 'Unavailable';
-  }
-  return n.toLocaleString(undefined, {
-    style: 'currency',
-    currency: 'USD',
-    maximumFractionDigits: digits,
-    minimumFractionDigits: digits
-  });
-}
-
-function fmtCompactUsd(value) {
-  const n = Number(value);
-  if (!Number.isFinite(n)) {
-    return 'Unavailable';
-  }
-  return n.toLocaleString(undefined, {
-    style: 'currency',
-    currency: 'USD',
-    notation: 'compact',
-    maximumFractionDigits: 2
-  });
+  return '';
 }
 
 function delay(ms) {
-  return new Promise((resolve) => {
-    window.setTimeout(resolve, ms);
-  });
+  return new Promise((resolve) => window.setTimeout(resolve, ms));
 }
 
-async function proxyFetch(url) {
-  const proxied = `https://api.allorigins.win/get?url=${encodeURIComponent(url)}`;
-  const res = await fetch(proxied);
-  const wrapper = await res.json();
-  if (!wrapper?.contents) {
-    throw new Error('Empty proxy response');
-  }
-  return JSON.parse(wrapper.contents);
-}
-
-async function alphaFetch(url) {
+async function fetchJsonWithTimeout(url, timeoutMs = 12000) {
+  const controller = new AbortController();
+  const timer = window.setTimeout(() => controller.abort(), timeoutMs);
   try {
-    return await proxyFetch(url);
-  } catch (proxyError) {
-    // If proxy path fails, direct fetch is attempted for environments
-    // where CORS is already allowed.
-    const direct = await fetch(url);
-    return direct.json();
+    const res = await fetch(url, { signal: controller.signal });
+    if (!res.ok) {
+      throw new Error(`HTTP ${res.status}`);
+    }
+    return res.json();
+  } finally {
+    window.clearTimeout(timer);
   }
 }
 
-function latestSeriesPoint(series, field) {
-  const keys = Object.keys(series || {}).sort((a, b) => new Date(b).getTime() - new Date(a).getTime());
-  if (!keys.length) {
+function toNumber(value) {
+  const n = Number(value);
+  return Number.isFinite(n) ? n : null;
+}
+
+function safeAverage(values) {
+  if (!values.length) {
     return null;
   }
-  const key = keys[0];
-  const value = Number(series[key]?.[field]);
-  return Number.isFinite(value) ? value : null;
+  return values.reduce((acc, item) => acc + item, 0) / values.length;
 }
 
-function latestMacdPoint(series) {
-  const keys = Object.keys(series || {}).sort((a, b) => new Date(b).getTime() - new Date(a).getTime());
-  if (!keys.length) {
-    return { macd: null, signal: null, hist: null, prevHist: null };
-  }
-  const current = series[keys[0]] || {};
-  const previous = series[keys[1]] || {};
-  const macd = Number(current.MACD);
-  const signal = Number(current.MACD_Signal);
-  const hist = Number(current.MACD_Hist);
-  const prevHist = Number(previous.MACD_Hist);
-  return {
-    macd: Number.isFinite(macd) ? macd : null,
-    signal: Number.isFinite(signal) ? signal : null,
-    hist: Number.isFinite(hist) ? hist : null,
-    prevHist: Number.isFinite(prevHist) ? prevHist : null
-  };
-}
-
-function parsePercent(value) {
-  const parsed = Number(String(value || '').replace('%', '').trim());
-  return Number.isFinite(parsed) ? parsed : null;
-}
-
-async function fetchFromYahoo(tickerSymbol) {
-  const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(
-    `https://query1.finance.yahoo.com/v8/finance/chart/${tickerSymbol}?interval=1d&range=5d`
-  )}`;
-
-  const res = await fetch(proxyUrl);
-  const wrapper = await res.json();
-  const data = JSON.parse(wrapper.contents);
-
-  const result = data?.chart?.result?.[0];
-  if (!result) throw new Error('Invalid ticker');
-
-  const meta = result.meta || {};
-  const price = Number(meta.regularMarketPrice);
-  const prevClose = Number(meta.previousClose || meta.chartPreviousClose);
-  if (!Number.isFinite(price) || !Number.isFinite(prevClose) || prevClose === 0) {
-    throw new Error('Invalid ticker');
-  }
-
-  const change = price - prevClose;
-  const changePercent = `${((change / prevClose) * 100).toFixed(2)}%`;
-
-  return {
-    ticker: tickerSymbol,
-    price,
-    change,
-    changePercent,
-    volume: Number(meta.regularMarketVolume) || 0,
-    previousClose: prevClose,
-    latestTradingDay: meta.regularMarketTime
-      ? new Date(Number(meta.regularMarketTime) * 1000).toISOString().slice(0, 10)
-      : null,
-    rsi: 50,
-    macd: 0,
-    macdSignal: 0,
-    macdHist: 0,
-    macdPrevHist: 0,
-    sma50: 0,
-    sma200: 0,
-    bbUpper: null,
-    bbMiddle: null,
-    bbLower: null,
-    pe: null,
-    eps: null,
-    analystTarget: null,
-    companyName: meta.longName || meta.shortName || tickerSymbol,
-    sector: 'Unknown',
-    marketCap: null,
-    averageVolume: null,
-    week52High: Number(meta.fiftyTwoWeekHigh) || null,
-    week52Low: Number(meta.fiftyTwoWeekLow) || null,
-    source: 'Yahoo fallback (allorigins)'
-  };
-}
-
-async function fetchStockAnalysis(tickerSymbol) {
-  const KEY = resolveApiKey();
-  const BASE = 'https://www.alphavantage.co/query';
-
-  const quoteData = await alphaFetch(
-    `${BASE}?function=GLOBAL_QUOTE&symbol=${encodeURIComponent(tickerSymbol)}&apikey=${encodeURIComponent(KEY)}`
-  );
-
-  if (!quoteData['Global Quote'] || !quoteData['Global Quote']['05. price']) {
-    return fetchFromYahoo(tickerSymbol);
-  }
-
-  const quote = quoteData['Global Quote'];
-  await delay(1200);
-
-  const rsiData = await alphaFetch(
-    `${BASE}?function=RSI&symbol=${encodeURIComponent(tickerSymbol)}&interval=daily&time_period=14&series_type=close&apikey=${encodeURIComponent(KEY)}`
-  );
-  await delay(1200);
-
-  const macdData = await alphaFetch(
-    `${BASE}?function=MACD&symbol=${encodeURIComponent(tickerSymbol)}&interval=daily&series_type=close&apikey=${encodeURIComponent(KEY)}`
-  );
-  await delay(1200);
-
-  const sma50Data = await alphaFetch(
-    `${BASE}?function=SMA&symbol=${encodeURIComponent(tickerSymbol)}&interval=daily&time_period=50&series_type=close&apikey=${encodeURIComponent(KEY)}`
-  );
-  await delay(1200);
-
-  const sma200Data = await alphaFetch(
-    `${BASE}?function=SMA&symbol=${encodeURIComponent(tickerSymbol)}&interval=daily&time_period=200&series_type=close&apikey=${encodeURIComponent(KEY)}`
-  );
-  await delay(1200);
-
-  const bbData = await alphaFetch(
-    `${BASE}?function=BBANDS&symbol=${encodeURIComponent(tickerSymbol)}&interval=daily&time_period=20&series_type=close&apikey=${encodeURIComponent(KEY)}`
-  );
-  await delay(1200);
-
-  const overview = await alphaFetch(
-    `${BASE}?function=OVERVIEW&symbol=${encodeURIComponent(tickerSymbol)}&apikey=${encodeURIComponent(KEY)}`
-  );
-
-  const rsi = latestSeriesPoint(rsiData['Technical Analysis: RSI'], 'RSI') ?? 50;
-  const macdPoints = latestMacdPoint(macdData['Technical Analysis: MACD']);
-  const sma50 = latestSeriesPoint(sma50Data['Technical Analysis: SMA'], 'SMA') ?? 0;
-  const sma200 = latestSeriesPoint(sma200Data['Technical Analysis: SMA'], 'SMA') ?? 0;
-  const bbUpper = latestSeriesPoint(bbData['Technical Analysis: BBANDS'], 'Real Upper Band');
-  const bbMiddle = latestSeriesPoint(bbData['Technical Analysis: BBANDS'], 'Real Middle Band');
-  const bbLower = latestSeriesPoint(bbData['Technical Analysis: BBANDS'], 'Real Lower Band');
-
-  return {
-    ticker: tickerSymbol,
-    price: Number(quote['05. price']),
-    change: Number(quote['09. change']),
-    changePercent: quote['10. change percent'],
-    volume: Number(quote['06. volume']),
-    previousClose: Number(quote['08. previous close']),
-    latestTradingDay: quote['07. latest trading day'] || null,
-    rsi,
-    macd: macdPoints.macd ?? 0,
-    macdSignal: macdPoints.signal ?? 0,
-    macdHist: macdPoints.hist ?? 0,
-    macdPrevHist: macdPoints.prevHist ?? 0,
-    sma50,
-    sma200,
-    bbUpper,
-    bbMiddle,
-    bbLower,
-    pe: Number(overview.PERatio) || null,
-    eps: Number(overview.EPS) || null,
-    analystTarget: Number(overview.AnalystTargetPrice) || null,
-    companyName: overview.Name || tickerSymbol,
-    sector: overview.Sector || 'Unknown',
-    marketCap: Number(overview.MarketCapitalization) || null,
-    averageVolume: Number(overview.AverageVolume) || null,
-    week52High: Number(overview['52WeekHigh']) || null,
-    week52Low: Number(overview['52WeekLow']) || null,
-    source: 'Alpha Vantage'
-  };
-}
-
-function scoreRSI(rsi) {
-  if (rsi < 30) return 85;
-  if (rsi < 45) return 70;
-  if (rsi <= 55) return 50;
-  if (rsi <= 70) return 40;
-  return 20;
-}
-
-function scoreMACD(macd, signal, hist, prevHist) {
-  const histGrowing = hist > prevHist;
-  if (macd > signal && histGrowing) return 80;
-  if (macd > signal && !histGrowing) return 55;
-  if (macd < signal && !histGrowing) return 25;
-  return 45;
-}
-
-function scoreSMA(price, sma50, sma200) {
-  if (price > sma50 && sma50 > sma200) return 85;
-  if (price > sma50 && sma50 < sma200) return 55;
-  if (price < sma50 && sma50 > sma200) return 40;
-  return 20;
-}
-
-function scoreBB(price, lower, middle, upper) {
-  if (![price, lower, middle, upper].every(Number.isFinite) || upper <= lower) {
+function calculateRSI(closes, period = 14) {
+  if (!Array.isArray(closes) || closes.length < period + 1) {
     return 50;
   }
-  const position = (price - lower) / (upper - lower);
-  if (position <= 0.33) return 75;
-  if (position >= 0.67) return 30;
-  return 50;
+  let gains = 0;
+  let losses = 0;
+  for (let i = closes.length - period; i < closes.length; i += 1) {
+    const diff = closes[i] - closes[i - 1];
+    if (diff > 0) gains += diff;
+    else losses += Math.abs(diff);
+  }
+  const avgGain = gains / period;
+  const avgLoss = losses / period;
+  if (avgLoss === 0) return 100;
+  const rs = avgGain / avgLoss;
+  return 100 - (100 / (1 + rs));
 }
 
-function scoreValuation(pe) {
-  if (!Number.isFinite(pe)) return 50;
-  if (pe < 15) return 80;
-  if (pe <= 25) return 65;
-  if (pe <= 40) return 45;
-  return 25;
+async function fetchStockData(ticker) {
+  const cleanTicker = ticker.toUpperCase().trim();
+
+  try {
+    const quoteUrl = `https://www.alphavantage.co/query?function=GLOBAL_QUOTE&symbol=${encodeURIComponent(cleanTicker)}&apikey=${encodeURIComponent(AV_KEY)}`;
+    const quoteData = await fetchJsonWithTimeout(quoteUrl, 12000);
+    console.log('AV Quote response:', quoteData);
+    if (quoteData?.['Global Quote']?.['05. price']) {
+      return buildFullAnalysis(cleanTicker, quoteData);
+    }
+    console.warn('AV unavailable/rate limited, switching to Yahoo fallback');
+    return fetchFromYahoo(cleanTicker);
+  } catch (error) {
+    console.error('AV fetch failed:', error);
+    return fetchFromYahoo(cleanTicker);
+  }
 }
 
-function overallLabel(score) {
-  if (score >= 80) return 'STRONG BUY';
-  if (score >= 60) return 'GOOD';
-  if (score >= 40) return 'NEUTRAL';
-  return 'WEAK';
+async function fetchFromYahoo(ticker) {
+  try {
+    const yahooUrl = encodeURIComponent(
+      `https://query1.finance.yahoo.com/v8/finance/chart/${ticker}?interval=1d&range=1y`
+    );
+    const proxyUrl = `https://api.allorigins.win/get?url=${yahooUrl}`;
+    const wrapper = await fetchJsonWithTimeout(proxyUrl, 12000);
+    if (!wrapper?.contents) {
+      throw new Error('Yahoo proxy returned empty content');
+    }
+    const yData = JSON.parse(wrapper.contents);
+    console.log('Yahoo response:', yData);
+
+    const result = yData?.chart?.result?.[0];
+    if (!result) {
+      throw new Error('Invalid ticker');
+    }
+    const meta = result.meta || {};
+    const quotes = result.indicators?.quote?.[0] || {};
+    const closes = Array.isArray(quotes.close) ? quotes.close.filter((item) => Number.isFinite(Number(item))).map(Number) : [];
+    if (!closes.length) {
+      throw new Error('Invalid ticker');
+    }
+
+    const latestClose = closes[closes.length - 1];
+    const price = toNumber(meta.regularMarketPrice) ?? latestClose;
+    const prevClose = toNumber(meta.previousClose) ?? toNumber(meta.chartPreviousClose) ?? closes[Math.max(0, closes.length - 2)];
+    if (!Number.isFinite(price) || !Number.isFinite(prevClose) || prevClose === 0) {
+      throw new Error('Invalid ticker');
+    }
+    const change = price - prevClose;
+    const changePct = `${((change / prevClose) * 100).toFixed(2)}%`;
+
+    const recent50 = closes.slice(-50);
+    const sma20 = safeAverage(closes.slice(-20));
+    const sma50 = safeAverage(recent50);
+    const rsi = calculateRSI(recent50, 14);
+
+    const window252 = closes.slice(-252);
+    const week52High = window252.length ? Math.max(...window252) : null;
+    const week52Low = window252.length ? Math.min(...window252) : null;
+
+    return {
+      ticker,
+      companyName: meta.longName || meta.shortName || ticker,
+      price: Number(price.toFixed(2)),
+      change: Number(change.toFixed(2)),
+      changePercent: changePct,
+      volume: toNumber(meta.regularMarketVolume) || 0,
+      prevClose: Number(prevClose.toFixed(2)),
+      week52High: Number.isFinite(week52High) ? Number(week52High.toFixed(2)) : null,
+      week52Low: Number.isFinite(week52Low) ? Number(week52Low.toFixed(2)) : null,
+      sma20: Number.isFinite(sma20) ? Number(sma20.toFixed(2)) : null,
+      sma50: Number.isFinite(sma50) ? Number(sma50.toFixed(2)) : null,
+      rsi: Number.isFinite(rsi) ? Number(rsi.toFixed(1)) : 50,
+      macd: null,
+      pe: null,
+      analystTarget: null,
+      sector: 'N/A',
+      marketCap: toNumber(meta.marketCap),
+      dataSource: 'Yahoo Finance'
+    };
+  } catch (error) {
+    console.error('Yahoo fallback failed:', error);
+    if (String(error?.message || '').toLowerCase().includes('invalid ticker')) {
+      throw new Error(`Ticker "${ticker}" not found. Check the symbol and try again.`);
+    }
+    throw new Error(`Could not load data for ${ticker}. Check the ticker symbol.`);
+  }
 }
 
-function riskLevel(score) {
-  if (score >= 70) return 'LOW';
-  if (score >= 45) return 'MEDIUM';
-  return 'HIGH';
-}
+async function buildFullAnalysis(ticker, quoteData) {
+  const q = quoteData['Global Quote'] || {};
+  const price = toNumber(q['05. price']);
+  const prevClose = toNumber(q['08. previous close']);
+  const change = toNumber(q['09. change']);
+  const changePct = String(q['10. change percent'] || '').trim() || 'N/A';
+  const volume = Number.parseInt(String(q['06. volume'] || '0'), 10) || 0;
 
-function buildModel(raw) {
-  const changePercentNumber = parsePercent(raw.changePercent);
-  const volumeRatio = Number.isFinite(raw.averageVolume) && raw.averageVolume > 0
-    ? raw.volume / raw.averageVolume
-    : null;
+  if (!Number.isFinite(price) || !Number.isFinite(prevClose)) {
+    return fetchFromYahoo(ticker);
+  }
 
-  const rsiScore = scoreRSI(raw.rsi);
-  const macdScore = scoreMACD(raw.macd, raw.macdSignal, raw.macdHist, raw.macdPrevHist);
-  const smaScore = scoreSMA(raw.price, raw.sma50, raw.sma200);
-  const bbScore = scoreBB(raw.price, raw.bbLower, raw.bbMiddle, raw.bbUpper);
-  const valuationScore = scoreValuation(raw.pe);
+  let overview = {};
+  let rsi = 50;
+  let sma50 = null;
 
-  const overallScore = Math.round((rsiScore * 0.2) + (macdScore * 0.25) + (smaScore * 0.25) + (bbScore * 0.15) + (valuationScore * 0.15));
+  try {
+    const ovUrl = `https://www.alphavantage.co/query?function=OVERVIEW&symbol=${encodeURIComponent(ticker)}&apikey=${encodeURIComponent(AV_KEY)}`;
+    overview = await fetchJsonWithTimeout(ovUrl, 12000);
+  } catch (_error) {
+    overview = {};
+  }
+  await delay(1200);
 
-  const dayScore = Math.round((rsiScore * 0.3) + (macdScore * 0.35) + (bbScore * 0.2) + ((volumeRatio && volumeRatio >= 1.2 ? 75 : volumeRatio && volumeRatio < 0.8 ? 35 : 50) * 0.15));
-  const swingScore = Math.round((macdScore * 0.35) + ((raw.price > raw.sma50 ? 70 : 35) * 0.3) + ((raw.rsi >= 40 && raw.rsi <= 60 ? 68 : 50) * 0.2) + (50 * 0.15));
-  const longScore = Math.round((((raw.price > raw.sma200) ? 75 : 30) * 0.35) + (valuationScore * 0.25) + ((raw.eps && raw.eps > 0 ? 70 : 50) * 0.2) + ((raw.analystTarget && raw.price > 0 ? Math.min(80, Math.max(35, ((raw.analystTarget - raw.price) / raw.price) * 100)) : 50) * 0.2));
+  try {
+    const rsiUrl = `https://www.alphavantage.co/query?function=RSI&symbol=${encodeURIComponent(ticker)}&interval=daily&time_period=14&series_type=close&apikey=${encodeURIComponent(AV_KEY)}`;
+    const rsiData = await fetchJsonWithTimeout(rsiUrl, 12000);
+    const rsiVals = rsiData?.['Technical Analysis: RSI'];
+    if (rsiVals) {
+      const latestDate = Object.keys(rsiVals)[0];
+      rsi = toNumber(rsiVals?.[latestDate]?.RSI) ?? 50;
+    }
+  } catch (_error) {
+    rsi = 50;
+  }
+  await delay(1200);
 
-  const bbPosition = Number.isFinite(raw.bbLower) && Number.isFinite(raw.bbUpper) && raw.bbUpper > raw.bbLower
-    ? (raw.price - raw.bbLower) / (raw.bbUpper - raw.bbLower)
-    : null;
-
-  const indicatorRows = [
-    { label: 'RSI (14)', value: raw.rsi, signal: raw.rsi < 30 ? 'Oversold opportunity' : raw.rsi > 70 ? 'Overbought risk' : 'Neutral', tone: raw.rsi < 45 ? 'bullish' : raw.rsi > 70 ? 'bearish' : 'neutral' },
-    { label: 'MACD', value: raw.macd, signal: raw.macd > raw.macdSignal ? 'Bullish crossover' : 'Bearish crossover', tone: raw.macd > raw.macdSignal ? 'bullish' : 'bearish' },
-    { label: 'SMA 50', value: raw.sma50, signal: raw.price > raw.sma50 ? 'Above (bullish)' : 'Below (bearish)', tone: raw.price > raw.sma50 ? 'bullish' : 'bearish' },
-    { label: 'SMA 200', value: raw.sma200, signal: raw.price > raw.sma200 ? 'Above (bullish)' : 'Below (bearish)', tone: raw.price > raw.sma200 ? 'bullish' : 'bearish' },
-    { label: 'Bollinger Band', value: bbPosition === null ? 'Unavailable' : bbPosition <= 0.33 ? 'lower' : bbPosition >= 0.67 ? 'upper' : 'middle', signal: bbPosition === null ? 'Unavailable' : bbPosition <= 0.33 ? 'Near lower band' : bbPosition >= 0.67 ? 'Near upper band' : 'Near middle', tone: bbPosition === null ? 'neutral' : bbPosition <= 0.33 ? 'bullish' : bbPosition >= 0.67 ? 'bearish' : 'neutral' },
-    { label: 'Volume', value: volumeRatio ? `${fmtNumber(volumeRatio, 2)}x avg` : null, signal: volumeRatio ? (volumeRatio >= 1.2 ? 'Above average' : volumeRatio < 0.8 ? 'Below average' : 'Normal') : 'Unavailable', tone: volumeRatio ? (volumeRatio >= 1.2 ? 'bullish' : volumeRatio < 0.8 ? 'bearish' : 'neutral') : 'neutral' }
-  ];
-
-  const upside = Number.isFinite(raw.analystTarget) && raw.price > 0
-    ? ((raw.analystTarget - raw.price) / raw.price) * 100
-    : null;
-
-  const rangePct = Number.isFinite(raw.week52Low) && Number.isFinite(raw.week52High) && raw.week52High > raw.week52Low
-    ? ((raw.price - raw.week52Low) / (raw.week52High - raw.week52Low)) * 100
-    : null;
+  try {
+    const smaUrl = `https://www.alphavantage.co/query?function=SMA&symbol=${encodeURIComponent(ticker)}&interval=daily&time_period=50&series_type=close&apikey=${encodeURIComponent(AV_KEY)}`;
+    const smaData = await fetchJsonWithTimeout(smaUrl, 12000);
+    const smaVals = smaData?.['Technical Analysis: SMA'];
+    if (smaVals) {
+      const latestDate = Object.keys(smaVals)[0];
+      sma50 = toNumber(smaVals?.[latestDate]?.SMA);
+    }
+  } catch (_error) {
+    sma50 = null;
+  }
 
   return {
-    ticker: raw.ticker,
-    companyName: raw.companyName,
-    quote: {
-      currentPrice: raw.price,
-      dailyChange: raw.change,
-      dailyChangePercent: changePercentNumber,
-      volume: raw.volume,
-      previousClose: raw.previousClose,
-      latestTradingDay: raw.latestTradingDay
-    },
-    overview: {
-      marketCap: raw.marketCap,
-      sector: raw.sector,
-      peRatio: raw.pe,
-      eps: raw.eps,
-      fiftyTwoWeekHigh: raw.week52High,
-      fiftyTwoWeekLow: raw.week52Low,
-      analystTargetPrice: raw.analystTarget,
-      averageVolume: raw.averageVolume
-    },
-    scores: {
-      overallScore,
-      overallLabel: overallLabel(overallScore)
-    },
-    styles: {
-      dayTrade: {
-        score: dayScore,
-        verdict: dayScore >= 65 ? 'Good for day trading today' : dayScore < 40 ? 'Avoid day trading' : 'Neutral',
-        reason: `RSI ${fmtNumber(raw.rsi, 1)} and MACD ${raw.macd > raw.macdSignal ? 'bullish' : 'bearish'} with volume ${volumeRatio ? fmtNumber(volumeRatio, 2) : 'Unavailable'}x average.`,
-        riskLevel: riskLevel(dayScore)
-      },
-      swingTrade: {
-        score: swingScore,
-        verdict: swingScore >= 65 ? 'Favorable swing setup' : swingScore < 40 ? 'Weak swing setup' : 'Neutral swing setup',
-        reason: `Price is ${raw.price > raw.sma50 ? 'above' : 'below'} SMA50 (${fmtUsd(raw.sma50)}) with RSI ${fmtNumber(raw.rsi, 1)}.`,
-        entrySuggestion: Number.isFinite(raw.bbLower) ? raw.bbLower : raw.sma50,
-        targetSuggestion: Number.isFinite(raw.bbUpper) ? raw.bbUpper : (raw.price * 1.05),
-        riskLevel: riskLevel(swingScore)
-      },
-      longHold: {
-        score: longScore,
-        verdict: longScore >= 70 ? 'Strong long-term hold' : longScore < 40 ? 'Risky at current valuation' : 'Moderate long-term hold',
-        reason: Number.isFinite(upside)
-          ? `Analyst target implies ${fmtNumber(upside, 2)}% upside from current price.`
-          : 'Analyst target unavailable; relying on trend and valuation context.',
-        analystUpsidePercent: Number.isFinite(upside) ? upside : null,
-        riskLevel: riskLevel(longScore),
-        fundamentalHealth: `${Number.isFinite(raw.pe) ? `P/E ${fmtNumber(raw.pe, 2)}` : 'P/E unavailable'}. ${raw.marketCap ? 'Market cap available.' : 'Market cap unavailable.'}`
-      }
-    },
-    indicatorRows,
-    rangePositionPercent: Number.isFinite(rangePct) ? rangePct : null,
-    source: {
-      quoteSource: raw.source
-    }
+    ticker,
+    companyName: overview.Name || ticker,
+    price: Number(price.toFixed(2)),
+    change: Number((change ?? (price - prevClose)).toFixed(2)),
+    changePercent: changePct,
+    volume,
+    prevClose: Number(prevClose.toFixed(2)),
+    week52High: toNumber(overview['52WeekHigh']),
+    week52Low: toNumber(overview['52WeekLow']),
+    sma20: null,
+    sma50,
+    rsi: Number(rsi.toFixed(1)),
+    macd: null,
+    pe: toNumber(overview.PERatio),
+    analystTarget: toNumber(overview.AnalystTargetPrice),
+    sector: overview.Sector || 'N/A',
+    marketCap: toNumber(overview.MarketCapitalization),
+    dataSource: 'Alpha Vantage'
   };
 }
 
-function setLoading(state, label = '') {
-  const loading = document.getElementById('analysis-loading');
-  const loadingText = document.getElementById('analysis-loading-text');
-  const tradeCards = document.getElementById('analysis-trade-cards');
-  const indicatorTable = document.getElementById('analysis-indicator-table');
+function calculateScores(data) {
+  let rsiScore = 50;
+  const rsi = data.rsi || 50;
+  if (rsi < 30) rsiScore = 85;
+  else if (rsi < 45) rsiScore = 70;
+  else if (rsi < 55) rsiScore = 50;
+  else if (rsi < 70) rsiScore = 35;
+  else rsiScore = 20;
 
-  if (loading) {
-    loading.hidden = !state;
+  let trendScore = 50;
+  if (data.sma50 && data.price) {
+    const pctAboveSma = ((data.price - data.sma50) / data.sma50) * 100;
+    if (pctAboveSma > 10) trendScore = 80;
+    else if (pctAboveSma > 3) trendScore = 65;
+    else if (pctAboveSma > -3) trendScore = 50;
+    else if (pctAboveSma > -10) trendScore = 35;
+    else trendScore = 20;
   }
-  if (state && loadingText) {
-    loadingText.textContent = label || 'Analyzing...';
-  }
-  if (state && tradeCards) {
-    tradeCards.innerHTML = '<div class="analysis-skeleton-grid"><div class="analysis-skeleton-block"></div><div class="analysis-skeleton-block"></div><div class="analysis-skeleton-block"></div></div>';
-  }
-  if (state && indicatorTable) {
-    indicatorTable.innerHTML = '<div class="analysis-skeleton-list"><div class="analysis-skeleton-line"></div><div class="analysis-skeleton-line"></div><div class="analysis-skeleton-line"></div><div class="analysis-skeleton-line"></div></div>';
-  }
-}
 
-function setError(message, { showRetry = false } = {}) {
-  const el = document.getElementById('analysis-error');
-  if (!el) {
-    return;
+  let valScore = 50;
+  if (data.pe) {
+    if (data.pe < 15) valScore = 80;
+    else if (data.pe < 25) valScore = 65;
+    else if (data.pe < 35) valScore = 45;
+    else if (data.pe < 50) valScore = 30;
+    else valScore = 15;
   }
-  const hasMessage = Boolean(message);
-  el.hidden = !hasMessage;
-  el.classList.toggle('hidden', !hasMessage);
-  if (!hasMessage) {
-    el.textContent = '';
-    return;
+
+  let momentumScore = 50;
+  if (data.change && data.prevClose) {
+    const pctChange = (data.change / data.prevClose) * 100;
+    if (pctChange > 3) momentumScore = 75;
+    else if (pctChange > 1) momentumScore = 62;
+    else if (pctChange > -1) momentumScore = 50;
+    else if (pctChange > -3) momentumScore = 38;
+    else momentumScore = 25;
   }
-  if (showRetry) {
-    el.innerHTML = `
-      <p>${message}</p>
-      <button id="analysis-retry-button" class="btn-secondary" type="button">Try Again</button>
-    `;
-    const retryButton = document.getElementById('analysis-retry-button');
-    if (retryButton instanceof HTMLButtonElement) {
-      retryButton.addEventListener('click', () => {
-        fetchAnalysis();
-      });
+
+  let rangeScore = 50;
+  if (data.week52High && data.week52Low && data.price) {
+    const range = data.week52High - data.week52Low;
+    if (range > 0) {
+      const position = (data.price - data.week52Low) / range;
+      if (position < 0.25) rangeScore = 80;
+      else if (position < 0.45) rangeScore = 65;
+      else if (position < 0.65) rangeScore = 50;
+      else if (position < 0.80) rangeScore = 38;
+      else rangeScore = 25;
     }
-    return;
   }
-  el.textContent = message || '';
+
+  const overall = Math.round(
+    (rsiScore * 0.25)
+    + (trendScore * 0.25)
+    + (momentumScore * 0.20)
+    + (rangeScore * 0.15)
+    + (valScore * 0.15)
+  );
+  const dayTrade = Math.round((momentumScore * 0.45) + (rsiScore * 0.35) + (trendScore * 0.20));
+  const swingTrade = Math.round((trendScore * 0.40) + (rsiScore * 0.35) + (momentumScore * 0.25));
+  const longHold = Math.round((valScore * 0.40) + (trendScore * 0.35) + (rangeScore * 0.25));
+
+  return {
+    overall,
+    dayTrade,
+    swingTrade,
+    longHold,
+    rsiScore,
+    trendScore,
+    momentumScore,
+    rangeScore,
+    valScore
+  };
 }
 
-function countUp(element, endValue, formatter) {
-  if (!element) {
-    return;
-  }
-  const numeric = Number(endValue);
-  if (!Number.isFinite(numeric)) {
-    element.textContent = formatter ? formatter(endValue) : 'Unavailable';
-    return;
-  }
-  const durationMs = 700;
-  const start = performance.now();
-  function tick(now) {
-    const t = Math.min(1, (now - start) / durationMs);
-    const current = numeric * t;
-    element.textContent = formatter ? formatter(current) : String(current);
-    if (t < 1) {
-      requestAnimationFrame(tick);
-      return;
-    }
-    element.textContent = formatter ? formatter(numeric) : String(numeric);
-  }
-  requestAnimationFrame(tick);
-}
-
-function scoreTone(score) {
-  if (!Number.isFinite(score)) {
-    return 'warning';
-  }
-  if (score >= 80) return 'positive';
-  if (score >= 60) return 'warning';
-  if (score >= 40) return 'warning';
-  return 'negative';
-}
-
-function applyGauge(score, labelText) {
-  const progress = document.getElementById('analysis-gauge-progress');
-  const valueEl = document.getElementById('analysis-overall-score');
-  const labelEl = document.getElementById('analysis-overall-label');
-  if (!progress || !valueEl || !labelEl) {
-    return;
-  }
-
-  const clamped = Math.max(0, Math.min(100, Number(score || 0)));
-  const circumference = 2 * Math.PI * 64;
-  progress.style.strokeDasharray = String(circumference);
-  progress.style.strokeDashoffset = String(circumference);
-  progress.getBoundingClientRect();
-  progress.style.strokeDashoffset = String(circumference - ((clamped / 100) * circumference));
-
-  progress.classList.remove('score-gauge-fill--weak', 'score-gauge-fill--neutral', 'score-gauge-fill--good', 'score-gauge-fill--strong');
-  if (clamped >= 80) {
-    progress.classList.add('score-gauge-fill--strong');
-  } else if (clamped >= 60) {
-    progress.classList.add('score-gauge-fill--good');
-  } else if (clamped >= 40) {
-    progress.classList.add('score-gauge-fill--neutral');
-  } else {
-    progress.classList.add('score-gauge-fill--weak');
-  }
-
-  countUp(valueEl, clamped, (value) => `${Math.round(value)}`);
-  labelEl.textContent = labelText || (clamped >= 80 ? 'STRONG BUY' : clamped >= 60 ? 'GOOD' : clamped >= 40 ? 'NEUTRAL' : 'WEAK');
-}
-
-function renderHeader(payload) {
-  const title = document.getElementById('analysis-title');
-  const subtitle = document.getElementById('analysis-subtitle');
-  const priceBlock = document.getElementById('analysis-price-block');
-  const chipRow = document.getElementById('analysis-stat-row');
-  const rangeLow = document.getElementById('analysis-range-low');
-  const rangeHigh = document.getElementById('analysis-range-high');
-  const rangeMarker = document.getElementById('analysis-range-marker');
-
-  const quote = payload.quote || {};
-  const overview = payload.overview || {};
-
-  if (title) title.textContent = payload.ticker || ticker;
-  if (subtitle) subtitle.textContent = payload.companyName || 'Company name unavailable';
-
-  if (priceBlock) {
-    const change = Number(quote.dailyChange);
-    const changePct = Number(quote.dailyChangePercent);
-    const up = Number.isFinite(change) ? change >= 0 : false;
-    const changeClass = up ? 'analysis-move--up' : 'analysis-move--down';
-    const changeText = Number.isFinite(change) ? `${change >= 0 ? '+' : ''}${fmtNumber(change, 2)}` : 'Unavailable';
-    const pctText = Number.isFinite(changePct) ? `${changePct >= 0 ? '+' : ''}${fmtNumber(changePct, 2)}%` : 'Unavailable';
-
-    priceBlock.innerHTML = `
-      <p class="analysis-price-line" id="analysis-price-line">${fmtUsd(quote.currentPrice)}</p>
-      <p class="analysis-price-change ${changeClass}">${changeText} (${pctText})</p>
-      <p class="small-note">Latest trading day: ${quote.latestTradingDay || 'Unavailable'}</p>
-    `;
-
-    const priceLine = document.getElementById('analysis-price-line');
-    countUp(priceLine, quote.currentPrice, (value) => fmtUsd(value));
-  }
-
-  if (chipRow) {
-    chipRow.innerHTML = [
-      `Market Cap: ${fmtCompactUsd(overview.marketCap)}`,
-      `Sector: ${overview.sector || 'Unavailable'}`,
-      `P/E: ${fmtNumber(overview.peRatio, 2)}`,
-      `EPS: ${fmtNumber(overview.eps, 2)}`
-    ].map((item) => `<span class="analysis-chip">${item}</span>`).join('');
-  }
-
-  if (rangeLow) rangeLow.textContent = fmtUsd(overview.fiftyTwoWeekLow);
-  if (rangeHigh) rangeHigh.textContent = fmtUsd(overview.fiftyTwoWeekHigh);
-  if (rangeMarker) {
-    const pct = Number(payload.rangePositionPercent);
-    rangeMarker.style.left = Number.isFinite(pct) ? `${Math.max(0, Math.min(100, pct))}%` : '0%';
+function setText(id, value) {
+  const el = document.getElementById(id);
+  if (el) {
+    el.textContent = value || 'N/A';
   }
 }
 
-function renderTradeCards(payload) {
-  const container = document.getElementById('analysis-trade-cards');
-  if (!container) return;
-  const styles = payload.styles || {};
+function formatMoney(value, digits = 2) {
+  const n = toNumber(value);
+  if (!Number.isFinite(n)) return 'N/A';
+  return `$${n.toLocaleString(undefined, { maximumFractionDigits: digits, minimumFractionDigits: digits })}`;
+}
 
-  const cards = [
+function renderScore(score) {
+  const numericScore = Math.max(0, Math.min(100, Number(score || 0)));
+  const el = document.getElementById('score-number');
+  const labelEl = document.getElementById('score-label');
+  const fillEl = document.getElementById('score-bar-fill');
+
+  let color = '#ff9100';
+  let label = 'NEUTRAL';
+  if (numericScore >= 75) {
+    color = '#00c853';
+    label = 'STRONG BUY';
+  } else if (numericScore >= 55) {
+    color = '#2979ff';
+    label = 'GOOD';
+  } else if (numericScore < 40) {
+    color = '#ff1744';
+    label = 'WEAK';
+  }
+
+  if (el) {
+    el.textContent = String(Math.round(numericScore));
+    el.style.color = color;
+  }
+  if (labelEl) {
+    labelEl.textContent = label;
+    labelEl.style.color = color;
+  }
+  if (fillEl) {
+    fillEl.style.background = color;
+    fillEl.style.width = `${numericScore}%`;
+  }
+}
+
+function getRSISignal(rsi) {
+  if (!Number.isFinite(Number(rsi))) return '—';
+  if (rsi < 30) return '🟢 Oversold — potential buy';
+  if (rsi < 45) return '🟡 Slightly oversold';
+  if (rsi < 55) return '🟡 Neutral';
+  if (rsi < 70) return '🟠 Slightly overbought';
+  return '🔴 Overbought — caution';
+}
+
+function getDayTradeVerdict(score, data) {
+  if (score >= 70) {
+    return {
+      text: 'Good day trade opportunity',
+      reason: `RSI at ${Number(data.rsi || 50).toFixed(0)} with positive momentum suggests intraday movement. High risk — use tight stops.`
+    };
+  }
+  if (score >= 50) {
+    return {
+      text: 'Neutral — trade with caution',
+      reason: 'Mixed signals. Wait for a clear intraday trend before entering.'
+    };
+  }
+  return {
+    text: 'Avoid day trading today',
+    reason: 'Weak momentum and unfavorable technicals. Risk outweighs reward.'
+  };
+}
+
+function getSwingVerdict(score, data) {
+  if (score >= 70) {
+    return {
+      text: 'Strong swing trade setup',
+      reason: `Price ${data.sma50 && data.price > data.sma50 ? 'above' : 'below'} 50-day SMA. RSI at ${Number(data.rsi || 50).toFixed(0)} suggests momentum potential.`
+    };
+  }
+  if (score >= 50) {
+    return {
+      text: 'Moderate swing potential',
+      reason: 'Some positive signals but mixed overall. Size position conservatively.'
+    };
+  }
+  return {
+    text: 'Poor swing setup',
+    reason: 'Technicals not aligned for a swing trade. Look elsewhere.'
+  };
+}
+
+function getLongHoldVerdict(score, data) {
+  const upside = data.analystTarget && data.price
+    ? (((data.analystTarget - data.price) / data.price) * 100).toFixed(1)
+    : null;
+  if (score >= 70) {
+    return {
+      text: 'Strong long-term hold',
+      reason: upside
+        ? `Analyst target implies ${upside}% upside. Fundamentals support holding.`
+        : 'Solid fundamentals and favorable valuation for long-term investors.'
+    };
+  }
+  if (score >= 50) {
+    return {
+      text: 'Hold with modest expectations',
+      reason: 'Decent fundamentals but limited near-term catalysts visible.'
+    };
+  }
+  return {
+    text: 'Risky at current valuation',
+    reason: 'Valuation stretched or technicals weak. Consider waiting for pullback.'
+  };
+}
+
+function renderTradingCard(cardId, score, verdict) {
+  const card = document.getElementById(cardId);
+  if (!card) return;
+
+  let color = '#ff1744';
+  if (score >= 70) color = '#00c853';
+  else if (score >= 50) color = '#2979ff';
+  else if (score >= 35) color = '#ff9100';
+
+  const scoreEl = card.querySelector('.card-score');
+  const verdictEl = card.querySelector('.card-verdict');
+  const reasonEl = card.querySelector('.card-reason');
+  if (scoreEl) {
+    scoreEl.textContent = `${score}/100`;
+    scoreEl.style.color = color;
+  }
+  if (verdictEl) verdictEl.textContent = verdict.text;
+  if (reasonEl) reasonEl.textContent = verdict.reason;
+  card.style.borderColor = color;
+}
+
+function renderIndicators(data) {
+  const tbody = document.getElementById('indicators-tbody');
+  if (!tbody) return;
+
+  const rows = [
     {
-      title: 'DAY TRADE',
-      data: styles.dayTrade || {},
-      extra: (entry) => `<p class="small-note">Risk: <span class="analysis-risk-pill">${entry.riskLevel || 'MEDIUM'}</span></p>`
+      label: 'RSI (14)',
+      value: Number.isFinite(Number(data.rsi)) ? Number(data.rsi).toFixed(1) : 'N/A',
+      signal: getRSISignal(data.rsi)
     },
     {
-      title: 'SWING TRADE',
-      data: styles.swingTrade || {},
-      extra: (entry) => `<p class="small-note">Entry: ${fmtUsd(entry.entrySuggestion)} • Target: ${fmtUsd(entry.targetSuggestion)}</p><p class="small-note">Risk: <span class="analysis-risk-pill">${entry.riskLevel || 'MEDIUM'}</span></p>`
+      label: 'SMA 50',
+      value: Number.isFinite(Number(data.sma50)) ? formatMoney(data.sma50) : 'N/A',
+      signal: data.sma50 && data.price > data.sma50 ? '🟢 Above (bullish)' : '🔴 Below (bearish)'
     },
     {
-      title: 'LONG HOLD',
-      data: styles.longHold || {},
-      extra: (entry) => `<p class="small-note">Analyst upside: ${Number.isFinite(Number(entry.analystUpsidePercent)) ? `${fmtNumber(entry.analystUpsidePercent, 2)}%` : 'Unavailable'}</p><p class="small-note">${entry.fundamentalHealth || 'Fundamental health unavailable.'}</p><p class="small-note">Risk: <span class="analysis-risk-pill">${entry.riskLevel || 'MEDIUM'}</span></p>`
+      label: 'Price vs 52W High',
+      value: data.week52High ? `${((data.price / data.week52High) * 100).toFixed(1)}% of high` : 'N/A',
+      signal: data.week52High && data.price > data.week52High * 0.9 ? '🟠 Near high' : '🟢 Room to run'
+    },
+    { label: '52W High', value: data.week52High ? formatMoney(data.week52High) : 'N/A', signal: '📊' },
+    { label: '52W Low', value: data.week52Low ? formatMoney(data.week52Low) : 'N/A', signal: '📊' },
+    {
+      label: 'Analyst Target',
+      value: data.analystTarget ? formatMoney(data.analystTarget) : 'N/A',
+      signal: data.analystTarget && data.price
+        ? (data.analystTarget > data.price
+          ? `🟢 +${(((data.analystTarget - data.price) / data.price) * 100).toFixed(1)}% upside`
+          : '🔴 Below current price')
+        : '—'
+    },
+    {
+      label: 'P/E Ratio',
+      value: data.pe ? Number(data.pe).toFixed(1) : 'N/A',
+      signal: data.pe
+        ? (data.pe < 20 ? '🟢 Reasonable' : data.pe < 35 ? '🟡 Moderate' : '🔴 High')
+        : '—'
+    },
+    {
+      label: 'Data Source',
+      value: data.dataSource || 'N/A',
+      signal: '🔗'
     }
   ];
 
-  container.innerHTML = cards.map((card) => {
-    const score = Number(card.data.score);
-    const tone = scoreTone(score);
-    return `
-      <article class="analysis-style-card analysis-style-card--${tone}">
-        <div class="analysis-style-head">
-          <h3>${card.title}</h3>
-          <span class="analysis-score-pill">${Number.isFinite(score) ? Math.round(score) : 'N/A'}/100</span>
-        </div>
-        <p><strong>${card.data.verdict || 'Neutral'}</strong></p>
-        <p>${card.data.reason || 'No reasoning available.'}</p>
-        ${card.extra(card.data)}
-      </article>
-    `;
-  }).join('');
+  tbody.innerHTML = rows.map((row) => `
+    <tr>
+      <td style="padding:10px 12px;font-weight:600;color:#e8eef4;">${row.label}</td>
+      <td style="padding:10px 12px;font-family:monospace;color:#f4f7fb;">${row.value}</td>
+      <td style="padding:10px 12px;color:#c7d1de;">${row.signal}</td>
+    </tr>
+  `).join('');
 }
 
-function renderIndicatorRows(payload) {
-  const table = document.getElementById('analysis-indicator-table');
-  if (!table) return;
-  const rows = Array.isArray(payload.indicatorRows) ? payload.indicatorRows : [];
-
-  table.innerHTML = rows.map((row) => {
-    const tone = row.tone === 'bullish' ? 'bullish' : row.tone === 'bearish' ? 'bearish' : 'neutral';
-    const emoji = tone === 'bullish' ? '🟢' : tone === 'bearish' ? '🔴' : '🟡';
-    let value = row.value;
-    if (row.label.includes('SMA')) {
-      value = fmtUsd(value);
-    } else if (row.label.includes('RSI')) {
-      value = fmtNumber(value, 2);
-    } else if (row.label === 'MACD') {
-      value = Number.isFinite(Number(value)) ? fmtNumber(value, 2) : 'Unavailable';
-    } else if (row.label === 'Bollinger Band') {
-      value = String(value || 'Unavailable').replace(/^./, (x) => x.toUpperCase());
-    }
-    return `
-      <div class="analysis-tech-row">
-        <div><strong>${row.label}</strong></div>
-        <div>${value ?? 'Unavailable'}</div>
-        <div class="analysis-signal analysis-signal--${tone}">${emoji} ${row.signal || 'Unavailable'}</div>
-      </div>
-    `;
-  }).join('');
-}
-
-function renderData(payload) {
+function showLoadingState(ticker) {
+  setText('stock-name', `Analyzing ${ticker}...`);
+  const loading = document.getElementById('analysis-loading');
+  const loadingText = document.getElementById('analysis-loading-text');
   const content = document.getElementById('analysis-content');
-  if (content) {
-    content.hidden = false;
-    content.classList.remove('hidden');
+  const error = document.getElementById('error-display');
+  if (loading) loading.hidden = false;
+  if (loadingText) loadingText.textContent = `Analyzing ${ticker}...`;
+  if (content) content.style.opacity = '0.45';
+  if (error) {
+    error.classList.add('hidden');
+    error.textContent = '';
   }
-  renderHeader(payload);
-  applyGauge(payload?.scores?.overallScore || 0, payload?.scores?.overallLabel || 'NEUTRAL');
-  renderTradeCards(payload);
-  renderIndicatorRows(payload);
+}
+
+function hideLoadingState() {
+  const loading = document.getElementById('analysis-loading');
+  const content = document.getElementById('analysis-content');
+  if (loading) loading.hidden = true;
+  if (content) {
+    content.style.opacity = '1';
+    content.style.transition = 'opacity 0.35s ease';
+  }
+}
+
+function showError(message) {
+  const error = document.getElementById('error-display');
+  if (error) {
+    error.classList.remove('hidden');
+    error.textContent = `⚠️ ${message}`;
+  }
+  hideLoadingState();
+}
+
+async function loadAnalysisPage(ticker) {
+  showLoadingState(ticker);
+  try {
+    const data = await fetchStockData(ticker);
+    const scores = calculateScores(data);
+
+    setText('stock-name', `${data.ticker} — ${data.companyName}`);
+    setText('stock-price', formatMoney(data.price));
+    const changeEl = document.getElementById('stock-change');
+    if (changeEl) {
+      const isUp = Number(data.change) >= 0;
+      changeEl.textContent = `${isUp ? '+' : ''}${Number(data.change).toFixed(2)} (${data.changePercent})`;
+      changeEl.style.color = isUp ? '#00c853' : '#ff1744';
+    }
+
+    setText('stock-sector', data.sector || 'N/A');
+    setText('stock-pe', data.pe ? Number(data.pe).toFixed(1) : 'N/A');
+    setText('stock-volume', data.volume ? `${(Number(data.volume) / 1000000).toFixed(2)}M` : 'N/A');
+    setText('stock-market-cap', data.marketCap ? `$${(Number(data.marketCap) / 1e9).toFixed(1)}B` : 'N/A');
+
+    setText('week52-high', data.week52High ? formatMoney(data.week52High) : 'N/A');
+    setText('week52-low', data.week52Low ? formatMoney(data.week52Low) : 'N/A');
+    const marker = document.getElementById('week52-marker');
+    if (marker && data.week52High && data.week52Low && data.price && data.week52High > data.week52Low) {
+      const pct = ((data.price - data.week52Low) / (data.week52High - data.week52Low)) * 100;
+      marker.style.left = `${Math.min(95, Math.max(5, pct))}%`;
+    } else if (marker) {
+      marker.style.left = '50%';
+    }
+
+    renderScore(scores.overall);
+    renderTradingCard('day-trade-card', scores.dayTrade, getDayTradeVerdict(scores.dayTrade, data));
+    renderTradingCard('swing-trade-card', scores.swingTrade, getSwingVerdict(scores.swingTrade, data));
+    renderTradingCard('long-hold-card', scores.longHold, getLongHoldVerdict(scores.longHold, data));
+    renderIndicators(data);
+    hideLoadingState();
+  } catch (error) {
+    console.error('Stock analysis page failed:', error);
+    showError(error?.message || 'Failed to load stock data');
+  }
 }
 
 function wireBackButton() {
-  if (backButtonWired) {
-    return;
-  }
   const button = document.getElementById('analysis-back-button');
-  if (!(button instanceof HTMLButtonElement)) {
-    return;
-  }
+  if (!(button instanceof HTMLButtonElement)) return;
   button.addEventListener('click', () => {
-    console.log('ROUTE TRACE: analysis back -> /#stock-outlook-module');
     window.location.href = '/#stock-outlook-module';
   });
-  backButtonWired = true;
 }
 
-async function fetchAnalysis() {
-  wireBackButton();
-
-  if (!ticker) {
-    setError('Ticker not found');
-    return;
-  }
-
-  setLoading(true, `Analyzing ${ticker}...`);
-  setError('');
-
-  try {
-    const raw = await fetchStockAnalysis(ticker);
-    const payload = buildModel(raw);
-    renderData(payload);
-  } catch (error) {
-    console.error('Stock fetch error:', error);
-    if (error?.message === 'Invalid ticker') {
-      setError(`Ticker "${ticker}" not found. Check the symbol and try again.`, { showRetry: true });
-    } else if (String(error?.message || '').toLowerCase().includes('fetch')) {
-      setError('Network error. Check your internet connection.', { showRetry: true });
-    } else {
-      setError(`Error: ${error?.message || 'Unknown error'}`, { showRetry: true });
-    }
-  } finally {
-    setLoading(false);
-  }
+wireBackButton();
+const ticker = getTickerFromRoute();
+if (ticker) {
+  loadAnalysisPage(ticker);
+} else {
+  showError('Ticker not found in URL.');
 }
-
-fetchAnalysis();
-
-console.log('NAV DEBUG stock-analysis: route loaded', {
-  path: window.location.pathname,
-  search: window.location.search
-});

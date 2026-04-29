@@ -4972,3 +4972,120 @@ button[aria-busy='true']::after {
     scroll-behavior: auto !important;
   }
 }
+
+/* Stock analysis page hardening:
+   - hide legacy circular gauge if stale markup is cached
+   - use clean score and table layouts that avoid SVG rendering issues */
+.stock-analysis-card .analysis-score-board,
+.stock-analysis-card .analysis-gauge,
+.stock-analysis-card .analysis-gauge-wrap {
+  display: none !important;
+}
+
+.stock-analysis-card .score-display {
+  text-align: center;
+  padding: 20px;
+  background: #1a1a2e;
+  border-radius: 12px;
+  border: 2px solid #f0a500;
+  margin-bottom: 20px;
+}
+
+.stock-analysis-card .score-number {
+  font-size: 64px;
+  font-weight: 900;
+  line-height: 1;
+}
+
+.stock-analysis-card .score-label {
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: 2px;
+  margin-top: 4px;
+  text-transform: uppercase;
+}
+
+.stock-analysis-card .score-bar {
+  width: 160px;
+  height: 12px;
+  background: #2a2a4a;
+  border-radius: 6px;
+  margin: 12px auto 0;
+  overflow: hidden;
+}
+
+.stock-analysis-card .score-bar-fill {
+  width: 0;
+  height: 100%;
+  border-radius: 6px;
+  transition: width 1s ease;
+}
+
+.stock-analysis-card .trading-cards {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+  margin-bottom: 24px;
+}
+
+.stock-analysis-card .trading-card {
+  background: #1a1a2e;
+  border: 2px solid #333;
+  border-radius: 12px;
+  padding: 16px;
+  transition: border-color 0.3s;
+}
+
+.stock-analysis-card .trading-card h3 {
+  color: #f0a500;
+  font-size: 12px;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  margin-bottom: 8px;
+}
+
+.stock-analysis-card .card-score {
+  font-size: 32px;
+  font-weight: 900;
+  margin-bottom: 4px;
+}
+
+.stock-analysis-card .card-verdict {
+  font-size: 13px;
+  font-weight: 700;
+  color: #e8eef4;
+  margin-bottom: 6px;
+}
+
+.stock-analysis-card .card-reason {
+  font-size: 11px;
+  color: #9aa7bb;
+  line-height: 1.5;
+}
+
+.stock-analysis-card #indicators-table {
+  width: 100%;
+  border-collapse: collapse;
+  background: #1a1a2e;
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+.stock-analysis-card #indicators-table tr:nth-child(even) {
+  background: #161628;
+}
+
+.stock-analysis-card #indicators-table tr:hover {
+  background: #1e2040;
+}
+
+.stock-analysis-card #indicators-table td {
+  border-bottom: 1px solid #2a2a4a;
+  font-size: 13px;
+}
+
+@media (max-width: 768px) {
+  .stock-analysis-card .trading-cards {
+    grid-template-columns: 1fr;
+  }
+}

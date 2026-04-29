@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>DumbDollars • Stock Analysis</title>
-    <link rel="stylesheet" href="./styles.css" />
+    <link rel="stylesheet" href="/styles.css" />
   </head>
   <body>
     <div class="diamond-bg" aria-hidden="true"></div>
@@ -16,52 +16,75 @@
           <header class="stock-analysis-header">
             <div>
               <p class="analysis-kicker">Stock Research</p>
-              <h1 id="analysis-title">Analyzing…</h1>
-              <p id="analysis-subtitle" class="small-note">Loading real market data.</p>
+              <h1 id="stock-name">Analyzing...</h1>
+              <p class="small-note">Loading real market data.</p>
             </div>
-            <div id="analysis-price-block" class="analysis-price-block"></div>
+            <div class="analysis-price-block">
+              <p id="stock-price" class="analysis-price-line">$--</p>
+              <p id="stock-change" class="analysis-price-change">-- (--)</p>
+            </div>
           </header>
 
           <div id="analysis-loading" class="analysis-loading">
             <div class="status-loading" aria-hidden="true"></div>
-            <p id="analysis-loading-text">Analyzing ticker…</p>
+            <p id="analysis-loading-text">Analyzing ticker...</p>
           </div>
 
-          <div id="analysis-error" class="pro-lock hidden" role="alert"></div>
+          <div id="error-display" class="pro-lock hidden" role="alert"></div>
 
-          <div id="analysis-content" class="analysis-content hidden">
-            <section class="analysis-stat-row" id="analysis-stat-row"></section>
+          <div id="analysis-content" class="analysis-content">
+            <section class="analysis-stat-row">
+              <span class="analysis-chip">Sector: <strong id="stock-sector">N/A</strong></span>
+              <span class="analysis-chip">P/E: <strong id="stock-pe">N/A</strong></span>
+              <span class="analysis-chip">Volume: <strong id="stock-volume">N/A</strong></span>
+              <span class="analysis-chip">Market Cap: <strong id="stock-market-cap">N/A</strong></span>
+            </section>
 
             <section class="analysis-range-wrap">
               <h2>52-Week Range</h2>
               <div class="analysis-range-bar">
-                <div id="analysis-range-marker" class="analysis-range-marker" aria-hidden="true"></div>
+                <div id="week52-marker" class="analysis-range-marker" aria-hidden="true"></div>
               </div>
               <div class="analysis-range-labels">
-                <span id="analysis-range-low">Unavailable</span>
-                <span id="analysis-range-high">Unavailable</span>
+                <span id="week52-low">N/A</span>
+                <span id="week52-high">N/A</span>
               </div>
             </section>
 
-            <section class="analysis-score-board">
-              <div class="analysis-gauge-wrap">
-                <svg class="analysis-gauge" viewBox="0 0 160 160" aria-label="Overall score gauge">
-                  <circle class="analysis-gauge-track" cx="80" cy="80" r="64"></circle>
-                  <circle id="analysis-gauge-progress" class="analysis-gauge-progress" cx="80" cy="80" r="64"></circle>
-                </svg>
-                <div class="analysis-gauge-center">
-                  <strong id="analysis-overall-score">0</strong>
-                  <span>/100</span>
-                </div>
-                <p id="analysis-overall-label" class="analysis-overall-label">NEUTRAL</p>
+            <section class="score-display">
+              <div class="score-number" id="score-number">0</div>
+              <div class="score-label" id="score-label">NEUTRAL</div>
+              <div class="score-bar">
+                <div class="score-bar-fill" id="score-bar-fill"></div>
               </div>
             </section>
 
-            <section class="analysis-trade-cards" id="analysis-trade-cards"></section>
+            <section class="trading-cards">
+              <article id="day-trade-card" class="trading-card">
+                <h3>Day Trade</h3>
+                <p class="card-score">0/100</p>
+                <p class="card-verdict">Waiting for data</p>
+                <p class="card-reason">Fetching real market context...</p>
+              </article>
+              <article id="swing-trade-card" class="trading-card">
+                <h3>Swing Trade</h3>
+                <p class="card-score">0/100</p>
+                <p class="card-verdict">Waiting for data</p>
+                <p class="card-reason">Fetching real market context...</p>
+              </article>
+              <article id="long-hold-card" class="trading-card">
+                <h3>Long Hold</h3>
+                <p class="card-score">0/100</p>
+                <p class="card-verdict">Waiting for data</p>
+                <p class="card-reason">Fetching real market context...</p>
+              </article>
+            </section>
 
             <section class="analysis-indicators">
               <h2>Technical Indicators</h2>
-              <div id="analysis-indicator-table" class="analysis-indicator-table"></div>
+              <table id="indicators-table">
+                <tbody id="indicators-tbody"></tbody>
+              </table>
             </section>
 
             <p class="small-note">
@@ -72,6 +95,6 @@
         </section>
       </div>
     </main>
-    <script src="./stock-analysis.js"></script>
+    <script src="/stock-analysis.js"></script>
   </body>
 </html>
