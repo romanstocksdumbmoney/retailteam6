@@ -4995,27 +4995,62 @@ function setupStockForm() {
   if (!(form instanceof HTMLFormElement)) {
     return;
   }
+  const input = document.getElementById('ticker-input');
   const analyzeButton = document.getElementById('analyze-stock-button');
   const inlineError = document.getElementById('stock-inline-error');
-  form.addEventListener('submit', async (event) => {
-    event.preventDefault();
+  if (!(input instanceof HTMLInputElement) || !(analyzeButton instanceof HTMLButtonElement)) {
+    return;
+  }
+
+  const setAnalyzeLoading = (isLoading) => {
+    analyzeButton.disabled = isLoading;
+    analyzeButton.classList.toggle('is-loading', isLoading);
+    analyzeButton.textContent = isLoading ? 'Analyzing...' : 'Analyze Stock';
+    analyzeButton.setAttribute('aria-busy', String(isLoading));
+  };
+
+  const clearInlineError = () => {
+    if (!inlineError) {
+      return;
+    }
+    inlineError.textContent = '';
+    inlineError.classList.add('hidden');
+  };
+
+  const showInlineError = (message) => {
+    if (!inlineError) {
+      return;
+    }
+    inlineError.textContent = message;
+    inlineError.classList.remove('hidden');
+  };
+
+  const handleAnalyze = async (event) => {
+    console.log('=== ANALYZE CLICKED ===', input.value);
+    console.log('Step 1: preventing default');
+    if (event) {
+      event.preventDefault();
+    }
+
     if (!guardAuthenticatedToolAccess('Stock Outlook Scanner', '/#stock-outlook-module')) {
       return;
     }
-    const input = document.getElementById('ticker-input');
-    if (!(input instanceof HTMLInputElement)) {
-      return;
-    }
+
     const ticker = (input.value || '').trim().toUpperCase();
+    console.log('Step 2: validating ticker', ticker);
+    clearInlineError();
+
+    const viteEnv = (() => {
+      try {
+        return (0, eval)('import.meta.env');
+      } catch (_error) {
+        return {};
+      }
+    })();
     console.log('=== STOCK DEBUG ===');
     console.log('Ticker:', ticker);
-    try {
-      console.log('All env vars:', import.meta.env);
-      console.log('API Key (vite):', import.meta.env?.VITE_MARKET_API_KEY);
-    } catch (_error) {
-      console.log('All env vars:', 'import.meta.env unavailable in this runtime');
-      console.log('API Key (vite):', 'unavailable');
-    }
+    console.log('All env vars:', viteEnv);
+    console.log('API Key (vite):', viteEnv?.VITE_MARKET_API_KEY);
     console.log('API Key (process):', typeof process !== 'undefined' ? process?.env?.MARKET_API_KEY : 'no process');
     try {
       const testUrl = 'https://www.alphavantage.co/query?function=GLOBAL_QUOTE&symbol=AAPL&apikey=XK10T6I58YPTGMWE';
@@ -5026,47 +5061,39 @@ function setupStockForm() {
       console.error('RAW FETCH FAILED:', e);
     }
 
-    if (inlineError) {
-      inlineError.textContent = '';
-      inlineError.classList.add('hidden');
-    }
     if (!ticker) {
       input.classList.remove('ticker-input-shake');
-      // Force reflow so repeated empty submits replay animation.
       void input.offsetWidth;
       input.classList.add('ticker-input-shake');
       window.setTimeout(() => input.classList.remove('ticker-input-shake'), 450);
-      if (inlineError) {
-        inlineError.textContent = 'Enter a ticker symbol.';
-        inlineError.classList.remove('hidden');
-      }
+      showInlineError('Please enter a ticker symbol');
       renderStatus('Enter a ticker symbol.');
       return;
     }
+
     activeTicker = ticker;
     renderOutlookLoading();
     renderStatus(`Analyzing ${activeTicker}...`);
-    if (analyzeButton instanceof HTMLButtonElement) {
-      analyzeButton.disabled = true;
-      analyzeButton.classList.add('is-loading');
-      analyzeButton.innerHTML = '<span class="button-spinner" aria-hidden="true"></span>Analyzing...';
-    }
-    // Kick off prefetch but do not await; results page fetches from URL ticker on mount.
+    setAnalyzeLoading(true);
+
+    // Trigger warm fetch but do not await; stock page fetches its own data from URL params.
     fetch(`/api/market/stock-analysis?ticker=${encodeURIComponent(activeTicker)}`).catch((error) => {
       console.warn('Stock prefetch failed before route transition:', error);
     });
 
-    try {
-      const destination = `/stock/${encodeURIComponent(activeTicker)}`;
-      console.log('STOCK NAVIGATION:', destination);
-      window.location.href = destination;
-    } catch (error) {
-      console.error('Stock navigation failed:', error);
-      if (analyzeButton instanceof HTMLButtonElement) {
-        analyzeButton.disabled = false;
-        analyzeButton.classList.remove('is-loading');
-        analyzeButton.textContent = 'Analyze Stock';
-      }
+    console.log('Step 3: about to navigate');
+    const destination = `/stock/${encodeURIComponent(activeTicker)}`;
+    console.log('ROUTE TRACE analyze ->', destination);
+    console.log('Step 4: navigation called');
+    window.location.href = destination;
+  };
+
+  form.addEventListener('submit', handleAnalyze);
+  analyzeButton.addEventListener('click', handleAnalyze);
+  input.addEventListener('keydown', (event) => {
+    if (event.key === 'Enter') {
+      event.preventDefault();
+      handleAnalyze(event);
     }
   });
 }

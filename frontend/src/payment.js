@@ -178,6 +178,7 @@ async function handleCheckoutReturn() {
       window.location.href = returnPath;
       return;
     }
+    console.log('ROUTE TRACE: payment.js redirect -> /');
     window.location.href = '/';
   } catch (error) {
     setStatus(error.message || 'Could not verify checkout session.', true);
