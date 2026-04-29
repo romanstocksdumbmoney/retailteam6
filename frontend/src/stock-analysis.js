@@ -9,7 +9,6 @@ function getTickerFromRoute() {
 }
 
 const ticker = getTickerFromRoute();
-let hasRunApiKeyTest = false;
 let backButtonWired = false;
 
 function safeImportMetaEnv() {
@@ -129,21 +128,6 @@ function latestMacdPoint(series) {
 function parsePercent(value) {
   const parsed = Number(String(value || '').replace('%', '').trim());
   return Number.isFinite(parsed) ? parsed : null;
-}
-
-async function testAPIKey() {
-  if (hasRunApiKeyTest) {
-    return;
-  }
-  hasRunApiKeyTest = true;
-  const testUrl = 'https://www.alphavantage.co/query?function=GLOBAL_QUOTE&symbol=AAPL&apikey=XK10T6I58YPTGMWE';
-  try {
-    const res = await fetch(testUrl);
-    const data = await res.json();
-    console.log('RAW API RESPONSE:', data);
-  } catch (e) {
-    console.error('RAW FETCH FAILED:', e);
-  }
 }
 
 async function fetchFromYahoo(tickerSymbol) {
@@ -695,7 +679,6 @@ function wireBackButton() {
 
 async function fetchAnalysis() {
   wireBackButton();
-  await testAPIKey();
 
   if (!ticker) {
     setError('Ticker not found');

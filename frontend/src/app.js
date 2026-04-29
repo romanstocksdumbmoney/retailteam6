@@ -5026,40 +5026,12 @@ function setupStockForm() {
   };
 
   const handleAnalyze = async (event) => {
-    console.log('=== ANALYZE CLICKED ===', input.value);
-    console.log('Step 1: preventing default');
     if (event) {
       event.preventDefault();
     }
 
-    if (!guardAuthenticatedToolAccess('Stock Outlook Scanner', '/#stock-outlook-module')) {
-      return;
-    }
-
     const ticker = (input.value || '').trim().toUpperCase();
-    console.log('Step 2: validating ticker', ticker);
     clearInlineError();
-
-    const viteEnv = (() => {
-      try {
-        return (0, eval)('import.meta.env');
-      } catch (_error) {
-        return {};
-      }
-    })();
-    console.log('=== STOCK DEBUG ===');
-    console.log('Ticker:', ticker);
-    console.log('All env vars:', viteEnv);
-    console.log('API Key (vite):', viteEnv?.VITE_MARKET_API_KEY);
-    console.log('API Key (process):', typeof process !== 'undefined' ? process?.env?.MARKET_API_KEY : 'no process');
-    try {
-      const testUrl = 'https://www.alphavantage.co/query?function=GLOBAL_QUOTE&symbol=AAPL&apikey=XK10T6I58YPTGMWE';
-      const res = await fetch(testUrl);
-      const data = await res.json();
-      console.log('RAW API RESPONSE:', data);
-    } catch (e) {
-      console.error('RAW FETCH FAILED:', e);
-    }
 
     if (!ticker) {
       input.classList.remove('ticker-input-shake');
@@ -5081,10 +5053,8 @@ function setupStockForm() {
       console.warn('Stock prefetch failed before route transition:', error);
     });
 
-    console.log('Step 3: about to navigate');
     const destination = `/stock/${encodeURIComponent(activeTicker)}`;
     console.log('ROUTE TRACE analyze ->', destination);
-    console.log('Step 4: navigation called');
     window.location.href = destination;
   };
 
