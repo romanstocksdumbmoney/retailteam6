@@ -4995,9 +4995,9 @@ function setupStockForm() {
   if (!(form instanceof HTMLFormElement)) {
     return;
   }
+  const analyzeButton = document.getElementById('analyze-stock-button');
   form.addEventListener('submit', async (event) => {
     event.preventDefault();
-    console.log('Analyze clicked');
     if (!guardAuthenticatedToolAccess('Stock Outlook Scanner', '/#stock-outlook-module')) {
       return;
     }
@@ -5005,9 +5005,27 @@ function setupStockForm() {
     if (!(input instanceof HTMLInputElement)) {
       return;
     }
-    const next = (input.value || '').trim().toUpperCase();
-    console.log('Analyze clicked:', next);
-    if (!next) {
+    const ticker = (input.value || '').trim().toUpperCase();
+    console.log('=== STOCK DEBUG ===');
+    console.log('Ticker:', ticker);
+    try {
+      console.log('All env vars:', import.meta.env);
+      console.log('API Key (vite):', import.meta.env?.VITE_MARKET_API_KEY);
+    } catch (_error) {
+      console.log('All env vars:', 'import.meta.env unavailable in this runtime');
+      console.log('API Key (vite):', 'unavailable');
+    }
+    console.log('API Key (process):', typeof process !== 'undefined' ? process?.env?.MARKET_API_KEY : 'no process');
+    try {
+      const testUrl = 'https://www.alphavantage.co/query?function=GLOBAL_QUOTE&symbol=AAPL&apikey=XK10T6I58YPTGMWE';
+      const res = await fetch(testUrl);
+      const data = await res.json();
+      console.log('RAW API RESPONSE:', data);
+    } catch (e) {
+      console.error('RAW FETCH FAILED:', e);
+    }
+
+    if (!ticker) {
       const target = document.getElementById('stock-results');
       if (target) {
         target.innerHTML = '<div class="pro-lock">Enter a ticker symbol.</div>';
@@ -5015,11 +5033,24 @@ function setupStockForm() {
       renderStatus('Enter a ticker symbol.');
       return;
     }
-    activeTicker = next;
+    activeTicker = ticker;
     renderOutlookLoading();
     renderStatus(`Analyzing ${activeTicker}...`);
-    const destination = `/stock-analysis.html?ticker=${encodeURIComponent(activeTicker)}`;
-    window.location.href = destination;
+    if (analyzeButton instanceof HTMLButtonElement) {
+      analyzeButton.disabled = true;
+      analyzeButton.classList.add('is-loading');
+      analyzeButton.innerHTML = '<span class="button-spinner" aria-hidden="true"></span>Analyzing...';
+    }
+    try {
+      const destination = `/stock-analysis.html?ticker=${encodeURIComponent(activeTicker)}`;
+      window.location.href = destination;
+    } finally {
+      if (analyzeButton instanceof HTMLButtonElement) {
+        analyzeButton.disabled = false;
+        analyzeButton.classList.remove('is-loading');
+        analyzeButton.textContent = 'Analyze Stock';
+      }
+    }
   });
 }
 
