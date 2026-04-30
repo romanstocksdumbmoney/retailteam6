@@ -291,6 +291,13 @@ function formatMoney(value, digits = 2) {
   return `$${n.toLocaleString(undefined, { maximumFractionDigits: digits, minimumFractionDigits: digits })}`;
 }
 
+function getScoreColor(score) {
+  if (score >= 75) return '#00c853';
+  if (score >= 55) return '#2979ff';
+  if (score >= 40) return '#ff9100';
+  return '#ff1744';
+}
+
 function renderScore(score) {
   const numericScore = Math.max(0, Math.min(100, Number(score || 0)));
   const el = document.getElementById('score-number');
@@ -324,6 +331,191 @@ function renderScore(score) {
   }
 }
 
+function getRSIExplanation(rsi) {
+  if (!rsi && rsi !== 0) return 'RSI data unavailable.';
+  const r = parseFloat(rsi);
+  if (r < 25) return `RSI is ${r.toFixed(1)} — extremely oversold territory. This means the stock has been heavily sold off and statistically tends to bounce. Strong potential buy signal but confirm with other indicators.`;
+  if (r < 30) return `RSI is ${r.toFixed(1)} — oversold. Sellers have dominated recently and the stock may be due for a reversal upward. Often seen as a buying opportunity by technical traders.`;
+  if (r < 40) return `RSI is ${r.toFixed(1)} — slightly oversold, recovering. Selling pressure is easing. Watch for a cross above 40 as a bullish signal.`;
+  if (r < 50) return `RSI is ${r.toFixed(1)} — below neutral (50). Slight bearish bias but no extreme reading. Market is indecisive.`;
+  if (r < 55) return `RSI is ${r.toFixed(1)} — neutral. Neither overbought nor oversold. No strong directional signal from RSI alone.`;
+  if (r < 65) return `RSI is ${r.toFixed(1)} — slightly elevated but healthy. Buyers are in control without the stock being overextended. Often seen during steady uptrends.`;
+  if (r < 70) return `RSI is ${r.toFixed(1)} — approaching overbought. Strong buying momentum but getting extended. New buyers take on more risk at this level.`;
+  if (r < 80) return `RSI is ${r.toFixed(1)} — overbought. Stock has run up quickly and may be due for a pullback or consolidation. Risky entry point for new positions.`;
+  return `RSI is ${r.toFixed(1)} — extremely overbought. Historically, readings this high often precede short-term pullbacks. Not a good time to chase this stock.`;
+}
+
+function getTrendExplanation(price, sma50, sma20) {
+  if (!price) return 'Price data unavailable.';
+  let explanation = '';
+  if (sma50) {
+    const pctVsSma50 = ((price - sma50) / sma50) * 100;
+    const direction = price > sma50 ? 'above' : 'below';
+    explanation += `Price (${formatMoney(price)}) is ${Math.abs(pctVsSma50).toFixed(1)}% ${direction} the 50-day moving average (${formatMoney(sma50)}). `;
+    if (price > sma50 * 1.10) {
+      explanation += 'Being more than 10% above the 50-day SMA means the stock is extended — it may pull back to the average before continuing higher.';
+    } else if (price > sma50) {
+      explanation += 'Trading above the 50-day SMA is a bullish sign — it means the medium-term trend is upward and buyers are in control.';
+    } else if (price > sma50 * 0.95) {
+      explanation += 'Just below the 50-day SMA. A move back above would be a bullish breakout signal. Currently in a neutral zone.';
+    } else {
+      explanation += 'Trading below the 50-day SMA indicates a bearish medium-term trend. The average acts as overhead resistance.';
+    }
+  }
+  if (sma20 && sma50) {
+    explanation += ` The 20-day SMA (${formatMoney(sma20)}) is ${sma20 > sma50 ? 'above' : 'below'} the 50-day SMA — this is a ${sma20 > sma50 ? 'golden cross (bullish)' : 'death cross (bearish)'} signal.`;
+  }
+  if (!sma50 && !sma20) {
+    explanation = 'Insufficient historical data to calculate moving averages. Need at least 50 days of price history.';
+  }
+  return explanation;
+}
+
+function getMomentumExplanation(change, prevClose) {
+  if (change === null || change === undefined) return 'Change data unavailable.';
+  const pct = prevClose ? ((change / prevClose) * 100) : 0;
+  const direction = change >= 0 ? 'up' : 'down';
+  const absChange = Math.abs(change).toFixed(2);
+  const absPct = Math.abs(pct);
+
+  let explanation = `The stock moved ${direction} $${absChange} (${absPct.toFixed(2)}%) today. `;
+  if (absPct >= 5) {
+    explanation += change > 0
+      ? 'A move of 5%+ in a single day indicates very strong buying interest — could be earnings, news, or a breakout. Verify what caused the move before chasing.'
+      : 'A drop of 5%+ in one day signals serious selling pressure. Check for negative news or earnings miss before considering a buy.';
+  } else if (absPct >= 2) {
+    explanation += change > 0
+      ? 'A 2-5% gain is a strong daily move — above average volume likely accompanied this. Shows active buyer interest.'
+      : 'A 2-5% drop is a significant single-day decline. Watch if it holds support or continues lower.';
+  } else if (absPct >= 0.5) {
+    explanation += change > 0
+      ? 'A modest gain — normal daily fluctuation. Slight positive bias but nothing significant on its own.'
+      : 'A modest decline — normal daily fluctuation. Slight negative bias but not alarming on its own.';
+  } else {
+    explanation += 'Very small movement — the stock is essentially flat today. Low volatility session, likely waiting for a catalyst.';
+  }
+  return explanation;
+}
+
+function getRangeExplanation(price, high52, low52) {
+  if (!high52 || !low52 || !price) return '52-week range data unavailable.';
+  const range = high52 - low52;
+  if (range <= 0) return '52-week range data unavailable.';
+  const position = ((price - low52) / range) * 100;
+  const toHigh = ((high52 - price) / price) * 100;
+  const fromLow = ((price - low52) / low52) * 100;
+
+  let explanation = `At ${formatMoney(price)}, the stock is ${position.toFixed(1)}% through its 52-week range (${formatMoney(low52)} low → ${formatMoney(high52)} high). `;
+  if (position <= 15) {
+    explanation += `Trading near the 52-week LOW. This could mean the stock is deeply discounted — a potential value opportunity IF the business is healthy. It is ${fromLow.toFixed(1)}% above its yearly low. Contrarian buyers often look here.`;
+  } else if (position <= 30) {
+    explanation += `In the lower portion of its yearly range — down significantly from its highs. Has ${toHigh.toFixed(1)}% upside to reach the 52-week high. Could be recovering from a selloff.`;
+  } else if (position <= 55) {
+    explanation += `In the middle of its 52-week range — balanced between high and low. No extreme positioning. ${toHigh.toFixed(1)}% away from the 52-week high.`;
+  } else if (position <= 75) {
+    explanation += `In the upper half of its yearly range — showing relative strength. Only ${toHigh.toFixed(1)}% from the 52-week high. Momentum is on its side.`;
+  } else if (position <= 90) {
+    explanation += `Near the 52-week HIGH — the stock is performing very well relative to the past year. Only ${toHigh.toFixed(1)}% from the yearly high. Breakouts above 52-week highs can signal powerful new uptrends.`;
+  } else {
+    explanation += `AT or NEAR the 52-week HIGH (${formatMoney(high52)}). The stock is at peak annual performance. Breakouts to new highs are bullish but also mean you are buying at the top of the recent range — risk/reward is less favorable for new entries.`;
+  }
+  return explanation;
+}
+
+function getValuationExplanation(pe) {
+  if (!pe || Number.isNaN(Number(pe))) {
+    return 'P/E ratio not available. This could mean the company has negative earnings (not yet profitable), or the data source does not have this information. For unprofitable companies, look at Price/Sales or Price/Book ratios instead.';
+  }
+
+  const p = parseFloat(pe);
+  let explanation = `The P/E ratio is ${p.toFixed(1)}. This means investors are paying $${p.toFixed(1)} for every $1 of the company\'s earnings. `;
+  if (p < 0) {
+    explanation += 'A negative P/E means the company is currently losing money. Valuation must be assessed differently — look at growth rate and path to profitability.';
+  } else if (p < 10) {
+    explanation += 'Under 10x earnings is generally considered very cheap — either a deep value opportunity OR the market expects earnings to decline. Research WHY it is this cheap before assuming it is a bargain.';
+  } else if (p < 18) {
+    explanation += '10-18x earnings is historically reasonable for most industries. The S&P 500 average P/E is typically around 15-20x. This suggests fair to slightly cheap valuation.';
+  } else if (p < 25) {
+    explanation += '18-25x earnings is slightly above historical averages but acceptable for quality companies with steady growth. Common for established blue-chip stocks.';
+  } else if (p < 40) {
+    explanation += '25-40x earnings is elevated — the market expects significant future earnings growth to justify this price. If growth slows, the stock could re-rate lower quickly.';
+  } else if (p < 60) {
+    explanation += '40-60x earnings is high — you are paying a premium for expected future growth. These valuations work in bull markets but can compress sharply if growth disappoints.';
+  } else {
+    explanation += 'Over 60x earnings is very expensive by historical standards. The stock is priced for perfection — any earnings miss or slowdown could cause a significant decline. High risk, high reward profile.';
+  }
+  return explanation;
+}
+
+function renderScoreBreakdown(data, scores) {
+  const breakdown = document.getElementById('score-breakdown');
+  if (!breakdown) return;
+
+  const items = [
+    {
+      label: 'RSI Momentum',
+      score: scores.rsiScore,
+      weight: '25%',
+      value: Number.isFinite(Number(data.rsi)) ? Number(data.rsi).toFixed(1) : 'N/A',
+      explanation: getRSIExplanation(data.rsi)
+    },
+    {
+      label: 'Price Trend (vs SMA)',
+      score: scores.trendScore,
+      weight: '25%',
+      value: data.sma50 ? `${formatMoney(data.price)} vs SMA50 ${formatMoney(data.sma50)}` : 'N/A',
+      explanation: getTrendExplanation(data.price, data.sma50, data.sma20)
+    },
+    {
+      label: 'Recent Momentum',
+      score: scores.momentumScore,
+      weight: '20%',
+      value: `${data.change >= 0 ? '+' : ''}${Number(data.change || 0).toFixed(2)} (${data.changePercent || 'N/A'})`,
+      explanation: getMomentumExplanation(data.change, data.prevClose)
+    },
+    {
+      label: '52-Week Position',
+      score: scores.rangeScore,
+      weight: '15%',
+      value: (data.week52High && data.week52Low) ? `${formatMoney(data.week52Low)} — ${formatMoney(data.week52High)}` : 'N/A',
+      explanation: getRangeExplanation(data.price, data.week52High, data.week52Low)
+    },
+    {
+      label: 'Valuation (P/E)',
+      score: scores.valScore,
+      weight: '15%',
+      value: data.pe ? `P/E ${Number(data.pe).toFixed(1)}` : 'No P/E data',
+      explanation: getValuationExplanation(data.pe)
+    }
+  ];
+
+  breakdown.innerHTML = items.map((item) => `
+    <div style="
+      display:flex; align-items:flex-start; gap:12px;
+      padding:12px 0; border-bottom:1px solid #2a2a4a;
+    ">
+      <div style="
+        min-width:48px; height:48px; border-radius:50%;
+        background:${getScoreColor(item.score)};
+        display:flex; align-items:center; justify-content:center;
+        font-weight:900; font-size:14px; color:#fff; flex-shrink:0;
+      ">${item.score}</div>
+      <div style="flex:1;">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:2px;">
+          <span style="color:#e8eef4; font-weight:700; font-size:13px;">${item.label}</span>
+          <span style="color:#8892a6; font-size:11px;">${item.weight} weight</span>
+        </div>
+        <div style="color:#f0a500; font-size:12px; font-family:monospace; margin-bottom:4px;">
+          ${item.value}
+        </div>
+        <div style="color:#aab; font-size:12px; line-height:1.5;">
+          ${item.explanation}
+        </div>
+      </div>
+    </div>
+  `).join('');
+}
+
 function getRSISignal(rsi) {
   if (!Number.isFinite(Number(rsi))) return '—';
   if (rsi < 30) return '🟢 Oversold — potential buy';
@@ -334,64 +526,97 @@ function getRSISignal(rsi) {
 }
 
 function getDayTradeVerdict(score, data) {
+  const rsiStr = data.rsi ? `RSI at ${data.rsi.toFixed(0)}` : 'RSI unavailable';
+  const changeStr = (data.change || data.change === 0)
+    ? `${data.change >= 0 ? 'up' : 'down'} ${Math.abs(data.change).toFixed(2)} today`
+    : 'price change unavailable';
+
   if (score >= 70) {
     return {
-      text: 'Good day trade opportunity',
-      reason: `RSI at ${Number(data.rsi || 50).toFixed(0)} with positive momentum suggests intraday movement. High risk — use tight stops.`
+      text: '✅ Good Day Trade Setup',
+      reason: `${rsiStr} shows ${data.rsi < 50 ? 'oversold conditions — potential bounce' : 'bullish momentum'}. Stock is ${changeStr}. Volume and momentum suggest intraday movement is likely. Use tight stop-loss (1-2% below entry). Best for experienced traders only.`,
+      risk: 'HIGH RISK',
+      riskColor: '#ff9100'
     };
   }
-  if (score >= 50) {
+  if (score >= 55) {
     return {
-      text: 'Neutral — trade with caution',
-      reason: 'Mixed signals. Wait for a clear intraday trend before entering.'
+      text: '⚠️ Neutral Day Trade',
+      reason: `Mixed signals for day trading. ${rsiStr} is in neutral territory. Stock is ${changeStr} — not enough momentum for a high-conviction trade. Wait for a clearer intraday trend or catalyst before entering.`,
+      risk: 'MEDIUM RISK',
+      riskColor: '#ffcc00'
     };
   }
   return {
-    text: 'Avoid day trading today',
-    reason: 'Weak momentum and unfavorable technicals. Risk outweighs reward.'
+    text: '❌ Avoid Day Trading Today',
+    reason: `${rsiStr} — ${data.rsi > 70 ? 'overbought, risk of reversal downward' : 'weak momentum, no clear direction'}. Stock is ${changeStr}. Risk outweighs potential reward for an intraday trade. Better opportunities elsewhere today.`,
+    risk: 'HIGH RISK',
+    riskColor: '#ff4444'
   };
 }
 
 function getSwingVerdict(score, data) {
+  const smaStr = data.sma50
+    ? `Price (${formatMoney(data.price)}) is ${data.price > data.sma50 ? 'above' : 'below'} the 50-day SMA (${formatMoney(data.sma50)})`
+    : 'SMA data unavailable';
+  const rsiStr = data.rsi ? `RSI at ${data.rsi.toFixed(0)}` : 'RSI unavailable';
+
   if (score >= 70) {
     return {
-      text: 'Strong swing trade setup',
-      reason: `Price ${data.sma50 && data.price > data.sma50 ? 'above' : 'below'} 50-day SMA. RSI at ${Number(data.rsi || 50).toFixed(0)} suggests momentum potential.`
+      text: '✅ Strong Swing Trade Setup',
+      reason: `${smaStr} — a bullish positioning. ${rsiStr} supports the move. Look for an entry on a small pullback toward ${formatMoney(data.sma20 || data.sma50)}. Target the upper Bollinger Band or recent resistance. Typical swing hold: 3-10 trading days. Set stop below the 50-day SMA.`,
+      risk: 'MEDIUM RISK',
+      riskColor: '#ff9100'
     };
   }
   if (score >= 50) {
     return {
-      text: 'Moderate swing potential',
-      reason: 'Some positive signals but mixed overall. Size position conservatively.'
+      text: '⚠️ Possible Swing — Use Caution',
+      reason: `${smaStr}. ${rsiStr}. Some positive signals but not a clean setup. If you enter, keep position size smaller than normal and use a tighter stop-loss. Wait for price to confirm direction before adding to position.`,
+      risk: 'MEDIUM RISK',
+      riskColor: '#ffcc00'
     };
   }
   return {
-    text: 'Poor swing setup',
-    reason: 'Technicals not aligned for a swing trade. Look elsewhere.'
+    text: '❌ Poor Swing Trade Setup',
+    reason: `${smaStr} — bearish positioning. ${rsiStr} does not suggest a reversal is imminent. The technical trend is working against you. A swing trade here means fighting the trend — low probability of success. Wait for the stock to reclaim the 50-day SMA before considering a swing.`,
+    risk: 'HIGH RISK',
+    riskColor: '#ff4444'
   };
 }
 
 function getLongHoldVerdict(score, data) {
-  const upside = data.analystTarget && data.price
-    ? (((data.analystTarget - data.price) / data.price) * 100).toFixed(1)
-    : null;
+  const targetStr = data.analystTarget
+    ? `Analyst consensus target is ${formatMoney(data.analystTarget)} — ${(((data.analystTarget - data.price) / data.price) * 100).toFixed(1)}% ${data.analystTarget > data.price ? 'upside' : 'downside'} from current price. `
+    : '';
+  const peStr = data.pe
+    ? `P/E of ${data.pe.toFixed(1)} is ${data.pe < 20 ? 'reasonable for a long-term hold' : data.pe < 35 ? 'moderate — acceptable if growth is strong' : 'elevated — requires strong earnings growth to justify'}. `
+    : '';
+  const rangeStr = data.week52High && data.week52Low
+    ? `Currently ${(((data.price - data.week52Low) / (data.week52High - data.week52Low)) * 100).toFixed(0)}% through its 52-week range. `
+    : '';
+
   if (score >= 70) {
     return {
-      text: 'Strong long-term hold',
-      reason: upside
-        ? `Analyst target implies ${upside}% upside. Fundamentals support holding.`
-        : 'Solid fundamentals and favorable valuation for long-term investors.'
+      text: '✅ Strong Long-Term Hold',
+      reason: `${targetStr}${peStr}${rangeStr}Fundamentals support holding this position for months or years. Suitable for a core portfolio position. Continue to monitor quarterly earnings for changes in the thesis.`,
+      risk: 'LOWER RISK',
+      riskColor: '#00c853'
     };
   }
   if (score >= 50) {
     return {
-      text: 'Hold with modest expectations',
-      reason: 'Decent fundamentals but limited near-term catalysts visible.'
+      text: '⚠️ Hold With Modest Expectations',
+      reason: `${targetStr}${peStr}${rangeStr}Decent fundamentals but limited near-term catalysts visible in the data. Suitable for a small portfolio allocation. Review again after next earnings report.`,
+      risk: 'MEDIUM RISK',
+      riskColor: '#ffcc00'
     };
   }
   return {
-    text: 'Risky at current valuation',
-    reason: 'Valuation stretched or technicals weak. Consider waiting for pullback.'
+    text: '❌ Risky Long-Term Hold',
+    reason: `${targetStr}${peStr}${rangeStr}Current valuation or technicals do not support a long-term position at this price. You may be buying near a top or into a declining trend. Consider waiting for a pullback of 10-15% before initiating a long position.`,
+    risk: 'HIGH RISK',
+    riskColor: '#ff4444'
   };
 }
 
@@ -399,21 +624,52 @@ function renderTradingCard(cardId, score, verdict) {
   const card = document.getElementById(cardId);
   if (!card) return;
 
-  let color = '#ff1744';
-  if (score >= 70) color = '#00c853';
-  else if (score >= 50) color = '#2979ff';
-  else if (score >= 35) color = '#ff9100';
+  let borderColor;
+  if (score >= 70) borderColor = '#00c853';
+  else if (score >= 50) borderColor = '#2979ff';
+  else if (score >= 35) borderColor = '#ff9100';
+  else borderColor = '#ff4444';
 
-  const scoreEl = card.querySelector('.card-score');
-  const verdictEl = card.querySelector('.card-verdict');
-  const reasonEl = card.querySelector('.card-reason');
-  if (scoreEl) {
-    scoreEl.textContent = `${score}/100`;
-    scoreEl.style.color = color;
-  }
-  if (verdictEl) verdictEl.textContent = verdict.text;
-  if (reasonEl) reasonEl.textContent = verdict.reason;
-  card.style.borderColor = color;
+  card.style.borderColor = borderColor;
+  card.innerHTML = `
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px;">
+      <h3 style="color:#f0a500;font-size:11px;letter-spacing:2px;text-transform:uppercase;margin:0;">
+        ${card.dataset.title || ''}
+      </h3>
+      <div style="
+        background:${borderColor};color:#fff;
+        font-size:18px;font-weight:900;
+        padding:4px 10px;border-radius:8px;min-width:52px;text-align:center;
+      ">${score}</div>
+    </div>
+    <div style="color:#e8eef4;font-size:13px;font-weight:700;margin-bottom:6px;">
+      ${verdict.text}
+    </div>
+    <div style="color:#aab;font-size:12px;line-height:1.6;margin-bottom:10px;">
+      ${verdict.reason}
+    </div>
+    <div style="
+      display:inline-block;
+      background:${verdict.riskColor}22;
+      border:1px solid ${verdict.riskColor};
+      color:${verdict.riskColor};
+      font-size:10px;font-weight:700;letter-spacing:1px;
+      padding:3px 8px;border-radius:4px;
+    ">${verdict.risk}</div>
+  `;
+}
+
+function renderDataFooter(data) {
+  const footer = document.getElementById('data-footer');
+  if (!footer) return;
+  footer.innerHTML = `
+    <div style="color:#555;font-size:11px;padding:16px 0;border-top:1px solid #2a2a4a;margin-top:16px;">
+      📡 Data from <strong style="color:#888;">${data.dataSource || 'Unknown source'}</strong> ·
+      Analyzed at ${new Date().toLocaleTimeString()} ·
+      Prices may be delayed 15-20 minutes ·
+      <em>Not financial advice — always do your own research</em>
+    </div>
+  `;
 }
 
 function renderIndicators(data) {
@@ -524,10 +780,12 @@ function renderAnalysisPage(data) {
   }
 
   renderScore(scores.overall);
+  renderScoreBreakdown(data, scores);
   renderTradingCard('day-trade-card', scores.dayTrade, getDayTradeVerdict(scores.dayTrade, data));
   renderTradingCard('swing-trade-card', scores.swingTrade, getSwingVerdict(scores.swingTrade, data));
   renderTradingCard('long-hold-card', scores.longHold, getLongHoldVerdict(scores.longHold, data));
   renderIndicators(data);
+  renderDataFooter(data);
   hideLoadingUI();
 }
 

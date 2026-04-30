@@ -5021,6 +5021,79 @@ button[aria-busy='true']::after {
   transition: width 1s ease;
 }
 
+.stock-analysis-card .score-breakdown {
+  margin-top: 16px;
+  text-align: left;
+}
+
+.stock-analysis-card .score-breakdown h3 {
+  margin: 0 0 8px;
+  color: #f0a500;
+  font-size: 13px;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+}
+
+.stock-analysis-card .score-breakdown-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 12px 0;
+  border-bottom: 1px solid #2a2a4a;
+}
+
+.stock-analysis-card .score-breakdown-badge {
+  min-width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 900;
+  font-size: 14px;
+  color: #fff;
+  flex-shrink: 0;
+}
+
+.stock-analysis-card .score-breakdown-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 2px;
+}
+
+.stock-analysis-card .score-breakdown-label {
+  color: #e8eef4;
+  font-weight: 700;
+  font-size: 13px;
+}
+
+.stock-analysis-card .score-breakdown-weight {
+  color: #8a96ab;
+  font-size: 11px;
+}
+
+.stock-analysis-card .score-breakdown-value {
+  color: #f0a500;
+  font-size: 12px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  margin-bottom: 4px;
+}
+
+.stock-analysis-card .score-breakdown-explainer {
+  color: #aab;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.stock-analysis-card #data-footer {
+  color: #8a96ab;
+  font-size: 11px;
+  padding: 16px 0;
+  border-top: 1px solid #2a2a4a;
+  margin-top: 16px;
+}
+
 .stock-analysis-card .trading-cards {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
