@@ -1,218 +1,204 @@
-const AV_KEY = 'XK10T6I58YPTGMWE';
-
-function getTickerFromRoute() {
-  const pathname = String(window.location.pathname || '');
-  const parts = pathname.split('/stock/');
-  if (parts[1]) {
-    return decodeURIComponent(parts[1].split('/')[0]).trim().toUpperCase();
-  }
-  return '';
-}
-
-function delay(ms) {
-  return new Promise((resolve) => window.setTimeout(resolve, ms));
-}
-
-async function fetchJsonWithTimeout(url, timeoutMs = 12000) {
-  const controller = new AbortController();
-  const timer = window.setTimeout(() => controller.abort(), timeoutMs);
-  try {
-    const res = await fetch(url, { signal: controller.signal });
-    if (!res.ok) {
-      throw new Error(`HTTP ${res.status}`);
-    }
-    return res.json();
-  } finally {
-    window.clearTimeout(timer);
-  }
-}
-
 function toNumber(value) {
   const n = Number(value);
   return Number.isFinite(n) ? n : null;
 }
 
-function safeAverage(values) {
-  if (!values.length) {
-    return null;
+async function fetchWithTimeout(url, options = {}, timeoutMs = 15000) {
+  const controller = new AbortController();
+  const timeoutId = window.setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const response = await fetch(url, { ...options, signal: controller.signal });
+    return response;
+  } finally {
+    window.clearTimeout(timeoutId);
   }
-  return values.reduce((acc, item) => acc + item, 0) / values.length;
 }
 
 function calculateRSI(closes, period = 14) {
-  if (!Array.isArray(closes) || closes.length < period + 1) {
-    return 50;
-  }
+  if (!closes || closes.length < period + 1) return 50;
+
   let gains = 0;
   let losses = 0;
+
   for (let i = closes.length - period; i < closes.length; i += 1) {
     const diff = closes[i] - closes[i - 1];
-    if (diff > 0) gains += diff;
+    if (diff >= 0) gains += diff;
     else losses += Math.abs(diff);
   }
+
   const avgGain = gains / period;
   const avgLoss = losses / period;
+
   if (avgLoss === 0) return 100;
   const rs = avgGain / avgLoss;
   return 100 - (100 / (1 + rs));
 }
 
 async function fetchStockData(ticker) {
-  const cleanTicker = ticker.toUpperCase().trim();
+  ticker = ticker.toUpperCase().trim();
+  console.log('Fetching data for:', ticker);
 
   try {
-    const quoteUrl = `https://www.alphavantage.co/query?function=GLOBAL_QUOTE&symbol=${encodeURIComponent(cleanTicker)}&apikey=${encodeURIComponent(AV_KEY)}`;
-    const quoteData = await fetchJsonWithTimeout(quoteUrl, 12000);
-    console.log('AV Quote response:', quoteData);
-    if (quoteData?.['Global Quote']?.['05. price']) {
-      return buildFullAnalysis(cleanTicker, quoteData);
-    }
-    console.warn('AV unavailable/rate limited, switching to Yahoo fallback');
-    return fetchFromYahoo(cleanTicker);
-  } catch (error) {
-    console.error('AV fetch failed:', error);
-    return fetchFromYahoo(cleanTicker);
+    const data = await fetchFromYahoo(ticker);
+    console.log('Yahoo success:', data);
+    return data;
+  } catch (e) {
+    console.warn('Yahoo failed:', e?.message || e);
   }
+
+  try {
+    const data = await fetchFromAlphaVantage(ticker);
+    console.log('AV success:', data);
+    return data;
+  } catch (e) {
+    console.warn('AV failed:', e?.message || e);
+  }
+
+  throw new Error(`Could not load data for ${ticker}. Try again in a moment.`);
 }
 
 async function fetchFromYahoo(ticker) {
-  try {
-    const yahooUrl = encodeURIComponent(
-      `https://query1.finance.yahoo.com/v8/finance/chart/${ticker}?interval=1d&range=1y`
-    );
-    const proxyUrl = `https://api.allorigins.win/get?url=${yahooUrl}`;
-    const wrapper = await fetchJsonWithTimeout(proxyUrl, 12000);
-    if (!wrapper?.contents) {
-      throw new Error('Yahoo proxy returned empty content');
+  const yahooQuery1 = `https://query1.finance.yahoo.com/v8/finance/chart/${ticker}?interval=1d&range=1y`;
+  const yahooQuery2 = `https://query2.finance.yahoo.com/v8/finance/chart/${ticker}?interval=1d&range=1y`;
+  const proxyOptions = [
+    { kind: 'allorigins', url: `https://api.allorigins.win/get?url=${encodeURIComponent(yahooQuery1)}` },
+    { kind: 'allorigins', url: `https://api.allorigins.win/get?url=${encodeURIComponent(yahooQuery2)}` },
+    { kind: 'corsproxy', url: `https://corsproxy.io/?${encodeURIComponent(yahooQuery1)}` },
+    { kind: 'corsproxy', url: `https://corsproxy.io/?${encodeURIComponent(yahooQuery2)}` }
+  ];
+
+  let yData = null;
+
+  for (const proxyEntry of proxyOptions) {
+    try {
+      console.log('Trying proxy:', proxyEntry.url);
+      const res = await fetchWithTimeout(proxyEntry.url, {
+        method: 'GET',
+        headers: { Accept: 'application/json' }
+      }, 15000);
+
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+
+      if (proxyEntry.kind === 'allorigins') {
+        const wrapper = await res.json();
+        if (!wrapper.contents) throw new Error('No contents in proxy response');
+        yData = JSON.parse(wrapper.contents);
+      } else {
+        const responseText = await res.text();
+        yData = JSON.parse(responseText);
+      }
+      console.log('Raw Yahoo data:', yData);
+      break;
+    } catch (e) {
+      console.warn('Proxy failed:', proxyEntry.url, e?.message || e);
     }
-    const yData = JSON.parse(wrapper.contents);
-    console.log('Yahoo response:', yData);
-
-    const result = yData?.chart?.result?.[0];
-    if (!result) {
-      throw new Error('Invalid ticker');
-    }
-    const meta = result.meta || {};
-    const quotes = result.indicators?.quote?.[0] || {};
-    const closes = Array.isArray(quotes.close) ? quotes.close.filter((item) => Number.isFinite(Number(item))).map(Number) : [];
-    if (!closes.length) {
-      throw new Error('Invalid ticker');
-    }
-
-    const latestClose = closes[closes.length - 1];
-    const price = toNumber(meta.regularMarketPrice) ?? latestClose;
-    const prevClose = toNumber(meta.previousClose) ?? toNumber(meta.chartPreviousClose) ?? closes[Math.max(0, closes.length - 2)];
-    if (!Number.isFinite(price) || !Number.isFinite(prevClose) || prevClose === 0) {
-      throw new Error('Invalid ticker');
-    }
-    const change = price - prevClose;
-    const changePct = `${((change / prevClose) * 100).toFixed(2)}%`;
-
-    const recent50 = closes.slice(-50);
-    const sma20 = safeAverage(closes.slice(-20));
-    const sma50 = safeAverage(recent50);
-    const rsi = calculateRSI(recent50, 14);
-
-    const window252 = closes.slice(-252);
-    const week52High = window252.length ? Math.max(...window252) : null;
-    const week52Low = window252.length ? Math.min(...window252) : null;
-
-    return {
-      ticker,
-      companyName: meta.longName || meta.shortName || ticker,
-      price: Number(price.toFixed(2)),
-      change: Number(change.toFixed(2)),
-      changePercent: changePct,
-      volume: toNumber(meta.regularMarketVolume) || 0,
-      prevClose: Number(prevClose.toFixed(2)),
-      week52High: Number.isFinite(week52High) ? Number(week52High.toFixed(2)) : null,
-      week52Low: Number.isFinite(week52Low) ? Number(week52Low.toFixed(2)) : null,
-      sma20: Number.isFinite(sma20) ? Number(sma20.toFixed(2)) : null,
-      sma50: Number.isFinite(sma50) ? Number(sma50.toFixed(2)) : null,
-      rsi: Number.isFinite(rsi) ? Number(rsi.toFixed(1)) : 50,
-      macd: null,
-      pe: null,
-      analystTarget: null,
-      sector: 'N/A',
-      marketCap: toNumber(meta.marketCap),
-      dataSource: 'Yahoo Finance'
-    };
-  } catch (error) {
-    console.error('Yahoo fallback failed:', error);
-    if (String(error?.message || '').toLowerCase().includes('invalid ticker')) {
-      throw new Error(`Ticker "${ticker}" not found. Check the symbol and try again.`);
-    }
-    throw new Error(`Could not load data for ${ticker}. Check the ticker symbol.`);
-  }
-}
-
-async function buildFullAnalysis(ticker, quoteData) {
-  const q = quoteData['Global Quote'] || {};
-  const price = toNumber(q['05. price']);
-  const prevClose = toNumber(q['08. previous close']);
-  const change = toNumber(q['09. change']);
-  const changePct = String(q['10. change percent'] || '').trim() || 'N/A';
-  const volume = Number.parseInt(String(q['06. volume'] || '0'), 10) || 0;
-
-  if (!Number.isFinite(price) || !Number.isFinite(prevClose)) {
-    return fetchFromYahoo(ticker);
   }
 
-  let overview = {};
-  let rsi = 50;
-  let sma50 = null;
+  if (!yData) throw new Error('All Yahoo proxies failed');
 
-  try {
-    const ovUrl = `https://www.alphavantage.co/query?function=OVERVIEW&symbol=${encodeURIComponent(ticker)}&apikey=${encodeURIComponent(AV_KEY)}`;
-    overview = await fetchJsonWithTimeout(ovUrl, 12000);
-  } catch (_error) {
-    overview = {};
+  if (yData.chart?.error) {
+    throw new Error(`Yahoo error: ${yData.chart.error.description || 'request failed'}`);
   }
-  await delay(1200);
 
-  try {
-    const rsiUrl = `https://www.alphavantage.co/query?function=RSI&symbol=${encodeURIComponent(ticker)}&interval=daily&time_period=14&series_type=close&apikey=${encodeURIComponent(AV_KEY)}`;
-    const rsiData = await fetchJsonWithTimeout(rsiUrl, 12000);
-    const rsiVals = rsiData?.['Technical Analysis: RSI'];
-    if (rsiVals) {
-      const latestDate = Object.keys(rsiVals)[0];
-      rsi = toNumber(rsiVals?.[latestDate]?.RSI) ?? 50;
-    }
-  } catch (_error) {
-    rsi = 50;
-  }
-  await delay(1200);
+  const result = yData?.chart?.result?.[0];
+  if (!result) throw new Error(`No data found for ${ticker}`);
 
-  try {
-    const smaUrl = `https://www.alphavantage.co/query?function=SMA&symbol=${encodeURIComponent(ticker)}&interval=daily&time_period=50&series_type=close&apikey=${encodeURIComponent(AV_KEY)}`;
-    const smaData = await fetchJsonWithTimeout(smaUrl, 12000);
-    const smaVals = smaData?.['Technical Analysis: SMA'];
-    if (smaVals) {
-      const latestDate = Object.keys(smaVals)[0];
-      sma50 = toNumber(smaVals?.[latestDate]?.SMA);
-    }
-  } catch (_error) {
-    sma50 = null;
-  }
+  const meta = result.meta || {};
+  const quotes = result.indicators?.quote?.[0] || {};
+  const closes = (quotes.close || []).filter((c) => c != null).map(Number);
+  const vols = (quotes.volume || []).filter((v) => v != null).map(Number);
+
+  if (closes.length === 0) throw new Error(`No price data for ${ticker}`);
+
+  const price = Number(meta.regularMarketPrice || closes[closes.length - 1]);
+  const prevClose = Number(meta.previousClose || meta.chartPreviousClose || closes[closes.length - 2] || closes[closes.length - 1]);
+  const change = price - prevClose;
+  const changePct = prevClose ? ((change / prevClose) * 100).toFixed(2) : '0.00';
+
+  const last20 = closes.slice(-20);
+  const last50 = closes.slice(-50);
+  const last252 = closes.slice(-252);
+
+  const sma20 = last20.length ? last20.reduce((a, b) => a + b, 0) / last20.length : null;
+  const sma50 = last50.length ? last50.reduce((a, b) => a + b, 0) / last50.length : null;
+  const rsi = closes.length >= 15 ? calculateRSI(closes, 14) : 50;
+
+  const week52High = last252.length ? Math.max(...last252) : Math.max(...closes);
+  const week52Low = last252.length ? Math.min(...last252) : Math.min(...closes);
+
+  const avgVolume = vols.length
+    ? vols.slice(-20).reduce((a, b) => a + b, 0) / Math.min(20, vols.length)
+    : 0;
 
   return {
     ticker,
-    companyName: overview.Name || ticker,
-    price: Number(price.toFixed(2)),
-    change: Number((change ?? (price - prevClose)).toFixed(2)),
+    companyName: meta.longName || meta.shortName || ticker,
+    price: parseFloat(price.toFixed(2)),
+    change: parseFloat(change.toFixed(2)),
+    changePercent: `${changePct}%`,
+    volume: Number(meta.regularMarketVolume) || vols[vols.length - 1] || 0,
+    avgVolume: Math.round(avgVolume),
+    prevClose: parseFloat((prevClose || 0).toFixed(2)),
+    week52High: parseFloat(week52High.toFixed(2)),
+    week52Low: parseFloat(week52Low.toFixed(2)),
+    sma20: sma20 ? parseFloat(sma20.toFixed(2)) : null,
+    sma50: sma50 ? parseFloat(sma50.toFixed(2)) : null,
+    rsi: parseFloat(rsi.toFixed(1)),
+    macd: null,
+    pe: null,
+    analystTarget: null,
+    sector: 'N/A',
+    marketCap: toNumber(meta.marketCap),
+    dataSource: 'Yahoo Finance',
+    rawCloses: closes
+  };
+}
+
+async function fetchFromAlphaVantage(ticker) {
+  const KEY = 'XK10T6I58YPTGMWE';
+  const url = `https://www.alphavantage.co/query?function=GLOBAL_QUOTE&symbol=${ticker}&apikey=${KEY}`;
+  console.log('Trying Alpha Vantage:', url);
+
+  const res = await fetchWithTimeout(url, {}, 12000);
+  if (!res.ok) throw new Error(`AV HTTP ${res.status}`);
+
+  const data = await res.json();
+  console.log('AV raw response:', data);
+
+  if (data.Information || data.Note) {
+    throw new Error('Alpha Vantage rate limited');
+  }
+
+  const q = data['Global Quote'];
+  if (!q || !q['05. price']) {
+    throw new Error(`No AV data for ${ticker}`);
+  }
+
+  const price = parseFloat(q['05. price']);
+  const prevClose = parseFloat(q['08. previous close']);
+  const change = parseFloat(q['09. change']);
+  const changePct = q['10. change percent'];
+  const volume = parseInt(q['06. volume'], 10);
+
+  return {
+    ticker,
+    companyName: ticker,
+    price,
+    change,
     changePercent: changePct,
     volume,
-    prevClose: Number(prevClose.toFixed(2)),
-    week52High: toNumber(overview['52WeekHigh']),
-    week52Low: toNumber(overview['52WeekLow']),
+    avgVolume: 0,
+    prevClose,
+    week52High: parseFloat(q['03. high']) || null,
+    week52Low: parseFloat(q['04. low']) || null,
     sma20: null,
-    sma50,
-    rsi: Number(rsi.toFixed(1)),
+    sma50: null,
+    rsi: 50,
     macd: null,
-    pe: toNumber(overview.PERatio),
-    analystTarget: toNumber(overview.AnalystTargetPrice),
-    sector: overview.Sector || 'N/A',
-    marketCap: toNumber(overview.MarketCapitalization),
+    pe: null,
+    analystTarget: null,
+    sector: 'N/A',
+    marketCap: null,
     dataSource: 'Alpha Vantage'
   };
 }
@@ -484,22 +470,23 @@ function renderIndicators(data) {
   `).join('');
 }
 
-function showLoadingState(ticker) {
+function showLoadingUI(ticker) {
   setText('stock-name', `Analyzing ${ticker}...`);
   const loading = document.getElementById('analysis-loading');
   const loadingText = document.getElementById('analysis-loading-text');
   const content = document.getElementById('analysis-content');
-  const error = document.getElementById('error-display');
+  const error = document.getElementById('error-box');
   if (loading) loading.hidden = false;
   if (loadingText) loadingText.textContent = `Analyzing ${ticker}...`;
   if (content) content.style.opacity = '0.45';
   if (error) {
+    error.style.display = 'none';
     error.classList.add('hidden');
     error.textContent = '';
   }
 }
 
-function hideLoadingState() {
+function hideLoadingUI() {
   const loading = document.getElementById('analysis-loading');
   const content = document.getElementById('analysis-content');
   if (loading) loading.hidden = true;
@@ -509,55 +496,73 @@ function hideLoadingState() {
   }
 }
 
-function showError(message) {
-  const error = document.getElementById('error-display');
-  if (error) {
-    error.classList.remove('hidden');
-    error.textContent = `⚠️ ${message}`;
+function renderAnalysisPage(data) {
+  const scores = calculateScores(data);
+  setText('stock-name', `${data.ticker} — ${data.companyName}`);
+  setText('stock-price', formatMoney(data.price));
+
+  const changeEl = document.getElementById('stock-change');
+  if (changeEl) {
+    const isUp = Number(data.change) >= 0;
+    changeEl.textContent = `${isUp ? '+' : ''}${Number(data.change).toFixed(2)} (${data.changePercent})`;
+    changeEl.style.color = isUp ? '#00c853' : '#ff1744';
   }
-  hideLoadingState();
+
+  setText('stock-sector', data.sector || 'N/A');
+  setText('stock-pe', data.pe ? Number(data.pe).toFixed(1) : 'N/A');
+  setText('stock-volume', data.volume ? `${(Number(data.volume) / 1000000).toFixed(2)}M` : 'N/A');
+  setText('stock-market-cap', data.marketCap ? `$${(Number(data.marketCap) / 1e9).toFixed(1)}B` : 'N/A');
+
+  setText('week52-high', data.week52High ? formatMoney(data.week52High) : 'N/A');
+  setText('week52-low', data.week52Low ? formatMoney(data.week52Low) : 'N/A');
+  const marker = document.getElementById('week52-marker');
+  if (marker && data.week52High && data.week52Low && data.price && data.week52High > data.week52Low) {
+    const pct = ((data.price - data.week52Low) / (data.week52High - data.week52Low)) * 100;
+    marker.style.left = `${Math.min(95, Math.max(5, pct))}%`;
+  } else if (marker) {
+    marker.style.left = '50%';
+  }
+
+  renderScore(scores.overall);
+  renderTradingCard('day-trade-card', scores.dayTrade, getDayTradeVerdict(scores.dayTrade, data));
+  renderTradingCard('swing-trade-card', scores.swingTrade, getSwingVerdict(scores.swingTrade, data));
+  renderTradingCard('long-hold-card', scores.longHold, getLongHoldVerdict(scores.longHold, data));
+  renderIndicators(data);
+  hideLoadingUI();
 }
 
-async function loadAnalysisPage(ticker) {
-  showLoadingState(ticker);
+async function loadAndDisplayStock(ticker) {
   try {
+    showLoadingUI(ticker);
     const data = await fetchStockData(ticker);
-    const scores = calculateScores(data);
-
-    setText('stock-name', `${data.ticker} — ${data.companyName}`);
-    setText('stock-price', formatMoney(data.price));
-    const changeEl = document.getElementById('stock-change');
-    if (changeEl) {
-      const isUp = Number(data.change) >= 0;
-      changeEl.textContent = `${isUp ? '+' : ''}${Number(data.change).toFixed(2)} (${data.changePercent})`;
-      changeEl.style.color = isUp ? '#00c853' : '#ff1744';
+    if (!data.price || Number.isNaN(Number(data.price))) {
+      throw new Error(`Price data unavailable for ${ticker}`);
     }
-
-    setText('stock-sector', data.sector || 'N/A');
-    setText('stock-pe', data.pe ? Number(data.pe).toFixed(1) : 'N/A');
-    setText('stock-volume', data.volume ? `${(Number(data.volume) / 1000000).toFixed(2)}M` : 'N/A');
-    setText('stock-market-cap', data.marketCap ? `$${(Number(data.marketCap) / 1e9).toFixed(1)}B` : 'N/A');
-
-    setText('week52-high', data.week52High ? formatMoney(data.week52High) : 'N/A');
-    setText('week52-low', data.week52Low ? formatMoney(data.week52Low) : 'N/A');
-    const marker = document.getElementById('week52-marker');
-    if (marker && data.week52High && data.week52Low && data.price && data.week52High > data.week52Low) {
-      const pct = ((data.price - data.week52Low) / (data.week52High - data.week52Low)) * 100;
-      marker.style.left = `${Math.min(95, Math.max(5, pct))}%`;
-    } else if (marker) {
-      marker.style.left = '50%';
-    }
-
-    renderScore(scores.overall);
-    renderTradingCard('day-trade-card', scores.dayTrade, getDayTradeVerdict(scores.dayTrade, data));
-    renderTradingCard('swing-trade-card', scores.swingTrade, getSwingVerdict(scores.swingTrade, data));
-    renderTradingCard('long-hold-card', scores.longHold, getLongHoldVerdict(scores.longHold, data));
-    renderIndicators(data);
-    hideLoadingState();
-  } catch (error) {
-    console.error('Stock analysis page failed:', error);
-    showError(error?.message || 'Failed to load stock data');
+    renderAnalysisPage(data);
+  } catch (err) {
+    console.error('Final error:', err);
+    showErrorUI(ticker, err?.message || `Could not load ${ticker}. Try again in a moment.`);
   }
+}
+
+function showErrorUI(ticker, message) {
+  const errEl = document.getElementById('error-box');
+  if (!errEl) {
+    hideLoadingUI();
+    return;
+  }
+  errEl.style.display = 'block';
+  errEl.classList.remove('hidden');
+  errEl.innerHTML = `
+    ⚠️ ${message}
+    <br><br>
+    <button onclick="loadAndDisplayStock('${ticker}')" style="
+      background:#f0a500; color:#000; border:none;
+      padding:8px 16px; border-radius:6px; cursor:pointer;
+      font-weight:bold; margin-top:8px;
+    ">↺ Try Again</button>
+  `;
+  hideLoadingUI();
 }
 
 function wireBackButton() {
@@ -568,10 +573,17 @@ function wireBackButton() {
   });
 }
 
+window.loadAndDisplayStock = loadAndDisplayStock;
 wireBackButton();
-const ticker = getTickerFromRoute();
-if (ticker) {
-  loadAnalysisPage(ticker);
-} else {
-  showError('Ticker not found in URL.');
-}
+window.addEventListener('DOMContentLoaded', () => {
+  const pathParts = window.location.pathname.split('/');
+  const ticker = String(pathParts[pathParts.length - 1] || '').toUpperCase().trim();
+
+  console.log('Page loaded, ticker from URL:', ticker);
+
+  if (ticker && ticker.length > 0 && ticker !== 'STOCK') {
+    loadAndDisplayStock(ticker);
+  } else {
+    showErrorUI('', 'No ticker provided. Go back and search for a stock.');
+  }
+});
