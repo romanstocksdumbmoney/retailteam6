@@ -1,3 +1,7 @@
+const AV_KEY = 'XK10T6I58YPTGMWE';
+const FINNHUB_TOKEN = 'cqnbm59r01qhse25tlu0cqnbm59r01qhse25tlug';
+const POLYGON_KEY = 'demo';
+
 function toNumber(value) {
   const n = Number(value);
   return Number.isFinite(n) ? n : null;
@@ -34,172 +38,412 @@ function calculateRSI(closes, period = 14) {
   return 100 - (100 / (1 + rs));
 }
 
-async function fetchStockData(ticker) {
+async function fetchFromAllSources(ticker) {
   ticker = ticker.toUpperCase().trim();
-  console.log('Fetching data for:', ticker);
+  console.log('Fetching', ticker, 'from all sources...');
 
-  try {
-    const data = await fetchFromYahoo(ticker);
-    console.log('Yahoo success:', data);
-    return data;
-  } catch (e) {
-    console.warn('Yahoo failed:', e?.message || e);
+  const results = await Promise.allSettled([
+    fetchYahooFinance(ticker),
+    fetchAlphaVantage(ticker),
+    fetchFinnhub(ticker),
+    fetchPolygon(ticker),
+    fetchStockAnalysis(ticker)
+  ]);
+
+  results.forEach((result, index) => {
+    const names = ['Yahoo', 'AlphaVantage', 'Finnhub', 'Polygon', 'StockAnalysis'];
+    if (result.status === 'fulfilled') {
+      console.log(`✅ ${names[index]}:`, result.value);
+      return;
+    }
+    console.warn(`❌ ${names[index]} failed:`, result.reason?.message || result.reason);
+  });
+
+  const [yahoo, av, finnhub, polygon, stockanalysis] = results.map((result) => (
+    result.status === 'fulfilled' ? result.value : null
+  ));
+
+  const hasSomeData = [yahoo, av, finnhub, polygon, stockanalysis].some((entry) => entry?.price);
+  if (!hasSomeData) {
+    throw new Error(
+      `No data found for "${ticker}". Check the ticker symbol is correct (e.g. AAPL, TSLA, MU, NVDA).`
+    );
   }
 
-  try {
-    const data = await fetchFromAlphaVantage(ticker);
-    console.log('AV success:', data);
-    return data;
-  } catch (e) {
-    console.warn('AV failed:', e?.message || e);
-  }
-
-  throw new Error(`Could not load data for ${ticker}. Try again in a moment.`);
+  return mergeStockData(ticker, { yahoo, av, finnhub, polygon, stockanalysis });
 }
 
-async function fetchFromYahoo(ticker) {
-  const yahooQuery1 = `https://query1.finance.yahoo.com/v8/finance/chart/${ticker}?interval=1d&range=1y`;
-  const yahooQuery2 = `https://query2.finance.yahoo.com/v8/finance/chart/${ticker}?interval=1d&range=1y`;
-  const proxyOptions = [
-    { kind: 'allorigins', url: `https://api.allorigins.win/get?url=${encodeURIComponent(yahooQuery1)}` },
-    { kind: 'allorigins', url: `https://api.allorigins.win/get?url=${encodeURIComponent(yahooQuery2)}` },
-    { kind: 'corsproxy', url: `https://corsproxy.io/?${encodeURIComponent(yahooQuery1)}` },
-    { kind: 'corsproxy', url: `https://corsproxy.io/?${encodeURIComponent(yahooQuery2)}` }
+async function fetchYahooFinance(ticker) {
+  const urls = [
+    `https://query1.finance.yahoo.com/v8/finance/chart/${ticker}?interval=1d&range=1y`,
+    `https://query2.finance.yahoo.com/v8/finance/chart/${ticker}?interval=1d&range=1y`
   ];
 
-  let yData = null;
-
-  for (const proxyEntry of proxyOptions) {
+  for (const url of urls) {
     try {
-      console.log('Trying proxy:', proxyEntry.url);
-      const res = await fetchWithTimeout(proxyEntry.url, {
-        method: 'GET',
-        headers: { Accept: 'application/json' }
-      }, 15000);
-
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-
-      if (proxyEntry.kind === 'allorigins') {
-        const wrapper = await res.json();
-        if (!wrapper.contents) throw new Error('No contents in proxy response');
-        yData = JSON.parse(wrapper.contents);
-      } else {
-        const responseText = await res.text();
-        yData = JSON.parse(responseText);
+      const proxied = `https://api.allorigins.win/get?url=${encodeURIComponent(url)}`;
+      const res = await fetchWithTimeout(proxied, {}, 15000);
+      if (!res.ok) {
+        throw new Error(`HTTP ${res.status}`);
       }
-      console.log('Raw Yahoo data:', yData);
-      break;
-    } catch (e) {
-      console.warn('Proxy failed:', proxyEntry.url, e?.message || e);
+      const wrapper = await res.json();
+      const data = JSON.parse(wrapper.contents || '{}');
+      const result = data?.chart?.result?.[0];
+      if (!result) {
+        continue;
+      }
+
+      const meta = result.meta || {};
+      const quotes = result.indicators?.quote?.[0] || {};
+      const closes = (quotes.close || []).filter(Boolean).map(Number);
+      const highs = (quotes.high || []).filter(Boolean).map(Number);
+      const lows = (quotes.low || []).filter(Boolean).map(Number);
+      const vols = (quotes.volume || []).filter(Boolean).map(Number);
+      if (!closes.length) {
+        continue;
+      }
+
+      const price = Number(meta.regularMarketPrice || closes.at(-1));
+      const prevClose = Number(meta.previousClose || closes.at(-2) || closes.at(-1));
+      const change = price - prevClose;
+      const changePercent = prevClose ? +((change / prevClose) * 100).toFixed(2) : 0;
+
+      return {
+        source: 'Yahoo Finance',
+        price: +price.toFixed(2),
+        prevClose: +prevClose.toFixed(2),
+        change: +change.toFixed(2),
+        changePercent,
+        volume: Number(meta.regularMarketVolume || vols.at(-1) || 0),
+        avgVolume: vols.length
+          ? vols.slice(-20).reduce((a, b) => a + b, 0) / Math.min(20, vols.length)
+          : 0,
+        week52High: +(Math.max(...closes.slice(-252))).toFixed(2),
+        week52Low: +(Math.min(...closes.slice(-252))).toFixed(2),
+        sma20: closes.length >= 20 ? +(closes.slice(-20).reduce((a, b) => a + b, 0) / 20).toFixed(2) : null,
+        sma50: closes.length >= 50 ? +(closes.slice(-50).reduce((a, b) => a + b, 0) / 50).toFixed(2) : null,
+        sma200: closes.length >= 200 ? +(closes.slice(-200).reduce((a, b) => a + b, 0) / 200).toFixed(2) : null,
+        rsi: +calculateRSI(closes, 14).toFixed(1),
+        companyName: meta.longName || meta.shortName || ticker,
+        marketCap: toNumber(meta.marketCap),
+        rawCloses: closes,
+        rawHighs: highs,
+        rawLows: lows
+      };
+    } catch (error) {
+      console.warn('Yahoo URL failed:', url, error?.message || error);
     }
   }
-
-  if (!yData) throw new Error('All Yahoo proxies failed');
-
-  if (yData.chart?.error) {
-    throw new Error(`Yahoo error: ${yData.chart.error.description || 'request failed'}`);
-  }
-
-  const result = yData?.chart?.result?.[0];
-  if (!result) throw new Error(`No data found for ${ticker}`);
-
-  const meta = result.meta || {};
-  const quotes = result.indicators?.quote?.[0] || {};
-  const closes = (quotes.close || []).filter((c) => c != null).map(Number);
-  const vols = (quotes.volume || []).filter((v) => v != null).map(Number);
-
-  if (closes.length === 0) throw new Error(`No price data for ${ticker}`);
-
-  const price = Number(meta.regularMarketPrice || closes[closes.length - 1]);
-  const prevClose = Number(meta.previousClose || meta.chartPreviousClose || closes[closes.length - 2] || closes[closes.length - 1]);
-  const change = price - prevClose;
-  const changePct = prevClose ? ((change / prevClose) * 100).toFixed(2) : '0.00';
-
-  const last20 = closes.slice(-20);
-  const last50 = closes.slice(-50);
-  const last252 = closes.slice(-252);
-
-  const sma20 = last20.length ? last20.reduce((a, b) => a + b, 0) / last20.length : null;
-  const sma50 = last50.length ? last50.reduce((a, b) => a + b, 0) / last50.length : null;
-  const rsi = closes.length >= 15 ? calculateRSI(closes, 14) : 50;
-
-  const week52High = last252.length ? Math.max(...last252) : Math.max(...closes);
-  const week52Low = last252.length ? Math.min(...last252) : Math.min(...closes);
-
-  const avgVolume = vols.length
-    ? vols.slice(-20).reduce((a, b) => a + b, 0) / Math.min(20, vols.length)
-    : 0;
-
-  return {
-    ticker,
-    companyName: meta.longName || meta.shortName || ticker,
-    price: parseFloat(price.toFixed(2)),
-    change: parseFloat(change.toFixed(2)),
-    changePercent: `${changePct}%`,
-    volume: Number(meta.regularMarketVolume) || vols[vols.length - 1] || 0,
-    avgVolume: Math.round(avgVolume),
-    prevClose: parseFloat((prevClose || 0).toFixed(2)),
-    week52High: parseFloat(week52High.toFixed(2)),
-    week52Low: parseFloat(week52Low.toFixed(2)),
-    sma20: sma20 ? parseFloat(sma20.toFixed(2)) : null,
-    sma50: sma50 ? parseFloat(sma50.toFixed(2)) : null,
-    rsi: parseFloat(rsi.toFixed(1)),
-    macd: null,
-    pe: null,
-    analystTarget: null,
-    sector: 'N/A',
-    marketCap: toNumber(meta.marketCap),
-    dataSource: 'Yahoo Finance',
-    rawCloses: closes
-  };
+  throw new Error('Yahoo Finance unavailable');
 }
 
-async function fetchFromAlphaVantage(ticker) {
-  const KEY = 'XK10T6I58YPTGMWE';
-  const url = `https://www.alphavantage.co/query?function=GLOBAL_QUOTE&symbol=${ticker}&apikey=${KEY}`;
-  console.log('Trying Alpha Vantage:', url);
+async function fetchAlphaVantage(ticker) {
+  const delay = (ms) => new Promise((resolve) => window.setTimeout(resolve, ms));
 
-  const res = await fetchWithTimeout(url, {}, 12000);
-  if (!res.ok) throw new Error(`AV HTTP ${res.status}`);
-
-  const data = await res.json();
-  console.log('AV raw response:', data);
-
-  if (data.Information || data.Note) {
+  const quoteRes = await fetchWithTimeout(
+    `https://www.alphavantage.co/query?function=GLOBAL_QUOTE&symbol=${ticker}&apikey=${AV_KEY}`,
+    {},
+    15000
+  );
+  const quoteData = await quoteRes.json();
+  if (quoteData.Information || quoteData.Note) {
     throw new Error('Alpha Vantage rate limited');
   }
-
-  const q = data['Global Quote'];
+  const q = quoteData['Global Quote'];
   if (!q || !q['05. price']) {
-    throw new Error(`No AV data for ${ticker}`);
+    throw new Error('No AV quote data');
   }
 
   const price = parseFloat(q['05. price']);
   const prevClose = parseFloat(q['08. previous close']);
   const change = parseFloat(q['09. change']);
-  const changePct = q['10. change percent'];
-  const volume = parseInt(q['06. volume'], 10);
+  const changePercent = parseFloat(String(q['10. change percent'] || '').replace('%', '')) || 0;
+  const volume = parseInt(q['06. volume'], 10) || 0;
+
+  await delay(1200);
+  let overview = {};
+  try {
+    const ovRes = await fetchWithTimeout(
+      `https://www.alphavantage.co/query?function=OVERVIEW&symbol=${ticker}&apikey=${AV_KEY}`,
+      {},
+      15000
+    );
+    overview = await ovRes.json();
+    await delay(1200);
+  } catch (_error) {
+    overview = {};
+  }
+
+  let rsi = null;
+  try {
+    const rsiRes = await fetchWithTimeout(
+      `https://www.alphavantage.co/query?function=RSI&symbol=${ticker}&interval=daily&time_period=14&series_type=close&apikey=${AV_KEY}`,
+      {},
+      15000
+    );
+    const rsiData = await rsiRes.json();
+    const values = rsiData['Technical Analysis: RSI'];
+    if (values) {
+      rsi = parseFloat(Object.values(values)[0].RSI);
+    }
+    await delay(1200);
+  } catch (_error) {
+    rsi = null;
+  }
+
+  let macd = null;
+  let macdSignal = null;
+  let macdHist = null;
+  try {
+    const macdRes = await fetchWithTimeout(
+      `https://www.alphavantage.co/query?function=MACD&symbol=${ticker}&interval=daily&series_type=close&apikey=${AV_KEY}`,
+      {},
+      15000
+    );
+    const macdData = await macdRes.json();
+    const values = macdData['Technical Analysis: MACD'];
+    if (values) {
+      const latest = Object.values(values)[0];
+      macd = parseFloat(latest.MACD);
+      macdSignal = parseFloat(latest.MACD_Signal);
+      macdHist = parseFloat(latest.MACD_Hist);
+    }
+  } catch (_error) {
+    macd = null;
+  }
+
+  return {
+    source: 'Alpha Vantage',
+    price,
+    prevClose,
+    change,
+    changePercent,
+    volume,
+    week52High: parseFloat(overview['52WeekHigh']) || null,
+    week52Low: parseFloat(overview['52WeekLow']) || null,
+    rsi,
+    macd,
+    macdSignal,
+    macdHist,
+    pe: parseFloat(overview.PERatio) || null,
+    eps: parseFloat(overview.EPS) || null,
+    analystTarget: parseFloat(overview.AnalystTargetPrice) || null,
+    sector: overview.Sector || null,
+    industry: overview.Industry || null,
+    companyName: overview.Name || ticker,
+    marketCap: toNumber(overview.MarketCapitalization),
+    beta: parseFloat(overview.Beta) || null,
+    dividendYield: parseFloat(overview.DividendYield) || null,
+    pegRatio: parseFloat(overview.PEGRatio) || null,
+    priceToBook: parseFloat(overview.PriceToBookRatio) || null,
+    revenueGrowth: overview.QuarterlyRevenueGrowthYOY || null,
+    earningsGrowth: overview.QuarterlyEarningsGrowthYOY || null,
+    description: overview.Description || null
+  };
+}
+
+async function fetchFinnhub(ticker) {
+  const base = 'https://finnhub.io/api/v1';
+  const token = FINNHUB_TOKEN;
+
+  const [quoteRes, profileRes, recommendRes, metricsRes] = await Promise.allSettled([
+    fetchWithTimeout(`${base}/quote?symbol=${ticker}&token=${token}`, {}, 12000),
+    fetchWithTimeout(`${base}/stock/profile2?symbol=${ticker}&token=${token}`, {}, 12000),
+    fetchWithTimeout(`${base}/stock/recommendation?symbol=${ticker}&token=${token}`, {}, 12000),
+    fetchWithTimeout(`${base}/stock/metric?symbol=${ticker}&metric=all&token=${token}`, {}, 12000)
+  ]);
+
+  const quote = quoteRes.status === 'fulfilled' ? await quoteRes.value.json() : null;
+  const profile = profileRes.status === 'fulfilled' ? await profileRes.value.json() : null;
+  const recs = recommendRes.status === 'fulfilled' ? await recommendRes.value.json() : null;
+  const metrics = metricsRes.status === 'fulfilled' ? await metricsRes.value.json() : null;
+
+  if (!quote || !quote.c) {
+    throw new Error('Finnhub no quote data');
+  }
+
+  let analystRec = null;
+  if (Array.isArray(recs) && recs.length) {
+    const latest = recs[0];
+    analystRec = {
+      strongBuy: latest.strongBuy || 0,
+      buy: latest.buy || 0,
+      hold: latest.hold || 0,
+      sell: latest.sell || 0,
+      strongSell: latest.strongSell || 0,
+      period: latest.period || ''
+    };
+  }
+
+  const metric = metrics?.metric || {};
+  return {
+    source: 'Finnhub',
+    price: toNumber(quote.c),
+    prevClose: toNumber(quote.pc),
+    change: toNumber(quote.c - quote.pc),
+    changePercent: quote.pc ? +(((quote.c - quote.pc) / quote.pc) * 100).toFixed(2) : 0,
+    dayHigh: toNumber(quote.h),
+    dayLow: toNumber(quote.l),
+    companyName: profile?.name || ticker,
+    sector: profile?.finnhubIndustry || null,
+    country: profile?.country || null,
+    exchange: profile?.exchange || null,
+    ipo: profile?.ipo || null,
+    website: profile?.weburl || null,
+    logo: profile?.logo || null,
+    analystRec,
+    week52High: toNumber(metric['52WeekHigh']),
+    week52Low: toNumber(metric['52WeekLow']),
+    pe: toNumber(metric.peNormalizedAnnual) || toNumber(metric.peTTM),
+    eps: toNumber(metric.epsTTM),
+    beta: toNumber(metric.beta),
+    roa: toNumber(metric.roaTTM),
+    roe: toNumber(metric.roeTTM),
+    revenueGrowth: toNumber(metric.revenueGrowthTTMYoy),
+    grossMargin: toNumber(metric.grossMarginTTM),
+    netMargin: toNumber(metric.netMarginTTM),
+    debtToEquity: toNumber(metric['totalDebt/totalEquityAnnual']),
+    currentRatio: toNumber(metric.currentRatioAnnual)
+  };
+}
+
+async function fetchPolygon(ticker) {
+  try {
+    const [tickerRes, prevRes] = await Promise.allSettled([
+      fetchWithTimeout(`https://api.polygon.io/v3/reference/tickers/${ticker}?apiKey=${POLYGON_KEY}`, {}, 12000),
+      fetchWithTimeout(`https://api.polygon.io/v2/aggs/ticker/${ticker}/prev?adjusted=true&apiKey=${POLYGON_KEY}`, {}, 12000)
+    ]);
+
+    const tickerData = tickerRes.status === 'fulfilled' ? await tickerRes.value.json() : null;
+    const prevData = prevRes.status === 'fulfilled' ? await prevRes.value.json() : null;
+    const details = tickerData?.results || {};
+    const prev = prevData?.results?.[0] || {};
+    if (!prev.c) {
+      throw new Error('Polygon no price data');
+    }
+
+    return {
+      source: 'Polygon.io',
+      price: toNumber(prev.c),
+      prevClose: toNumber(prev.o),
+      dayHigh: toNumber(prev.h),
+      dayLow: toNumber(prev.l),
+      volume: toNumber(prev.v),
+      vwap: toNumber(prev.vw),
+      companyName: details.name || ticker,
+      description: details.description || null,
+      sector: details.sic_description || null,
+      employees: details.total_employees || null,
+      website: details.homepage_url || null,
+      listDate: details.list_date || null,
+      locale: details.locale || null,
+      currency: details.currency_name || 'USD'
+    };
+  } catch (error) {
+    throw new Error(`Polygon unavailable: ${error?.message || error}`);
+  }
+}
+
+async function fetchStockAnalysis(ticker) {
+  try {
+    const url = `https://stockanalysis.com/stocks/${ticker.toLowerCase()}/`;
+    const proxied = `https://api.allorigins.win/get?url=${encodeURIComponent(url)}`;
+    const res = await fetchWithTimeout(proxied, {}, 15000);
+    if (!res.ok) {
+      throw new Error(`HTTP ${res.status}`);
+    }
+    const wrapper = await res.json();
+    const html = wrapper.contents;
+    if (!html) {
+      throw new Error('No content from StockAnalysis');
+    }
+    const revenueMatch = html.match(/Revenue[^$]*\$([0-9.]+[BMT])/i);
+    const forwardPeMatch = html.match(/Forward P\/E[^0-9]*([0-9.]+)/i);
+    const analystCountMatch = html.match(/([0-9]+)\s*analyst/i);
+
+    return {
+      source: 'StockAnalysis',
+      forwardPE: forwardPeMatch ? parseFloat(forwardPeMatch[1]) : null,
+      revenue: revenueMatch ? revenueMatch[1] : null,
+      analystCount: analystCountMatch ? parseInt(analystCountMatch[1], 10) : null
+    };
+  } catch (error) {
+    throw new Error(`StockAnalysis scrape failed: ${error?.message || error}`);
+  }
+}
+
+function mergeStockData(ticker, { yahoo, av, finnhub, polygon, stockanalysis }) {
+  const price = finnhub?.price || yahoo?.price || av?.price || polygon?.price;
+  const prevClose = finnhub?.prevClose || yahoo?.prevClose || av?.prevClose || polygon?.prevClose;
+  const change = (price && prevClose)
+    ? +((price - prevClose).toFixed(2))
+    : (av?.change || 0);
+  const changePct = prevClose ? +(((change / prevClose) * 100).toFixed(2)) : 0;
 
   return {
     ticker,
-    companyName: ticker,
     price,
-    change,
-    changePercent: changePct,
-    volume,
-    avgVolume: 0,
     prevClose,
-    week52High: parseFloat(q['03. high']) || null,
-    week52Low: parseFloat(q['04. low']) || null,
-    sma20: null,
-    sma50: null,
-    rsi: 50,
-    macd: null,
-    pe: null,
-    analystTarget: null,
-    sector: 'N/A',
-    marketCap: null,
-    dataSource: 'Alpha Vantage'
+    change,
+    changePercent: `${changePct}%`,
+    changeFloat: changePct,
+    dayHigh: finnhub?.dayHigh || polygon?.dayHigh || null,
+    dayLow: finnhub?.dayLow || polygon?.dayLow || null,
+    volume: yahoo?.volume || finnhub?.volume || av?.volume || polygon?.volume || 0,
+    avgVolume: yahoo?.avgVolume || null,
+    vwap: polygon?.vwap || null,
+    companyName: av?.companyName || finnhub?.companyName || yahoo?.companyName || polygon?.companyName || ticker,
+    sector: av?.sector || finnhub?.sector || polygon?.sector || 'N/A',
+    industry: av?.industry || null,
+    description: av?.description || polygon?.description || null,
+    website: finnhub?.website || polygon?.website || null,
+    employees: polygon?.employees || null,
+    country: finnhub?.country || null,
+    exchange: finnhub?.exchange || null,
+    ipo: finnhub?.ipo || polygon?.listDate || null,
+    week52High: av?.week52High || finnhub?.week52High || yahoo?.week52High || null,
+    week52Low: av?.week52Low || finnhub?.week52Low || yahoo?.week52Low || null,
+    sma20: yahoo?.sma20 || null,
+    sma50: yahoo?.sma50 || null,
+    sma200: yahoo?.sma200 || null,
+    rsi: av?.rsi || yahoo?.rsi || null,
+    macd: av?.macd || null,
+    macdSignal: av?.macdSignal || null,
+    macdHist: av?.macdHist || null,
+    pe: av?.pe || finnhub?.pe || null,
+    forwardPE: stockanalysis?.forwardPE || null,
+    eps: av?.eps || finnhub?.eps || null,
+    beta: av?.beta || finnhub?.beta || null,
+    marketCap: av?.marketCap || yahoo?.marketCap || null,
+    dividendYield: av?.dividendYield || null,
+    pegRatio: av?.pegRatio || null,
+    priceToBook: av?.priceToBook || null,
+    roa: finnhub?.roa || null,
+    roe: finnhub?.roe || null,
+    grossMargin: finnhub?.grossMargin || null,
+    netMargin: finnhub?.netMargin || null,
+    revenueGrowth: av?.revenueGrowth || finnhub?.revenueGrowth || null,
+    earningsGrowth: av?.earningsGrowth || null,
+    debtToEquity: finnhub?.debtToEquity || null,
+    currentRatio: finnhub?.currentRatio || null,
+    analystTarget: av?.analystTarget || null,
+    analystRec: finnhub?.analystRec || null,
+    analystCount: stockanalysis?.analystCount || null,
+    rawCloses: yahoo?.rawCloses || [],
+    sources: [
+      yahoo ? 'Yahoo Finance' : null,
+      av ? 'Alpha Vantage' : null,
+      finnhub ? 'Finnhub' : null,
+      polygon ? 'Polygon.io' : null,
+      stockanalysis ? 'StockAnalysis' : null
+    ].filter(Boolean),
+    dataSource: ([
+      yahoo ? 'Yahoo Finance' : null,
+      av ? 'Alpha Vantage' : null,
+      finnhub ? 'Finnhub' : null,
+      polygon ? 'Polygon.io' : null,
+      stockanalysis ? 'StockAnalysis' : null
+    ].filter(Boolean).join(' + '))
   };
 }
 
@@ -276,6 +520,13 @@ function calculateScores(data) {
     rangeScore,
     valScore
   };
+}
+
+function getMACDExplanation(macd, signal, hist) {
+  if (macd === null || macd === undefined) return 'MACD data unavailable.';
+  const cross = macd > signal ? 'above' : 'below';
+  const histDir = hist > 0 ? 'positive' : 'negative';
+  return `MACD line (${Number(macd).toFixed(3)}) is ${cross} the signal line (${Number(signal || 0).toFixed(3)}) — a ${macd > signal ? 'bullish' : 'bearish'} signal. The histogram is ${histDir} (${Number(hist || 0).toFixed(3)}), meaning momentum is ${Math.abs(Number(hist || 0)) > 0.1 ? 'accelerating' : 'weakening'} ${macd > signal ? 'upward' : 'downward'}. MACD crossovers are one of the most widely watched technical signals.`;
 }
 
 function setText(id, value) {
@@ -662,12 +913,100 @@ function renderTradingCard(cardId, score, verdict) {
 function renderDataFooter(data) {
   const footer = document.getElementById('data-footer');
   if (!footer) return;
+  const sourceText = Array.isArray(data.sources) && data.sources.length
+    ? data.sources.join(', ')
+    : (data.dataSource || 'Unknown source');
   footer.innerHTML = `
     <div style="color:#555;font-size:11px;padding:16px 0;border-top:1px solid #2a2a4a;margin-top:16px;">
-      📡 Data from <strong style="color:#888;">${data.dataSource || 'Unknown source'}</strong> ·
+      📡 Data from <strong style="color:#888;">${sourceText}</strong> ·
       Analyzed at ${new Date().toLocaleTimeString()} ·
       Prices may be delayed 15-20 minutes ·
       <em>Not financial advice — always do your own research</em>
+    </div>
+  `;
+}
+
+function renderSourceBadges(sources) {
+  const container = document.getElementById('source-badges');
+  if (!container || !Array.isArray(sources) || !sources.length) {
+    if (container) {
+      container.innerHTML = '';
+    }
+    return;
+  }
+
+  container.innerHTML = `
+    <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px;">
+      <span style="color:#555;font-size:11px;align-self:center;">
+        Data from:
+      </span>
+      ${sources.map((source) => `
+        <span style="
+          background:#1a2a1a; border:1px solid #2a4a2a;
+          color:#4caf50; font-size:10px; font-weight:700;
+          padding:3px 8px; border-radius:4px;
+        ">✓ ${source}</span>
+      `).join('')}
+    </div>
+  `;
+}
+
+function renderAnalystRecs(rec, count) {
+  if (!rec) return '';
+  const total = Number(rec.strongBuy || 0)
+    + Number(rec.buy || 0)
+    + Number(rec.hold || 0)
+    + Number(rec.sell || 0)
+    + Number(rec.strongSell || 0);
+  if (!total) return '';
+
+  const buyPct = Math.round((((Number(rec.strongBuy) || 0) + (Number(rec.buy) || 0)) / total) * 100);
+  const sellPct = Math.round((((Number(rec.sell) || 0) + (Number(rec.strongSell) || 0)) / total) * 100);
+  const consensus = buyPct > 60 ? 'STRONG BUY'
+    : buyPct > 40 ? 'BUY'
+      : sellPct > 40 ? 'SELL'
+        : 'HOLD';
+  const consensusColor = buyPct > 60 ? '#00c853'
+    : buyPct > 40 ? '#69f0ae'
+      : sellPct > 40 ? '#ff4444'
+        : '#ffcc00';
+
+  return `
+    <div style="background:#162030;border-radius:12px;padding:16px;margin-bottom:16px;">
+      <h3 style="color:#f0a500;font-size:12px;letter-spacing:2px;text-transform:uppercase;margin-bottom:12px;">
+        📊 Analyst Consensus ${count ? `(${count} analysts)` : ''}
+      </h3>
+
+      <div style="display:flex;gap:8px;align-items:center;margin-bottom:12px;">
+        <div style="font-size:22px;font-weight:900;color:${consensusColor};">
+          ${consensus}
+        </div>
+        <div style="font-size:12px;color:#888;">
+          as of ${rec.period || 'latest'}
+        </div>
+      </div>
+
+      <div style="display:grid;grid-template-columns:80px 1fr 30px;gap:4px 8px;align-items:center;font-size:11px;">
+        <span style="color:#00c853;">Strong Buy</span>
+        <div style="background:#333;border-radius:3px;height:8px;"><div style="background:#00c853;width:${((Number(rec.strongBuy || 0) / total) * 100).toFixed(1)}%;height:100%;border-radius:3px;"></div></div>
+        <span style="color:#aaa;text-align:right;">${Number(rec.strongBuy || 0)}</span>
+
+        <span style="color:#69f0ae;">Buy</span>
+        <div style="background:#333;border-radius:3px;height:8px;"><div style="background:#69f0ae;width:${((Number(rec.buy || 0) / total) * 100).toFixed(1)}%;height:100%;border-radius:3px;"></div></div>
+        <span style="color:#aaa;text-align:right;">${Number(rec.buy || 0)}</span>
+
+        <span style="color:#ffcc00;">Hold</span>
+        <div style="background:#333;border-radius:3px;height:8px;"><div style="background:#ffcc00;width:${((Number(rec.hold || 0) / total) * 100).toFixed(1)}%;height:100%;border-radius:3px;"></div></div>
+        <span style="color:#aaa;text-align:right;">${Number(rec.hold || 0)}</span>
+
+        <span style="color:#ff9100;">Sell</span>
+        <div style="background:#333;border-radius:3px;height:8px;"><div style="background:#ff9100;width:${((Number(rec.sell || 0) / total) * 100).toFixed(1)}%;height:100%;border-radius:3px;"></div></div>
+        <span style="color:#aaa;text-align:right;">${Number(rec.sell || 0)}</span>
+
+        <span style="color:#ff4444;">Strong Sell</span>
+        <div style="background:#333;border-radius:3px;height:8px;"><div style="background:#ff4444;width:${((Number(rec.strongSell || 0) / total) * 100).toFixed(1)}%;height:100%;border-radius:3px;"></div></div>
+        <span style="color:#aaa;text-align:right;">${Number(rec.strongSell || 0)}</span>
+      </div>
     </div>
   `;
 }
@@ -712,16 +1051,78 @@ function renderIndicators(data) {
     },
     {
       label: 'Data Source',
-      value: data.dataSource || 'N/A',
+      value: Array.isArray(data.sources) && data.sources.length ? data.sources.join(', ') : (data.dataSource || 'N/A'),
       signal: '🔗'
     }
   ];
+
+  if (data.macd !== null && data.macd !== undefined) {
+    rows.push({
+      label: 'MACD',
+      value: Number(data.macd).toFixed(3),
+      signal: data.macd > data.macdSignal
+        ? '🟢 Bullish (above signal line)'
+        : '🔴 Bearish (below signal line)',
+      explanation: getMACDExplanation(data.macd, data.macdSignal, data.macdHist)
+    });
+  }
+
+  if (data.beta) {
+    rows.push({
+      label: 'Beta',
+      value: Number(data.beta).toFixed(2),
+      signal: data.beta > 1.5 ? '🔴 Very volatile'
+        : data.beta > 1.0 ? '🟠 More volatile than market'
+          : data.beta > 0.5 ? '🟢 Less volatile than market'
+            : '🟢 Low volatility',
+      explanation: `Beta of ${Number(data.beta).toFixed(2)} means the stock moves ${data.beta > 1 ? `${((data.beta - 1) * 100).toFixed(0)}% more than` : `${((1 - data.beta) * 100).toFixed(0)}% less than`} the overall market. ${data.beta > 1.5 ? 'High beta stocks are risky but can deliver bigger gains.' : data.beta < 0.8 ? 'Low beta stocks are more stable — good for conservative investors.' : 'Moderate beta — moves roughly in line with the market.'}`
+    });
+  }
+
+  if (data.roe) {
+    rows.push({
+      label: 'Return on Equity',
+      value: `${(Number(data.roe) * 100).toFixed(1)}%`,
+      signal: data.roe > 0.20 ? '🟢 Excellent'
+        : data.roe > 0.10 ? '🟡 Good'
+          : data.roe > 0 ? '🟠 Below average'
+            : '🔴 Negative',
+      explanation: `ROE of ${(Number(data.roe) * 100).toFixed(1)}% means the company generates $${(Number(data.roe) * 100).toFixed(1)} of profit for every $100 of shareholder equity. ${data.roe > 0.15 ? 'Above 15% is generally considered strong — the company uses shareholder money efficiently.' : data.roe < 0 ? 'Negative ROE means the company is losing money.' : 'Below 15% suggests the company could be more efficient with capital.'}`
+    });
+  }
+
+  if (data.netMargin) {
+    rows.push({
+      label: 'Net Profit Margin',
+      value: `${(Number(data.netMargin) * 100).toFixed(1)}%`,
+      signal: data.netMargin > 0.20 ? '🟢 Excellent'
+        : data.netMargin > 0.10 ? '🟡 Good'
+          : data.netMargin > 0 ? '🟠 Thin margin'
+            : '🔴 Unprofitable',
+      explanation: `For every $100 in revenue, the company keeps $${(Number(data.netMargin) * 100).toFixed(1)} as profit after all expenses. ${data.netMargin > 0.20 ? 'Excellent margins — highly profitable business.' : data.netMargin > 0.10 ? 'Solid margins for most industries.' : data.netMargin > 0 ? 'Thin margins — vulnerable to cost increases.' : 'Company is not yet profitable — burning cash.'}`
+    });
+  }
+
+  if (data.debtToEquity) {
+    rows.push({
+      label: 'Debt / Equity',
+      value: `${Number(data.debtToEquity).toFixed(2)}x`,
+      signal: data.debtToEquity < 0.5 ? '🟢 Low debt'
+        : data.debtToEquity < 1.5 ? '🟡 Moderate debt'
+          : data.debtToEquity < 3.0 ? '🟠 High debt'
+            : '🔴 Very high debt',
+      explanation: `Debt-to-equity ratio of ${Number(data.debtToEquity).toFixed(2)} means the company has $${Number(data.debtToEquity).toFixed(2)} of debt for every $1 of equity. ${data.debtToEquity < 0.5 ? 'Very conservative balance sheet — financially strong.' : data.debtToEquity < 1.5 ? 'Manageable debt levels for most industries.' : data.debtToEquity < 3 ? 'Elevated debt — monitor for refinancing risk.' : 'High debt load — risky if interest rates rise or earnings fall.'}`
+    });
+  }
 
   tbody.innerHTML = rows.map((row) => `
     <tr>
       <td style="padding:10px 12px;font-weight:600;color:#e8eef4;">${row.label}</td>
       <td style="padding:10px 12px;font-family:monospace;color:#f4f7fb;">${row.value}</td>
-      <td style="padding:10px 12px;color:#c7d1de;">${row.signal}</td>
+      <td style="padding:10px 12px;color:#c7d1de;">
+        <div>${row.signal}</div>
+        ${row.explanation ? `<div style="margin-top:4px;font-size:11px;color:#9aa7bb;line-height:1.4;">${row.explanation}</div>` : ''}
+      </td>
     </tr>
   `).join('');
 }
@@ -732,6 +1133,7 @@ function showLoadingUI(ticker) {
   const loadingText = document.getElementById('analysis-loading-text');
   const content = document.getElementById('analysis-content');
   const error = document.getElementById('error-box');
+  const analyst = document.getElementById('analyst-consensus');
   if (loading) loading.hidden = false;
   if (loadingText) loadingText.textContent = `Analyzing ${ticker}...`;
   if (content) content.style.opacity = '0.45';
@@ -739,6 +1141,10 @@ function showLoadingUI(ticker) {
     error.style.display = 'none';
     error.classList.add('hidden');
     error.textContent = '';
+  }
+  renderSourceBadges([]);
+  if (analyst) {
+    analyst.innerHTML = '';
   }
 }
 
@@ -754,6 +1160,7 @@ function hideLoadingUI() {
 
 function renderAnalysisPage(data) {
   const scores = calculateScores(data);
+  renderSourceBadges(data.sources);
   setText('stock-name', `${data.ticker} — ${data.companyName}`);
   setText('stock-price', formatMoney(data.price));
 
@@ -784,6 +1191,10 @@ function renderAnalysisPage(data) {
   renderTradingCard('day-trade-card', scores.dayTrade, getDayTradeVerdict(scores.dayTrade, data));
   renderTradingCard('swing-trade-card', scores.swingTrade, getSwingVerdict(scores.swingTrade, data));
   renderTradingCard('long-hold-card', scores.longHold, getLongHoldVerdict(scores.longHold, data));
+  const analystContainer = document.getElementById('analyst-consensus');
+  if (analystContainer) {
+    analystContainer.innerHTML = renderAnalystRecs(data.analystRec, data.analystCount);
+  }
   renderIndicators(data);
   renderDataFooter(data);
   hideLoadingUI();
@@ -792,7 +1203,7 @@ function renderAnalysisPage(data) {
 async function loadAndDisplayStock(ticker) {
   try {
     showLoadingUI(ticker);
-    const data = await fetchStockData(ticker);
+    const data = await fetchFromAllSources(ticker);
     if (!data.price || Number.isNaN(Number(data.price))) {
       throw new Error(`Price data unavailable for ${ticker}`);
     }
