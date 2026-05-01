@@ -1191,6 +1191,64 @@ function hideLoadingUI() {
   }
 }
 
+function normalizeLegacyPayload(payload, ticker) {
+  if (!payload || typeof payload !== 'object') {
+    return payload;
+  }
+  if (Number.isFinite(Number(payload.price))) {
+    return payload;
+  }
+  const quote = payload.quote || {};
+  const overview = payload.overview || {};
+  const technicals = payload.technicals || {};
+  const sourceMeta = payload.source || {};
+  const price = toNumber(quote.currentPrice);
+  if (!Number.isFinite(price)) {
+    return payload;
+  }
+  const changePercentRaw = toNumber(quote.dailyChangePercent);
+  const changePercent = Number.isFinite(changePercentRaw) ? `${round(changePercentRaw, 2)}%` : 'N/A';
+
+  return {
+    ticker: payload.ticker || ticker,
+    companyName: payload.companyName || payload.ticker || ticker,
+    price,
+    prevClose: toNumber(quote.previousClose),
+    change: toNumber(quote.dailyChange),
+    changePercent,
+    volume: toNumber(quote.volume) || 0,
+    avgVolume: toNumber(overview.averageVolume),
+    week52High: toNumber(overview.fiftyTwoWeekHigh),
+    week52Low: toNumber(overview.fiftyTwoWeekLow),
+    sma20: null,
+    sma50: toNumber(technicals.sma50),
+    sma200: toNumber(technicals.sma200),
+    rsi: toNumber(technicals.rsi14),
+    macd: toNumber(technicals.macdLine),
+    macdSignal: toNumber(technicals.macdSignal),
+    macdHist: toNumber(technicals.macdHistogram),
+    pe: toNumber(overview.peRatio),
+    eps: toNumber(overview.eps),
+    beta: null,
+    marketCap: toNumber(overview.marketCap),
+    sector: overview.sector || 'N/A',
+    analystTarget: toNumber(overview.analystTargetPrice),
+    analystRec: null,
+    analystCount: null,
+    revenueGrowth: null,
+    earningsGrowth: null,
+    roa: null,
+    roe: null,
+    grossMargin: null,
+    netMargin: null,
+    debtToEquity: null,
+    currentRatio: null,
+    forwardPE: null,
+    sources: [sourceMeta.provider, sourceMeta.quoteSource].filter(Boolean),
+    dataSource: [sourceMeta.provider, sourceMeta.quoteSource].filter(Boolean).join(' + ') || 'Legacy API payload'
+  };
+}
+
 function renderAnalysisPage(data) {
   const scores = calculateScores(data);
   renderSourceBadges(data.sources);
@@ -1249,7 +1307,7 @@ async function loadAndDisplayStock(ticker) {
       error.suggestions = Array.isArray(payload?.suggestions) ? payload.suggestions : [];
       throw error;
     }
-    const data = payload || {};
+    const data = normalizeLegacyPayload(payload || {}, ticker);
     if (!data.price || Number.isNaN(Number(data.price))) {
       throw new Error(`Price data unavailable for ${ticker}`);
     }
