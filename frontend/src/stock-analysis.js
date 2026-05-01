@@ -1134,6 +1134,9 @@ function showLoadingUI(ticker) {
   const content = document.getElementById('analysis-content');
   const error = document.getElementById('error-box');
   const analyst = document.getElementById('analyst-consensus');
+  const scoreBreakdown = document.getElementById('score-breakdown');
+  const indicatorsTbody = document.getElementById('indicators-tbody');
+  const cards = document.getElementById('trading-cards');
   if (loading) loading.hidden = false;
   if (loadingText) loadingText.textContent = `Analyzing ${ticker}...`;
   if (content) content.style.opacity = '0.45';
@@ -1145,6 +1148,36 @@ function showLoadingUI(ticker) {
   renderSourceBadges([]);
   if (analyst) {
     analyst.innerHTML = '';
+  }
+  if (scoreBreakdown) {
+    scoreBreakdown.innerHTML = `
+      <div class="analysis-skeleton-list">
+        <div class="analysis-skeleton-line"></div>
+        <div class="analysis-skeleton-line"></div>
+        <div class="analysis-skeleton-line"></div>
+      </div>
+    `;
+  }
+  if (cards) {
+    cards.innerHTML = `
+      <div class="analysis-skeleton-grid">
+        <div class="analysis-skeleton-block"></div>
+        <div class="analysis-skeleton-block"></div>
+        <div class="analysis-skeleton-block"></div>
+      </div>
+    `;
+  }
+  if (indicatorsTbody) {
+    indicatorsTbody.innerHTML = `
+      <tr><td colspan="3">
+        <div class="analysis-skeleton-list">
+          <div class="analysis-skeleton-line"></div>
+          <div class="analysis-skeleton-line"></div>
+          <div class="analysis-skeleton-line"></div>
+          <div class="analysis-skeleton-line"></div>
+        </div>
+      </td></tr>
+    `;
   }
 }
 
@@ -1203,27 +1236,74 @@ function renderAnalysisPage(data) {
 async function loadAndDisplayStock(ticker) {
   try {
     showLoadingUI(ticker);
-    const data = await fetchFromAllSources(ticker);
+    const response = await fetch(`/api/market/stock-analysis?ticker=${encodeURIComponent(ticker)}`, {
+      method: 'GET',
+      headers: {
+        accept: 'application/json'
+      }
+    });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      const error = new Error(payload?.message || `Could not load ${ticker}. Try again in a moment.`);
+      error.code = payload?.error || 'stock_research_failed';
+      error.suggestions = Array.isArray(payload?.suggestions) ? payload.suggestions : [];
+      throw error;
+    }
+    const data = payload || {};
     if (!data.price || Number.isNaN(Number(data.price))) {
       throw new Error(`Price data unavailable for ${ticker}`);
     }
     renderAnalysisPage(data);
   } catch (err) {
     console.error('Final error:', err);
-    showErrorUI(ticker, err?.message || `Could not load ${ticker}. Try again in a moment.`);
+    showErrorUI(ticker, err?.message || `Could not load ${ticker}. Try again in a moment.`, err);
   }
 }
 
-function showErrorUI(ticker, message) {
+function renderSuggestionsMarkup(suggestions) {
+  const list = Array.isArray(suggestions) ? suggestions : [];
+  if (!list.length) {
+    return '';
+  }
+  return `
+    <div style="margin-top:10px;">
+      <div style="font-size:12px;color:#c7d1de;margin-bottom:6px;">Closest matches:</div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap;">
+        ${list.map((item) => `
+          <button
+            type="button"
+            onclick="loadAndDisplayStock('${String(item?.symbol || '').replace(/'/g, '\\\'')}')"
+            style="background:#1f2c3d;border:1px solid #2d4866;color:#9bd0ff;padding:4px 8px;border-radius:6px;cursor:pointer;font-size:11px;"
+            title="${String(item?.name || '').replace(/"/g, '&quot;')}"
+          >${item?.symbol || ''}</button>
+        `).join('')}
+      </div>
+    </div>
+  `;
+}
+
+function showErrorUI(ticker, message, error = {}) {
   const errEl = document.getElementById('error-box');
   if (!errEl) {
     hideLoadingUI();
     return;
   }
+  let headline = message;
+  if (error?.code === 'invalid_ticker') {
+    headline = message || `'${ticker}' is not a recognized US stock ticker. Please enter a valid symbol like AAPL, TSLA, MU, NVDA.`;
+  } else if (error?.code === 'data_temporarily_unavailable') {
+    headline = `Data temporarily unavailable for ${ticker}. Please try again.`;
+  } else if (error?.code === 'api_rate_limited') {
+    headline = `Data providers are rate limited for ${ticker}. Please try again shortly.`;
+  } else if (error?.code === 'network_error') {
+    headline = `Network error while fetching ${ticker}. Check your connection and retry.`;
+  }
+
   errEl.style.display = 'block';
   errEl.classList.remove('hidden');
   errEl.innerHTML = `
-    ⚠️ ${message}
+    ⚠️ ${headline}
+    ${renderSuggestionsMarkup(error?.suggestions)}
     <br><br>
     <button onclick="loadAndDisplayStock('${ticker}')" style="
       background:#f0a500; color:#000; border:none;

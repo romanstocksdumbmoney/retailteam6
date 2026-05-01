@@ -11,6 +11,7 @@ const earningsRoutes = require('./routes/earnings');
 const marketRoutes = require('./routes/market');
 const authRoutes = require('./routes/auth');
 const { runAutoTraderAutopilotSweep } = require('./services/autoTraderService');
+const { warmTickerUniverseCache } = require('./services/stockAnalyzerService');
 
 const app = express();
 console.log('Restart the dev server for .env changes to load.');
@@ -175,6 +176,8 @@ app.use('/api/earnings', earningsRoutes);
 app.use('/api/market', marketRoutes);
 app.use('/api/auth', authRoutes);
 
+void warmTickerUniverseCache();
+
 let autopilotSweepRunning = false;
 const autopilotEveryMs = Math.max(
     10_000,
@@ -223,6 +226,7 @@ const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => {
     console.log(`Server running on port ${PORT}`);
     console.log(`AI autopilot sweep interval: ${autopilotEveryMs}ms`);
+    void warmTickerUniverseCache();
     setInterval(() => {
         runAutopilotSweepSafe();
     }, autopilotEveryMs);

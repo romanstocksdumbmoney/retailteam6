@@ -377,10 +377,12 @@ async function stockAnalysisHandler(req, res) {
     return res.json(analysis);
   } catch (error) {
     if (error instanceof MarketDataServiceError) {
+      const suggestions = Array.isArray(error?.suggestions) ? error.suggestions : [];
       return res.status(error.status || 500).json({
         error: error.code || 'market_data_error',
         message: error.message || 'Stock research analysis failed.',
-        ticker
+        ticker,
+        suggestions
       });
     }
     return res.status(500).json({
