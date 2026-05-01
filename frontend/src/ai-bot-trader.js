@@ -69,6 +69,17 @@ let currentControlLink = '';
 let activeQuickProfile = 'balanced';
 let activeStrategyTemplate = 'momentum-breakout';
 const SETUP_PROGRESS_BOT_CONFIGURED_KEY = 'dumbdollars_setup_bot_configured_at';
+const uiState = {
+  isAuthenticated: false,
+  setupProgress: {
+    signedIn: false,
+    configured: false,
+    funded: false,
+    brokerConnected: false,
+    readyForStart: false,
+    liveActive: false
+  }
+};
 
 function markBotConfiguredProgress() {
   try {
@@ -201,7 +212,7 @@ function setStatus(text, isError = false) {
     window.clearSignInCallout('ai-bot-status');
   }
   statusNode.textContent = text;
-  statusNode.className = isError ? 'small-note auth-error' : 'small-note';
+  statusNode.className = isError ? 'small-note ai-section auth-error' : 'small-note ai-section';
 }
 
 function showSignInNeeded(message = 'Please log in to use AI Bot Trader.') {
@@ -220,6 +231,259 @@ function showSignInNeeded(message = 'Please log in to use AI Bot Trader.') {
 
 function fmtUsd(value) {
   return `$${Number(value || 0).toLocaleString(undefined, { maximumFractionDigits: 2 })}`;
+}
+
+function bindAuthBannerLinks() {
+  const signInLink = document.getElementById('ai-auth-signin');
+  const signUpLink = document.getElementById('ai-auth-signup');
+  const nextPath = `${window.location.pathname || '/ai-bot-trader.html'}${window.location.search || ''}${window.location.hash || ''}`;
+  if (signInLink instanceof HTMLAnchorElement) {
+    signInLink.href = `/ai-trade-access.html?mode=login&next=${encodeURIComponent(nextPath)}`;
+  }
+  if (signUpLink instanceof HTMLAnchorElement) {
+    signUpLink.href = `/ai-trade-access.html?mode=signup&next=${encodeURIComponent(nextPath)}`;
+  }
+}
+
+function updateAuthBannerVisibility(isAuthenticated) {
+  const banner = document.getElementById('ai-bot-auth-banner');
+  if (!banner) {
+    return;
+  }
+  banner.hidden = Boolean(isAuthenticated);
+}
+
+function setInitialSkeletonState() {
+  const summaryNode = document.getElementById('ai-bot-summary');
+  const planNode = document.getElementById('ai-bot-plan');
+  const ordersNode = document.getElementById('ai-bot-orders');
+  const logsNode = document.getElementById('ai-bot-logs');
+  const followingNode = document.getElementById('ai-control-following');
+  const linkNode = document.getElementById('ai-control-link-value');
+  const skeleton = `
+    <article class="bot-position-card ai-trader-skeleton-card">
+      <div class="ai-trader-skeleton-line"></div>
+      <div class="ai-trader-skeleton-line ai-trader-skeleton-line--wide"></div>
+      <div class="ai-trader-skeleton-line"></div>
+    </article>
+  `;
+  if (summaryNode) {
+    summaryNode.innerHTML = skeleton;
+  }
+  if (planNode) {
+    planNode.innerHTML = skeleton;
+  }
+  if (ordersNode) {
+    ordersNode.innerHTML = skeleton;
+  }
+  if (logsNode) {
+    logsNode.innerHTML = skeleton;
+  }
+  if (followingNode) {
+    followingNode.innerHTML = skeleton;
+  }
+  if (linkNode) {
+    linkNode.textContent = 'Preparing control link...';
+  }
+}
+
+function requireSignedInForAction(message = 'Sign in to save your setup and activate the bot.') {
+  if (uiState.isAuthenticated) {
+    return true;
+  }
+  showSignInNeeded(message);
+  updateAuthBannerVisibility(false);
+  return false;
+}
+
+function deriveSetupProgress(payload) {
+  const liveFunding = payload?.liveFunding || {};
+  const execution = payload?.execution || {};
+  const brokerConnection = execution.brokerConnection || {};
+  const configured = Boolean(payload?.configured);
+  const signedIn = uiState.isAuthenticated;
+  const funded = Boolean(liveFunding.isFunded) || Number(liveFunding.fundedUsd || 0) > 0;
+  const brokerConnected = Boolean(brokerConnection.isConnected && brokerConnection.permissions?.canTrade);
+  const liveMode = String(payload?.tradingMode || 'paper').toLowerCase() === 'live';
+  const liveActive = Boolean(payload?.isActive && liveMode);
+  const readyForStart = signedIn && configured && funded && brokerConnected;
+  return {
+    signedIn,
+    configured,
+    funded,
+    brokerConnected,
+    readyForStart,
+    liveActive
+  };
+}
+
+function getCurrentHeroStep(progress) {
+  if (!progress.signedIn) {
+    return 'strategy';
+  }
+  if (!progress.configured) {
+    return 'configure';
+  }
+  if (!progress.funded || !progress.brokerConnected) {
+    return 'account';
+  }
+  return 'live';
+}
+
+function updateHeroStepTracker(progress) {
+  const stepOrder = ['strategy', 'configure', 'account', 'live'];
+  const current = getCurrentHeroStep(progress);
+  const currentIndex = stepOrder.indexOf(current);
+  const completionByStep = {
+    strategy: progress.signedIn,
+    configure: progress.configured,
+    account: progress.funded && progress.brokerConnected,
+    live: progress.liveActive
+  };
+  stepOrder.forEach((step, index) => {
+    const node = document.querySelector(`[data-hero-step="${step}"]`);
+    if (!node) {
+      return;
+    }
+    node.classList.toggle('is-complete', Boolean(completionByStep[step]));
+    node.classList.toggle('is-current', index === currentIndex);
+    node.classList.toggle('is-upcoming', index > currentIndex);
+  });
+}
+
+function updateSetupProgressUi(progress) {
+  const stepCompletion = {
+    1: progress.signedIn,
+    2: progress.configured,
+    3: progress.funded,
+    4: progress.brokerConnected,
+    5: progress.readyForStart
+  };
+  Object.keys(stepCompletion).forEach((stepKey) => {
+    const node = document.querySelector(`.ai-setup-step-card[data-setup-step="${stepKey}"]`);
+    if (!node) {
+      return;
+    }
+    const done = Boolean(stepCompletion[stepKey]);
+    node.classList.toggle('is-complete', done);
+    node.classList.toggle('is-pending', !done);
+  });
+  const saveButton = document.getElementById('ai-step-save-action');
+  if (saveButton instanceof HTMLButtonElement) {
+    saveButton.textContent = progress.configured ? 'Save Settings ✓' : 'Save Settings';
+  }
+  const authButton = document.getElementById('ai-step-auth-action');
+  if (authButton instanceof HTMLButtonElement) {
+    authButton.textContent = progress.signedIn ? 'Signed In ✓' : 'Sign In / Sign Up →';
+  }
+  const startButton = document.getElementById('ai-step-start-action');
+  if (startButton instanceof HTMLButtonElement) {
+    startButton.disabled = !progress.readyForStart;
+    startButton.classList.toggle('is-ready', progress.readyForStart);
+  }
+  updateHeroStepTracker(progress);
+}
+
+function updateControlStatusBanner(payload, progress) {
+  const dot = document.getElementById('ai-control-status-dot');
+  const textNode = document.getElementById('ai-control-status-text');
+  const accountValueNode = document.getElementById('ai-control-account-value');
+  const dayPnlNode = document.getElementById('ai-control-day-pnl');
+
+  const isLiveMode = String(payload?.tradingMode || 'paper').toLowerCase() === 'live';
+  const isActive = Boolean(payload?.isActive);
+  let statusType = 'incomplete';
+  let statusText = 'Setup Incomplete';
+  if (isActive && isLiveMode) {
+    statusType = 'active';
+    statusText = 'Bot Active — Trading Now';
+  } else if (!isActive && progress.readyForStart) {
+    statusType = 'paused';
+    statusText = 'Bot Paused';
+  } else if (progress.configured) {
+    statusType = 'stopped';
+    statusText = 'Bot Stopped';
+  }
+
+  if (dot) {
+    dot.className = `ai-control-status-dot ai-control-status-dot--${statusType}`;
+  }
+  if (textNode) {
+    textNode.textContent = statusText;
+  }
+
+  const cash = Number(payload?.cashUsd || 0);
+  const openExposure = Number(payload?.accountView?.portfolio?.openExposureUsd || 0);
+  const equity = cash + openExposure;
+  const cycleHistory = Array.isArray(payload?.cycleHistory) ? payload.cycleHistory : [];
+  const todayPnl = cycleHistory.length > 0
+    ? Number(cycleHistory[0]?.closedPnlUsd || 0)
+    : 0;
+
+  if (accountValueNode) {
+    accountValueNode.textContent = fmtUsd(equity || cash);
+  }
+  if (dayPnlNode) {
+    dayPnlNode.textContent = `${todayPnl >= 0 ? '+' : '-'}${fmtUsd(Math.abs(todayPnl))}`;
+    dayPnlNode.classList.toggle('is-positive', todayPnl > 0);
+    dayPnlNode.classList.toggle('is-negative', todayPnl < 0);
+  }
+}
+
+function updateAccordionPreviews(payload) {
+  const recentOrders = Array.isArray(payload?.execution?.recentBrokerOrders)
+    ? payload.execution.recentBrokerOrders
+    : [];
+  const openPositions = Array.isArray(payload?.openPositions) ? payload.openPositions : [];
+  const cycle = payload?.lastCycle || {};
+  const closed = Array.isArray(cycle.closedPositions) ? cycle.closedPositions : [];
+  const planPrompt = String(payload?.config?.prompt || '').trim();
+  const winRate = Number(payload?.stats?.winRatePct || 0);
+
+  const summaryPreview = document.getElementById('ai-accordion-preview-summary');
+  if (summaryPreview) {
+    summaryPreview.textContent = `${openPositions.length} open positions • ${fmtUsd(payload?.cashUsd || 0)} cash`;
+  }
+  const planPreview = document.getElementById('ai-accordion-preview-plan');
+  if (planPreview) {
+    planPreview.textContent = planPrompt
+      ? `Prompt active • ${Math.min(planPrompt.length, 120)} chars configured`
+      : 'No prompt set yet.';
+  }
+  const ordersPreview = document.getElementById('ai-accordion-preview-orders');
+  if (ordersPreview) {
+    ordersPreview.textContent = `${recentOrders.length} broker orders tracked • ${winRate.toFixed(1)}% win rate`;
+  }
+  const logsPreview = document.getElementById('ai-accordion-preview-logs');
+  if (logsPreview) {
+    logsPreview.textContent = `${closed.length} positions closed in latest cycle`;
+  }
+}
+
+function setupAccordions() {
+  const toggles = document.querySelectorAll('.ai-control-accordion-toggle');
+  toggles.forEach((toggle) => {
+    if (!(toggle instanceof HTMLButtonElement)) {
+      return;
+    }
+    toggle.addEventListener('click', () => {
+      const panelId = String(toggle.dataset.accordionTarget || '').trim();
+      const panel = panelId ? document.getElementById(panelId) : null;
+      if (!panel) {
+        return;
+      }
+      const expanded = toggle.getAttribute('aria-expanded') === 'true';
+      toggle.setAttribute('aria-expanded', expanded ? 'false' : 'true');
+      panel.classList.toggle('is-open', !expanded);
+    });
+  });
+}
+
+function updateGlobalUi(payload) {
+  uiState.setupProgress = deriveSetupProgress(payload || {});
+  updateSetupProgressUi(uiState.setupProgress);
+  updateControlStatusBanner(payload || {}, uiState.setupProgress);
+  updateAccordionPreviews(payload || {});
 }
 
 function collectSelectedSectors() {
@@ -268,8 +532,10 @@ function syncAutoExecutionVisibility() {
   autoWrap.hidden = false;
   const autoExecuteNode = document.getElementById('ai-bot-auto-execute-live');
   if (autoExecuteNode instanceof HTMLInputElement) {
-    autoExecuteNode.checked = live;
-    autoExecuteNode.disabled = true;
+    if (!live) {
+      autoExecuteNode.checked = false;
+    }
+    autoExecuteNode.disabled = !live;
   }
 }
 
@@ -641,7 +907,7 @@ function renderControlCenter(payload) {
   const directLink = String(controlCenter.directControlLink || '/ai-bot-trader.html').trim();
 
   currentControlLink = directLink;
-  linkNode.textContent = `Control link: ${directLink}`;
+  linkNode.textContent = directLink;
   if (copyButton instanceof HTMLButtonElement) {
     copyButton.disabled = !directLink;
   }
@@ -691,6 +957,7 @@ function renderState(payload) {
     renderOrders(null);
     renderLogs(null);
     renderControlCenter(null);
+    updateGlobalUi(null);
     return;
   }
   renderBotSummary(payload);
@@ -704,17 +971,36 @@ function renderState(payload) {
   if (payload?.configured) {
     markBotConfiguredProgress();
   }
+  updateGlobalUi(payload);
 }
 
 async function loadBotState() {
-  const payload = await requestWithAuthRetry('/api/market/auto-trader/bot', {
-    method: 'GET'
-  });
-  renderState(payload);
-  return payload;
+  if (!uiState.isAuthenticated) {
+    renderState(null);
+    return null;
+  }
+  const [payload, accountView] = await Promise.all([
+    requestWithAuthRetry('/api/market/auto-trader/bot', {
+      method: 'GET'
+    }),
+    requestWithAuthRetry('/api/market/auto-trader/account-view', {
+      method: 'GET'
+    }).catch(() => null)
+  ]);
+  const merged = accountView
+    ? {
+      ...payload,
+      accountView
+    }
+    : payload;
+  renderState(merged);
+  return merged;
 }
 
 async function saveBotConfig() {
+  if (!requireSignedInForAction()) {
+    throw new Error('Please sign in to save your setup.');
+  }
   const promptNode = document.getElementById('ai-bot-prompt');
   const timeframeNode = document.getElementById('ai-bot-timeframe');
   const prompt = promptNode instanceof HTMLTextAreaElement ? promptNode.value.trim() : '';
@@ -764,6 +1050,9 @@ async function runCycle() {
 }
 
 async function sendPromptControlUpdate() {
+  if (!requireSignedInForAction()) {
+    throw new Error('Please sign in to send instructions to AI.');
+  }
   const promptNode = document.getElementById('ai-control-prompt-input');
   if (!(promptNode instanceof HTMLTextAreaElement)) {
     throw new Error('Prompt input is not available.');
@@ -786,6 +1075,9 @@ async function sendPromptControlUpdate() {
 }
 
 async function setBotActive(active) {
+  if (!requireSignedInForAction()) {
+    throw new Error('Please sign in to control live trading.');
+  }
   const path = active ? '/api/market/auto-trader/bot/resume' : '/api/market/auto-trader/bot/pause';
   const payload = await requestWithAuthRetry(path, {
     method: 'POST',
@@ -808,6 +1100,74 @@ function setupForm() {
   const openControlLinkButton = document.getElementById('ai-control-open-link');
   const promptControlForm = document.getElementById('ai-control-prompt-form');
   const modeSelect = document.getElementById('ai-bot-trading-mode');
+  const stepAuthAction = document.getElementById('ai-step-auth-action');
+  const stepSaveAction = document.getElementById('ai-step-save-action');
+  const stepFundingAction = document.getElementById('ai-step-funding-action');
+  const stepBrokerAction = document.getElementById('ai-step-broker-action');
+  const stepStartAction = document.getElementById('ai-step-start-action');
+
+  const gotoSignIn = () => {
+    const nextPath = `${window.location.pathname || '/ai-bot-trader.html'}${window.location.search || ''}${window.location.hash || ''}`;
+    window.location.href = `/ai-trade-access.html?next=${encodeURIComponent(nextPath)}`;
+  };
+
+  if (stepAuthAction instanceof HTMLButtonElement) {
+    stepAuthAction.addEventListener('click', () => {
+      if (uiState.isAuthenticated) {
+        setStatus('You are already signed in.');
+        return;
+      }
+      gotoSignIn();
+    });
+  }
+  if (stepSaveAction instanceof HTMLButtonElement) {
+    stepSaveAction.addEventListener('click', async () => {
+      try {
+        stepSaveAction.disabled = true;
+        setStatus('Saving your strategy...');
+        await saveBotConfig();
+        setStatus('Strategy saved.');
+      } catch (error) {
+        setStatus(error.message || 'Could not save your strategy.', true);
+      } finally {
+        stepSaveAction.disabled = false;
+      }
+    });
+  }
+  if (stepFundingAction instanceof HTMLButtonElement) {
+    stepFundingAction.addEventListener('click', () => {
+      if (!requireSignedInForAction()) {
+        return;
+      }
+      window.location.href = '/ai-bot-funding.html#ai-funding-form';
+    });
+  }
+  if (stepBrokerAction instanceof HTMLButtonElement) {
+    stepBrokerAction.addEventListener('click', () => {
+      if (!requireSignedInForAction()) {
+        return;
+      }
+      window.location.href = '/brokerage-onboarding.html#broker-connect-form';
+    });
+  }
+  if (stepStartAction instanceof HTMLButtonElement) {
+    stepStartAction.addEventListener('click', async () => {
+      if (!uiState.setupProgress.readyForStart) {
+        setStatus('Complete steps 1-4 first to start hands-free trading.', true);
+        return;
+      }
+      try {
+        stepStartAction.disabled = true;
+        setStatus('Starting hands-free AI trading...');
+        await setBotActive(true);
+        setStatus('Hands-free AI trading is now active.');
+      } catch (error) {
+        setStatus(error.message || 'Could not start hands-free trading.', true);
+      } finally {
+        stepStartAction.disabled = false;
+      }
+    });
+  }
 
   if (modeSelect instanceof HTMLSelectElement) {
     modeSelect.addEventListener('change', () => {
@@ -820,22 +1180,34 @@ function setupForm() {
 
   if (fundingButton instanceof HTMLButtonElement) {
     fundingButton.addEventListener('click', () => {
+      if (!requireSignedInForAction()) {
+        return;
+      }
       window.location.href = '/ai-bot-funding.html';
     });
   }
   if (accountButton instanceof HTMLButtonElement) {
     accountButton.addEventListener('click', () => {
+      if (!requireSignedInForAction()) {
+        return;
+      }
       window.location.href = '/ai-bot-account.html';
     });
   }
   if (brokerageButton instanceof HTMLButtonElement) {
     brokerageButton.addEventListener('click', () => {
+      if (!requireSignedInForAction()) {
+        return;
+      }
       window.location.href = '/brokerage-onboarding.html';
     });
   }
 
   if (refreshControlLinkButton instanceof HTMLButtonElement) {
     refreshControlLinkButton.addEventListener('click', async () => {
+      if (!requireSignedInForAction()) {
+        return;
+      }
       try {
         refreshControlLinkButton.disabled = true;
         setStatus('Refreshing AI control center...');
@@ -851,6 +1223,9 @@ function setupForm() {
 
   if (copyControlLinkButton instanceof HTMLButtonElement) {
     copyControlLinkButton.addEventListener('click', async () => {
+      if (!requireSignedInForAction()) {
+        return;
+      }
       if (!currentControlLink) {
         setStatus('No AI control link available yet.', true);
         return;
@@ -866,6 +1241,9 @@ function setupForm() {
 
   if (openControlLinkButton instanceof HTMLButtonElement) {
     openControlLinkButton.addEventListener('click', () => {
+      if (!requireSignedInForAction()) {
+        return;
+      }
       if (!currentControlLink) {
         setStatus('No control link available to open.', true);
         return;
@@ -923,6 +1301,9 @@ function setupForm() {
 
   if (refreshButton instanceof HTMLButtonElement) {
     refreshButton.addEventListener('click', async () => {
+      if (!requireSignedInForAction()) {
+        return;
+      }
       try {
         refreshButton.disabled = true;
         setStatus('Refreshing bot state...');
@@ -938,6 +1319,9 @@ function setupForm() {
 
   if (pauseButton instanceof HTMLButtonElement) {
     pauseButton.addEventListener('click', async () => {
+      if (!requireSignedInForAction()) {
+        return;
+      }
       try {
         pauseButton.disabled = true;
         setStatus('Pausing bot...');
@@ -953,6 +1337,9 @@ function setupForm() {
 
   if (resumeButton instanceof HTMLButtonElement) {
     resumeButton.addEventListener('click', async () => {
+      if (!requireSignedInForAction()) {
+        return;
+      }
       try {
         resumeButton.disabled = true;
         setStatus('Resuming bot...');
@@ -968,29 +1355,33 @@ function setupForm() {
 }
 
 async function init() {
+  bindAuthBannerLinks();
+  setInitialSkeletonState();
+  setupAccordions();
+  setupForm();
+
   const existingToken = getStoredToken();
   if (!existingToken) {
     await tryRestoreSession();
   }
-  if (!getStoredToken()) {
-    if (typeof window.redirectToSignIn === 'function') {
-      window.redirectToSignIn(`${window.location.pathname || '/ai-bot-trader.html'}${window.location.search || ''}${window.location.hash || ''}`);
-      return;
-    }
-    showSignInNeeded('Please log in to use AI Bot Trader.');
+  const token = getStoredToken();
+  uiState.isAuthenticated = Boolean(token);
+  updateAuthBannerVisibility(uiState.isAuthenticated);
+
+  if (!uiState.isAuthenticated) {
+    updateGlobalUi(null);
+    setStatus('Sign in to save your setup and activate the bot.');
     return;
   }
-  setupForm();
   try {
     await loadBotState();
     setStatus('AI Bot Trader ready.');
   } catch (error) {
     if (error.status === 401) {
-      if (typeof window.redirectToSignIn === 'function') {
-        window.redirectToSignIn(`${window.location.pathname || '/ai-bot-trader.html'}${window.location.search || ''}${window.location.hash || ''}`);
-        return;
-      }
-      showSignInNeeded('Please log in to use AI Bot Trader.');
+      uiState.isAuthenticated = false;
+      updateAuthBannerVisibility(false);
+      updateGlobalUi(null);
+      showSignInNeeded('Please sign in to save your setup and activate the bot.');
       return;
     }
     if (error.status === 404) {

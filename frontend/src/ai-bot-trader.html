@@ -6,120 +6,325 @@
     <title>DumbDollars AI Bot Trader</title>
     <link rel="stylesheet" href="./styles.css" />
   </head>
-  <body class="payment-page-body">
-    <main class="ai-trade-page-shell">
-      <article class="ai-trade-page-card card" role="main" aria-labelledby="ai-bot-title">
-        <a class="open-link" href="/">Back to dashboard</a>
-        <div class="pro-plan-logo-wrap" aria-hidden="true">
-          <img class="pro-plan-logo-image" src="./logo-mark.svg" alt="" />
-        </div>
-        <h1 id="ai-bot-title">AI Bot Trader</h1>
-        <p class="pro-plan-subtitle">Set up your AI bot in 2 minutes: pick a risk profile, save, then follow guided funding + broker steps.</p>
+  <body class="payment-page-body ai-bot-trader-page">
+    <main class="ai-trade-page-shell ai-bot-trader-shell">
+      <article class="ai-trade-page-card card ai-bot-trader-card" role="main" aria-labelledby="ai-bot-title">
+        <a class="open-link ai-back-link" href="/">Back to dashboard</a>
 
-        <section class="ai-bot-quick-setup card" aria-labelledby="ai-bot-quick-setup-title">
-          <h3 id="ai-bot-quick-setup-title">Quick Setup (Recommended)</h3>
-          <p class="small-note">Choose a profile, then use one of the quick save buttons. You can still tune advanced settings anytime.</p>
-          <div class="ai-bot-actions">
-            <button type="button" class="btn-secondary ai-bot-preset-btn" data-preset-profile="conservative">Conservative</button>
-            <button type="button" class="btn-secondary ai-bot-preset-btn" data-preset-profile="balanced">Balanced</button>
-            <button type="button" class="btn-secondary ai-bot-preset-btn" data-preset-profile="aggressive">Aggressive</button>
-            <button type="button" class="btn-secondary" id="ai-bot-toggle-advanced">Show Advanced Settings</button>
+        <section class="ai-onboard-hero ai-section" aria-labelledby="ai-bot-title">
+          <div class="pro-plan-logo-wrap ai-hero-logo" aria-hidden="true">
+            <img class="pro-plan-logo-image" src="./logo-mark.svg" alt="" />
+          </div>
+          <h1 id="ai-bot-title">Your AI Trades For You — Hands Free</h1>
+          <p class="ai-onboard-subtitle">
+            Set your strategy once. The AI handles everything else — scanning, entering, and exiting
+            trades automatically while you go about your day.
+          </p>
+          <div class="ai-onboard-step-track" aria-label="AI Trader setup progress">
+            <div class="ai-hero-step is-current" data-hero-step="strategy">
+              <span class="ai-hero-step-label">1. Choose Strategy</span>
+            </div>
+            <div class="ai-hero-step" data-hero-step="configure">
+              <span class="ai-hero-step-label">2. Configure</span>
+            </div>
+            <div class="ai-hero-step" data-hero-step="account">
+              <span class="ai-hero-step-label">3. Open Account</span>
+            </div>
+            <div class="ai-hero-step" data-hero-step="live">
+              <span class="ai-hero-step-label">4. Go Live</span>
+            </div>
+          </div>
+        </section>
+
+        <section id="ai-bot-auth-banner" class="ai-auth-banner ai-section" hidden>
+          <p class="ai-auth-banner-text">
+            ⚠️ Sign in to save your setup and activate the bot →
+          </p>
+          <div class="ai-auth-banner-actions">
+            <a id="ai-auth-signin" class="open-link btn-secondary" href="/ai-trade-access.html?mode=login&next=%2Fai-bot-trader.html">Sign In</a>
+            <a id="ai-auth-signup" class="open-link" href="/ai-trade-access.html?mode=signup&next=%2Fai-bot-trader.html">Sign Up</a>
+          </div>
+        </section>
+
+        <section class="ai-bot-quick-setup card ai-section" aria-labelledby="ai-bot-quick-setup-title">
+          <h3 id="ai-bot-quick-setup-title">Step 1: Choose Your Risk Profile</h3>
+          <p class="small-note">Pick the style that matches your comfort level. You can fine-tune details in Step 2 below.</p>
+          <div class="ai-risk-profile-grid">
+            <button type="button" class="ai-risk-profile-card ai-bot-preset-btn ai-risk-profile-card--conservative" data-preset-profile="conservative">
+              <span class="ai-risk-profile-icon" aria-hidden="true">🛡️</span>
+              <span class="ai-risk-profile-title">Conservative</span>
+              <span class="ai-risk-profile-subtitle">Lower risk, slower gains</span>
+              <span class="ai-risk-profile-description">
+                Fewer trades, tighter stops, focuses on stable large-cap stocks. Best if you want to protect capital.
+              </span>
+            </button>
+            <button type="button" class="ai-risk-profile-card ai-bot-preset-btn ai-risk-profile-card--balanced" data-preset-profile="balanced">
+              <span class="ai-risk-profile-icon" aria-hidden="true">⚖️</span>
+              <span class="ai-risk-profile-title">Balanced</span>
+              <span class="ai-risk-profile-subtitle">Moderate risk, steady growth</span>
+              <span class="ai-risk-profile-description">
+                A mix of momentum and stability. The most popular setting for hands-free trading.
+              </span>
+            </button>
+            <button type="button" class="ai-risk-profile-card ai-bot-preset-btn ai-risk-profile-card--aggressive" data-preset-profile="aggressive">
+              <span class="ai-risk-profile-icon" aria-hidden="true">🚀</span>
+              <span class="ai-risk-profile-title">Aggressive</span>
+              <span class="ai-risk-profile-subtitle">Higher risk, higher upside</span>
+              <span class="ai-risk-profile-description">
+                More trades, wider targets, focuses on high-momentum stocks. Best for traders comfortable with volatility.
+              </span>
+            </button>
           </div>
           <p id="ai-bot-quick-profile" class="small-note">Risk profile: Balanced (default)</p>
-          <div class="ai-bot-actions">
-            <button id="ai-bot-quick-paper" type="button">Quick Save + Open Test Area</button>
-            <button id="ai-bot-quick-live" class="btn-secondary" type="button">Quick Save + Open Live Setup</button>
+          <div class="ai-bot-actions ai-bot-actions--quick">
+            <button id="ai-bot-quick-paper" type="button">💾 Save &amp; Start Paper Trading (Free)</button>
+            <button id="ai-bot-quick-live" class="btn-secondary" type="button">🚀 Save &amp; Go Live</button>
+            <button type="button" class="btn-secondary" id="ai-bot-toggle-advanced">Show Advanced Settings</button>
+          </div>
+          <p class="small-note ai-paper-note">Paper trading uses fake money so you can test the bot risk-free before going live.</p>
+        </section>
+
+        <section class="ai-bot-quick-setup card ai-section" aria-labelledby="ai-bot-link-steps-title">
+          <h3 id="ai-bot-link-steps-title">Step-by-Step Setup Tracker</h3>
+          <div class="ai-setup-tracker">
+            <article class="ai-setup-step-card" data-setup-step="1">
+              <div class="ai-setup-step-index">1</div>
+              <div class="ai-setup-step-copy">
+                <h4>Sign In to Save Your Setup</h4>
+                <p>Your bot settings and trade history are tied to your account.</p>
+              </div>
+              <div class="ai-setup-step-action">
+                <button id="ai-step-auth-action" class="btn-secondary" type="button">Sign In / Sign Up →</button>
+              </div>
+            </article>
+            <article class="ai-setup-step-card" data-setup-step="2">
+              <div class="ai-setup-step-index">2</div>
+              <div class="ai-setup-step-copy">
+                <h4>Save Your Strategy</h4>
+                <p>Choose your risk profile and trading style above, then save.</p>
+              </div>
+              <div class="ai-setup-step-action">
+                <button id="ai-step-save-action" class="btn-secondary" type="button">Save Settings</button>
+              </div>
+            </article>
+            <article class="ai-setup-step-card" data-setup-step="3">
+              <div class="ai-setup-step-index">3</div>
+              <div class="ai-setup-step-copy">
+                <h4>Open Funding &amp; Enable Live Mode</h4>
+                <p>Add funds to your trading account so the AI has capital to work with.</p>
+              </div>
+              <div class="ai-setup-step-action">
+                <button id="ai-step-funding-action" class="btn-secondary" type="button">Open Funding Setup →</button>
+              </div>
+            </article>
+            <article class="ai-setup-step-card" data-setup-step="4">
+              <div class="ai-setup-step-index">4</div>
+              <div class="ai-setup-step-copy">
+                <h4>Connect Your Broker &amp; Run Connection Test</h4>
+                <p>Link your brokerage account so the AI can place trades on your behalf.</p>
+              </div>
+              <div class="ai-setup-step-action">
+                <button id="ai-step-broker-action" class="btn-secondary" type="button">Connect Broker →</button>
+              </div>
+            </article>
+            <article class="ai-setup-step-card" data-setup-step="5">
+              <div class="ai-setup-step-index">5</div>
+              <div class="ai-setup-step-copy">
+                <h4>Start Hands-Free AI Trading</h4>
+                <p>Once all steps are complete, flip the switch and the AI takes over.</p>
+              </div>
+              <div class="ai-setup-step-action">
+                <button id="ai-step-start-action" type="button" disabled>Start Trading →</button>
+              </div>
+            </article>
           </div>
         </section>
 
-        <section class="ai-bot-quick-setup card" aria-labelledby="ai-bot-link-steps-title">
-          <h3 id="ai-bot-link-steps-title">Linked Setup Steps (Click each step)</h3>
-          <ol class="detail-list">
-            <li><a class="handsfree-step-link" href="/ai-trade-access.html?next=%2Fai-bot-trader.html"><strong>Step 1:</strong> Sign in so your setup saves to your account.</a></li>
-            <li><a class="handsfree-step-link" href="/ai-bot-trader.html#ai-bot-config-form"><strong>Step 2:</strong> Save AI bot risk + prompt setup on this page.</a></li>
-            <li><a class="handsfree-step-link" href="/ai-bot-funding.html#ai-funding-form"><strong>Step 3:</strong> Open funding page and enable live mode.</a></li>
-            <li><a class="handsfree-step-link" href="/brokerage-onboarding.html#broker-connect-form"><strong>Step 4:</strong> Connect broker and run bridge connection test.</a></li>
-            <li><a class="handsfree-step-link" href="/ai-bot-account.html#ai-account-start-autopilot"><strong>Step 5:</strong> Start hands-free AI trading.</a></li>
-          </ol>
+        <section class="ai-bot-quick-setup card ai-section ai-broker-guide" aria-labelledby="ai-broker-guide-title">
+          <h3 id="ai-broker-guide-title">Step 3: Open Your Trading Account</h3>
+          <p class="ai-broker-guide-subtitle">
+            Open a Brokerage Account — The AI Will Trade Here
+          </p>
+          <p class="small-note">
+            You need a brokerage account to hold your funds and execute trades. The AI connects to it and places orders automatically on your behalf.
+            This takes about 5-10 minutes.
+          </p>
+          <div class="ai-broker-guide-grid">
+            <article class="ai-broker-guide-card ai-broker-guide-card--recommended">
+              <span class="ai-broker-badge">Fastest Setup</span>
+              <div class="ai-broker-icon" aria-hidden="true">🦙</div>
+              <p class="ai-broker-tag">BEST FOR AI TRADING</p>
+              <h4>Alpaca (Recommended)</h4>
+              <p>Built for algorithmic trading. Free to open, no commissions, and connects directly to DumbDollars' AI with no extra steps.</p>
+              <ul class="ai-broker-feature-list">
+                <li>✓ Free account</li>
+                <li>✓ Paper trading available</li>
+                <li>✓ Direct AI integration</li>
+              </ul>
+              <a class="open-link" href="https://alpaca.markets" target="_blank" rel="noopener noreferrer">Open Alpaca Account →</a>
+            </article>
+            <article class="ai-broker-guide-card">
+              <div class="ai-broker-icon" aria-hidden="true">📊</div>
+              <h4>Tradier</h4>
+              <p>Commission-free trading with a developer-friendly API. Good alternative to Alpaca.</p>
+              <ul class="ai-broker-feature-list">
+                <li>✓ Free account</li>
+                <li>✓ Commission-free</li>
+                <li>✓ API access</li>
+              </ul>
+              <a class="open-link" href="https://tradier.com" target="_blank" rel="noopener noreferrer">Open Tradier Account →</a>
+            </article>
+            <article class="ai-broker-guide-card">
+              <div class="ai-broker-icon" aria-hidden="true">🏦</div>
+              <h4>Interactive Brokers</h4>
+              <p>Largest broker globally. Best for large accounts and international users.</p>
+              <ul class="ai-broker-feature-list">
+                <li>✓ Established broker</li>
+                <li>✓ Low margin rates</li>
+                <li>✓ Global access</li>
+              </ul>
+              <a class="open-link" href="https://www.interactivebrokers.com" target="_blank" rel="noopener noreferrer">Open IBKR Account →</a>
+            </article>
+          </div>
+          <p class="small-note ai-broker-guide-note">
+            After opening your account, return here and click "Connect Broker" to link it. The AI cannot trade until the broker connection test passes.
+          </p>
+          <div class="ai-broker-faq">
+            <article class="ai-broker-faq-item">
+              <h4>Is my money safe?</h4>
+              <p>Yes. Your funds stay in your brokerage account at all times. DumbDollars only sends trade instructions — it never holds your money.</p>
+            </article>
+            <article class="ai-broker-faq-item">
+              <h4>Can I use paper trading first?</h4>
+              <p>Yes. Alpaca offers free paper trading with $100,000 in simulated funds. We strongly recommend testing there before going live.</p>
+            </article>
+            <article class="ai-broker-faq-item">
+              <h4>How does the AI get access to trade?</h4>
+              <p>You generate an API key in your broker account and paste it into DumbDollars. This gives the AI permission to trade on your behalf.</p>
+            </article>
+          </div>
         </section>
 
-        <section class="ai-bot-quick-setup card" aria-labelledby="ai-bot-strategy-templates-title">
-          <h3 id="ai-bot-strategy-templates-title">AI Trading Templates (Common live AI styles)</h3>
-          <p class="small-note">These templates are inspired by common algorithmic AI approaches used in live trading systems. Click one to apply and customize.</p>
-          <div class="ai-bot-actions">
-            <button type="button" class="btn-secondary ai-strategy-template-btn" data-strategy-template="trend-following">Trend Following</button>
-            <button type="button" class="btn-secondary ai-strategy-template-btn" data-strategy-template="momentum-breakout">Momentum Breakout</button>
-            <button type="button" class="btn-secondary ai-strategy-template-btn" data-strategy-template="mean-reversion">Mean Reversion</button>
-            <button type="button" class="btn-secondary ai-strategy-template-btn" data-strategy-template="volatility-regime">Volatility Regime</button>
+        <section class="ai-bot-quick-setup card ai-section" aria-labelledby="ai-bot-strategy-templates-title">
+          <h3 id="ai-bot-strategy-templates-title">Step 4: Pick an AI Trading Template</h3>
+          <div class="ai-template-scroll" aria-label="AI trading template options">
+            <button type="button" class="ai-template-card ai-strategy-template-btn" data-strategy-template="trend-following">
+              <span class="ai-template-title">Trend Following</span>
+              <span class="ai-template-description">Targets continuation moves in strong trends with controlled risk.</span>
+              <span class="ai-template-tags"><span>Momentum</span><span>Large Cap</span><span>Swing</span></span>
+            </button>
+            <button type="button" class="ai-template-card ai-strategy-template-btn" data-strategy-template="momentum-breakout">
+              <span class="ai-template-title">Momentum Breakout</span>
+              <span class="ai-template-description">Focuses on high-volume breakouts for intraday opportunity capture.</span>
+              <span class="ai-template-tags"><span>Momentum</span><span>Intraday</span><span>Volume</span></span>
+            </button>
+            <button type="button" class="ai-template-card ai-strategy-template-btn" data-strategy-template="mean-reversion">
+              <span class="ai-template-title">Mean Reversion</span>
+              <span class="ai-template-description">Buys oversold pullbacks and trims near fair-value reversion zones.</span>
+              <span class="ai-template-tags"><span>Reversion</span><span>Swing</span><span>Defensive</span></span>
+            </button>
+            <button type="button" class="ai-template-card ai-strategy-template-btn" data-strategy-template="volatility-regime">
+              <span class="ai-template-title">Volatility Regime</span>
+              <span class="ai-template-description">Adapts aggressiveness based on market volatility and liquidity signals.</span>
+              <span class="ai-template-tags"><span>Volatility</span><span>Risk First</span><span>Adaptive</span></span>
+            </button>
           </div>
           <p id="ai-strategy-template-active" class="small-note">Template: Momentum Breakout (default).</p>
+          <label class="ai-bot-field field-full">
+            <span class="ai-field-label">Customize Your AI's Instructions (optional)</span>
+            <textarea
+              id="ai-bot-prompt"
+              rows="4"
+              placeholder="Describe how you want the AI to trade... Example: Focus on tech momentum stocks, avoid earnings, max 5 positions."
+              required
+            ></textarea>
+            <span class="ai-field-helper">The AI reads this before every trading cycle. Be as specific or as general as you like.</span>
+          </label>
         </section>
 
-        <form id="ai-bot-config-form" class="pro-plan-box ai-bot-form" novalidate>
-          <label>
-            Strategy prompt
-            <textarea id="ai-bot-prompt" rows="4" placeholder="Trade momentum breakouts with strict risk control, avoid earnings-day names, focus on liquid large caps." required></textarea>
-          </label>
-          <div class="ai-bot-grid">
-            <label>
-              Capital ($)
-              <input id="ai-bot-capital" type="number" min="100" step="100" value="10000" required />
-            </label>
-            <label>
-              Trading mode
-              <select id="ai-bot-trading-mode">
-                <option value="paper" selected>Test Area (Paper Trading)</option>
-                <option value="live">Live Funding Mode</option>
-              </select>
-            </label>
-            <label>
-              Timeframe
-              <select id="ai-bot-timeframe">
-                <option value="intraday" selected>Intraday</option>
-                <option value="swing">Swing</option>
-                <option value="position">Position</option>
-              </select>
-            </label>
-            <label>
-              Max risk per trade (%)
-              <input id="ai-bot-risk-pct" type="number" min="0.1" max="10" step="0.1" value="1.5" required />
-            </label>
-            <label>
-              Target holdings
-              <input id="ai-bot-target-holdings" type="number" min="1" max="25" step="1" value="6" required />
-            </label>
-            <label>
-              Min reward/risk ratio
-              <input id="ai-bot-min-rr" type="number" min="0.5" max="8" step="0.1" value="1.8" required />
-            </label>
-            <label id="ai-bot-auto-execute-wrap" class="field-full" hidden>
+        <form id="ai-bot-config-form" class="pro-plan-box ai-bot-form ai-section ai-settings-form" novalidate>
+          <h3>Step 2: Configure Core Bot Settings</h3>
+          <section class="ai-settings-group">
+            <h4>Capital &amp; Risk Controls</h4>
+            <div class="ai-bot-grid">
+              <label class="ai-bot-field">
+                <span class="ai-field-label">Capital ($)</span>
+                <input id="ai-bot-capital" type="number" min="100" step="100" value="10000" required />
+                <span class="ai-field-helper">How much money the AI is allowed to trade with.</span>
+              </label>
+              <label class="ai-bot-field">
+                <span class="ai-field-label">Max risk per trade (%)</span>
+                <input id="ai-bot-risk-pct" type="number" min="0.1" max="10" step="0.1" value="1.5" required />
+                <span class="ai-field-helper">Maximum % of capital the AI risks on any single trade. 1-2% is standard for most traders.</span>
+              </label>
+              <label class="ai-bot-field">
+                <span class="ai-field-label">Target holdings</span>
+                <input id="ai-bot-target-holdings" type="number" min="1" max="25" step="1" value="6" required />
+                <span class="ai-field-helper">How many stocks the AI holds at once. More = more diversified.</span>
+              </label>
+              <label class="ai-bot-field">
+                <span class="ai-field-label">Min reward/risk ratio</span>
+                <input id="ai-bot-min-rr" type="number" min="0.5" max="8" step="0.1" value="1.8" required />
+                <span class="ai-field-helper">The AI only takes trades where potential gain is at least this many times the potential loss.</span>
+              </label>
+            </div>
+          </section>
+
+          <section class="ai-settings-group">
+            <h4>Execution Mode</h4>
+            <div class="ai-bot-grid">
+              <label class="ai-bot-field">
+                <span class="ai-field-label">Trading mode</span>
+                <select id="ai-bot-trading-mode">
+                  <option value="paper" selected>Paper (fake money)</option>
+                  <option value="live">Live (real trades)</option>
+                </select>
+                <span class="ai-field-helper">Paper = fake money for testing. Live = real trades.</span>
+              </label>
+              <label class="ai-bot-field">
+                <span class="ai-field-label">Timeframe</span>
+                <select id="ai-bot-timeframe">
+                  <option value="intraday" selected>Intraday</option>
+                  <option value="swing">Swing</option>
+                  <option value="position">Position</option>
+                </select>
+                <span class="ai-field-helper">How long the AI holds positions.</span>
+              </label>
+            </div>
+          </section>
+
+          <section id="ai-bot-auto-execute-wrap" class="field-full ai-live-toggle-wrap">
+            <label class="ai-live-toggle">
               <input id="ai-bot-auto-execute-live" type="checkbox" />
-              Enable hands-free live execution (AI trades for you after broker setup passes)
+              <span class="ai-live-toggle-switch" aria-hidden="true"></span>
+              <span class="ai-live-toggle-copy">
+                <strong>Enable hands-free live execution</strong>
+                <span>When ON, the AI places real trades automatically after your broker connection passes all checks.</span>
+              </span>
             </label>
-            <p class="small-note field-full"><strong>Easy path:</strong> Save setup → Open Funding + Test → Open Live Brokerage Account → Run broker test until all required checks pass → turn on hands-free execution.</p>
-            <p class="small-note field-full">Broker account signup and identity verification (KYC) must be completed by the user before AI can execute live trades.</p>
-          </div>
+          </section>
+
           <details id="ai-bot-advanced-details" class="ai-bot-advanced-details">
             <summary>Advanced settings (optional)</summary>
             <div class="ai-bot-grid">
-              <label>
-                Max sector exposure (%)
+              <label class="ai-bot-field">
+                <span class="ai-field-label">Max sector exposure (%)</span>
                 <input id="ai-bot-max-sector-exposure-pct" type="number" min="5" max="100" step="1" value="35" required />
               </label>
-              <label>
-                Max gross exposure (%)
+              <label class="ai-bot-field">
+                <span class="ai-field-label">Max gross exposure (%)</span>
                 <input id="ai-bot-max-gross-exposure-pct" type="number" min="10" max="200" step="1" value="100" required />
               </label>
-              <label>
-                Target return per cycle (%)
+              <label class="ai-bot-field">
+                <span class="ai-field-label">Target return per cycle (%)</span>
                 <input id="ai-bot-target-return-pct" type="number" min="0.5" max="50" step="0.1" value="4.5" required />
               </label>
-              <label>
-                Test Area capital ($)
+              <label class="ai-bot-field">
+                <span class="ai-field-label">Test Area capital ($)</span>
                 <input id="ai-bot-test-capital" type="number" min="100" step="100" value="10000" required />
               </label>
-              <label>
-                Test Area risk per trade (%)
+              <label class="ai-bot-field">
+                <span class="ai-field-label">Test Area risk per trade (%)</span>
                 <input id="ai-bot-test-risk-pct" type="number" min="0.1" max="20" step="0.1" value="1.5" required />
               </label>
             </div>
@@ -138,63 +343,143 @@
           <button id="ai-bot-save" type="submit">Save Risk Setup</button>
         </form>
 
-        <p id="ai-bot-status" class="small-note"></p>
+        <p id="ai-bot-status" class="small-note ai-section"></p>
 
-        <section class="ai-trade-consensus">
-          <h3>AI Control Center</h3>
-          <p class="small-note">Use one link to reopen this AI, send prompts, and review exactly what the AI followed in the latest cycle.</p>
-          <div class="ai-bot-actions">
-            <button id="ai-control-refresh-link" class="btn-secondary" type="button">Refresh Control Link</button>
-            <button id="ai-control-copy-link" class="btn-secondary" type="button">Copy Control Link</button>
-            <button id="ai-control-open-link" class="btn-secondary" type="button">Open Control Link</button>
-          </div>
-          <p id="ai-control-link-value" class="small-note">Control link: loading...</p>
-          <form id="ai-control-prompt-form" class="pro-plan-box ai-bot-form" novalidate>
-            <label>
-              Prompt update for AI
-              <textarea id="ai-control-prompt-input" rows="3" placeholder="Example: Focus only on long momentum names in Technology, avoid earnings this week, max 3 positions." required></textarea>
-            </label>
-            <div class="ai-bot-actions">
-              <button id="ai-control-save-prompt" type="submit">Save Prompt to AI</button>
+        <section class="ai-trade-consensus ai-section ai-control-center" aria-labelledby="ai-control-center-title">
+          <h3 id="ai-control-center-title">AI Control Center</h3>
+          <div id="ai-control-status-banner" class="ai-control-status-banner">
+            <div class="ai-control-status-main">
+              <span id="ai-control-status-dot" class="ai-control-status-dot ai-control-status-dot--incomplete" aria-hidden="true"></span>
+              <strong id="ai-control-status-text">Setup Incomplete</strong>
             </div>
+            <div class="ai-control-status-metrics">
+              <div>
+                <span>Account Value</span>
+                <strong id="ai-control-account-value">—</strong>
+              </div>
+              <div>
+                <span>Today's P&amp;L</span>
+                <strong id="ai-control-day-pnl">—</strong>
+              </div>
+            </div>
+          </div>
+
+          <div class="ai-control-link-section">
+            <div class="ai-control-segmented">
+              <button id="ai-control-refresh-link" type="button">Refresh</button>
+              <button id="ai-control-copy-link" type="button">Copy</button>
+              <button id="ai-control-open-link" type="button">Open</button>
+            </div>
+            <div class="ai-control-link-box">
+              <code id="ai-control-link-value"></code>
+            </div>
+          </div>
+
+          <form id="ai-control-prompt-form" class="ai-bot-form ai-control-prompt-form" novalidate>
+            <label class="ai-bot-field field-full">
+              <span class="ai-field-label">Send Instructions to Your AI</span>
+              <textarea
+                id="ai-control-prompt-input"
+                rows="3"
+                placeholder="Example: Focus only on large-cap tech stocks this week, max 3 positions, avoid anything with earnings in the next 3 days."
+                required
+              ></textarea>
+            </label>
+            <button id="ai-control-save-prompt" type="submit">Save Prompt to AI</button>
           </form>
-          <div id="ai-control-following" class="stack"></div>
+
+          <div class="ai-control-actions">
+            <div class="ai-control-actions-row ai-control-actions-row--primary">
+              <button id="open-ai-bot-funding" type="button">Open Funding Setup</button>
+              <button id="open-ai-bot-account" type="button">Open Trading Control</button>
+              <button id="open-live-brokerage-account" type="button">Open Live Account</button>
+            </div>
+            <div class="ai-control-actions-row ai-control-actions-row--secondary">
+              <button id="ai-bot-refresh" class="btn-secondary" type="button">Refresh Bot State</button>
+              <button id="ai-bot-pause" class="btn-secondary" type="button">Pause Bot</button>
+              <button id="ai-bot-resume" class="btn-secondary" type="button">Resume Bot</button>
+            </div>
+          </div>
+
+          <div class="ai-control-accordion-stack">
+            <article class="ai-control-accordion">
+              <button
+                type="button"
+                class="ai-control-accordion-toggle"
+                data-accordion-target="ai-accordion-panel-summary"
+                aria-expanded="true"
+              >
+                <span class="ai-control-accordion-title">Bot Summary</span>
+                <span id="ai-accordion-preview-summary" class="ai-control-accordion-preview">Snapshot of bot mode and capital.</span>
+                <span class="ai-control-accordion-chevron" aria-hidden="true">⌄</span>
+              </button>
+              <div id="ai-accordion-panel-summary" class="ai-control-accordion-panel is-open">
+                <div class="ai-control-accordion-panel-inner">
+                  <div id="ai-bot-summary" class="ai-bot-stack"></div>
+                </div>
+              </div>
+            </article>
+
+            <article class="ai-control-accordion">
+              <button
+                type="button"
+                class="ai-control-accordion-toggle"
+                data-accordion-target="ai-accordion-panel-plan"
+                aria-expanded="false"
+              >
+                <span class="ai-control-accordion-title">Current Plan</span>
+                <span id="ai-accordion-preview-plan" class="ai-control-accordion-preview">Prompt guidance and risk controls.</span>
+                <span class="ai-control-accordion-chevron" aria-hidden="true">⌄</span>
+              </button>
+              <div id="ai-accordion-panel-plan" class="ai-control-accordion-panel">
+                <div class="ai-control-accordion-panel-inner">
+                  <div id="ai-bot-plan" class="ai-bot-stack"></div>
+                  <div id="ai-control-following" class="ai-bot-stack"></div>
+                </div>
+              </div>
+            </article>
+
+            <article class="ai-control-accordion">
+              <button
+                type="button"
+                class="ai-control-accordion-toggle"
+                data-accordion-target="ai-accordion-panel-orders"
+                aria-expanded="false"
+              >
+                <span class="ai-control-accordion-title">Autonomous Order Activity</span>
+                <span id="ai-accordion-preview-orders" class="ai-control-accordion-preview">No orders placed yet.</span>
+                <span class="ai-control-accordion-chevron" aria-hidden="true">⌄</span>
+              </button>
+              <div id="ai-accordion-panel-orders" class="ai-control-accordion-panel">
+                <div class="ai-control-accordion-panel-inner">
+                  <div id="ai-bot-orders" class="stack"></div>
+                </div>
+              </div>
+            </article>
+
+            <article class="ai-control-accordion">
+              <button
+                type="button"
+                class="ai-control-accordion-toggle"
+                data-accordion-target="ai-accordion-panel-logs"
+                aria-expanded="false"
+              >
+                <span class="ai-control-accordion-title">Recent Cycle Logs</span>
+                <span id="ai-accordion-preview-logs" class="ai-control-accordion-preview">Cycle-level adherence and outcomes.</span>
+                <span class="ai-control-accordion-chevron" aria-hidden="true">⌄</span>
+              </button>
+              <div id="ai-accordion-panel-logs" class="ai-control-accordion-panel">
+                <div class="ai-control-accordion-panel-inner">
+                  <div id="ai-bot-logs" class="stack"></div>
+                </div>
+              </div>
+            </article>
+          </div>
         </section>
 
-        <section class="ai-bot-actions">
-          <button id="open-ai-bot-funding" type="button">Open Hands-Free Funding Setup</button>
-          <button id="open-ai-bot-account" class="btn-secondary" type="button">Open Hands-Free Trading Control</button>
-          <button id="open-live-brokerage-account" class="btn-secondary" type="button">Open Live Brokerage Account</button>
-        </section>
-
-        <section class="ai-bot-actions">
-          <button id="ai-bot-refresh" class="btn-secondary" type="button">Refresh Bot State</button>
-          <button id="ai-bot-pause" class="btn-secondary" type="button">Pause Bot</button>
-          <button id="ai-bot-resume" class="btn-secondary" type="button">Resume Bot</button>
-        </section>
-
-        <section class="ai-bot-layout">
-          <article class="ai-trade-consensus">
-            <h3>Bot Summary</h3>
-            <div id="ai-bot-summary"></div>
-          </article>
-          <article class="ai-trade-consensus">
-            <h3>Current Plan</h3>
-            <div id="ai-bot-plan"></div>
-          </article>
-        </section>
-
-        <section class="ai-trade-consensus">
-          <h3>Autonomous Order Activity</h3>
-          <div id="ai-bot-orders" class="stack"></div>
-        </section>
-
-        <section class="ai-trade-consensus">
-          <h3>Recent Cycle Logs</h3>
-          <div id="ai-bot-logs" class="stack"></div>
-        </section>
-
-        <p class="small-note">Hands-free mode is designed for autonomous execution. Keep broker bridge, permissions, and live funding active so AI can continue placing trades.</p>
+        <p class="small-note ai-section">
+          Hands-free mode is designed for autonomous execution. Keep broker bridge, permissions, and live funding active so AI can continue placing trades.
+        </p>
       </article>
     </main>
     <script src="./session-helper.js"></script>
