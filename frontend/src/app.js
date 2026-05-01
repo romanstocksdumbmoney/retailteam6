@@ -1878,7 +1878,12 @@ function openProPlanScreen() {
 }
 
 function openAutoTraderPage() {
-  window.location.href = '/ai-bot-trader.html';
+  const hub = document.getElementById('ai-trader-hub');
+  if (hub) {
+    hub.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    return;
+  }
+  window.location.href = '/#ai-trader-hub';
 }
 
 function openBrokerageOnboardingPage() {
@@ -2339,6 +2344,7 @@ function ensureBrowseToolsFallbackMenuItems(browseMenu) {
   }
   const fallbackLinks = [
     { label: 'Dashboard', href: '/' },
+    { label: 'AI Trader', href: '#ai-trader-hub' },
     { label: 'Search', href: '#stock-outlook-module' },
     { label: 'AI Tools', href: '#ai-tools-overview' },
     { label: 'Portfolio', href: '/portfolios.html' },

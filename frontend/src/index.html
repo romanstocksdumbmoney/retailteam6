@@ -35,6 +35,7 @@
             aria-hidden="true"
           >
             <a class="browse-tools-link" role="menuitem" href="/">Dashboard</a>
+            <a class="browse-tools-link" role="menuitem" href="#ai-trader-hub">AI Trader</a>
             <a class="browse-tools-link" role="menuitem" href="#stock-outlook-module">Search</a>
             <a class="browse-tools-link" role="menuitem" href="#ai-tools-overview">AI Tools</a>
             <a class="browse-tools-link" role="menuitem" href="/portfolios.html">Portfolio</a>
@@ -73,6 +74,7 @@
 
         <nav class="dashboard-main-nav" aria-label="Primary navigation">
           <a class="open-link" href="/">Dashboard</a>
+          <a id="ai-trader-nav-link" class="open-link ai-trader-nav-link" href="#ai-trader-hub">AI Trader <span id="ai-trader-nav-dot" class="ai-trader-nav-dot" aria-hidden="true"></span></a>
           <a class="open-link" href="#stock-outlook-module">Search</a>
           <a class="open-link" href="#ai-tools-overview">AI Tools</a>
           <a class="open-link" href="/portfolios.html">Portfolio</a>
@@ -616,6 +618,194 @@
           </details>
         </aside>
         <div class="main-panels">
+          <section id="ai-trader-hub" class="card module-card module-wide ai-trader-hub" aria-labelledby="ai-trader-hub-title">
+            <div class="section-header ai-trader-hub-header">
+              <h2 id="ai-trader-hub-title">AI Trader Control Center</h2>
+              <span id="ai-trader-hub-top-status" class="chip ai-trader-status-chip ai-trader-status-chip--stopped">BOT STOPPED</span>
+            </div>
+            <p class="small-note">Monitor and control the bot from one visual center. Status, activity, scans, positions, risk settings, and performance update in real time.</p>
+
+            <section class="ai-trader-control-center" aria-labelledby="ai-trader-control-title">
+              <h3 id="ai-trader-control-title">Bot Status + Controls</h3>
+              <div class="ai-trader-control-grid">
+                <div class="ai-trader-status-panel">
+                  <div id="ai-trader-status-orb" class="ai-trader-status-orb ai-trader-status-orb--stopped" aria-hidden="true"></div>
+                  <p id="ai-trader-status-word" class="ai-trader-status-word">STOPPED</p>
+                  <p id="ai-trader-status-subline" class="small-note ai-trader-status-subline">Configure and start your bot to begin scanning.</p>
+                </div>
+                <div class="ai-trader-controls-panel">
+                  <div class="ai-trader-controls-row">
+                    <button id="ai-trader-start-btn" class="ai-trader-control-btn ai-trader-control-btn--start" type="button">
+                      <span class="ai-trader-control-icon" aria-hidden="true">&gt;</span>
+                      START
+                    </button>
+                    <button id="ai-trader-pause-btn" class="ai-trader-control-btn ai-trader-control-btn--pause" type="button">
+                      <span class="ai-trader-control-icon" aria-hidden="true">||</span>
+                      PAUSE
+                    </button>
+                    <button id="ai-trader-stop-btn" class="ai-trader-control-btn ai-trader-control-btn--stop" type="button">
+                      <span class="ai-trader-control-icon" aria-hidden="true">[]</span>
+                      STOP
+                    </button>
+                  </div>
+                  <div id="ai-trader-stats-bar" class="ai-trader-stats-bar">
+                    <div class="ai-trader-stat"><span class="ai-trader-stat-label">Trades Today</span><span id="ai-trader-stat-trades-today" class="ai-trader-stat-value">--</span></div>
+                    <div class="ai-trader-stat"><span class="ai-trader-stat-label">Win Rate Today</span><span id="ai-trader-stat-win-rate" class="ai-trader-stat-value">--%</span></div>
+                    <div class="ai-trader-stat"><span class="ai-trader-stat-label">P&amp;L Today</span><span id="ai-trader-stat-pnl-today" class="ai-trader-stat-value">$0.00</span></div>
+                    <div class="ai-trader-stat"><span class="ai-trader-stat-label">Open Positions</span><span id="ai-trader-stat-open-positions" class="ai-trader-stat-value">0 / 0</span></div>
+                    <div class="ai-trader-stat"><span class="ai-trader-stat-label">Next Scan In</span><span id="ai-trader-stat-next-scan" class="ai-trader-stat-value">--s</span></div>
+                    <div class="ai-trader-stat"><span class="ai-trader-stat-label">Market Status</span><span id="ai-trader-stat-market-status" class="ai-trader-stat-value">CLOSED --</span></div>
+                  </div>
+                </div>
+              </div>
+            </section>
+
+            <section class="ai-trader-feed-panel" aria-labelledby="ai-trader-feed-title">
+              <div class="section-header">
+                <h3 id="ai-trader-feed-title">Live Activity Feed</h3>
+                <span class="chip">Last 20 actions</span>
+              </div>
+              <div id="ai-trader-activity-list" class="ai-trader-activity-list ai-trader-skeleton-wrap" aria-live="polite">
+                <article class="ai-trader-activity-item ai-trader-skeleton"></article>
+                <article class="ai-trader-activity-item ai-trader-skeleton"></article>
+                <article class="ai-trader-activity-item ai-trader-skeleton"></article>
+              </div>
+            </section>
+
+            <section class="ai-trader-positions-panel" aria-labelledby="ai-trader-positions-title">
+              <div class="section-header">
+                <h3 id="ai-trader-positions-title">Open Positions</h3>
+                <span id="ai-trader-positions-chip" class="chip">Live</span>
+              </div>
+              <div id="ai-trader-positions-grid" class="ai-trader-positions-grid ai-trader-skeleton-wrap">
+                <article class="ai-trader-position-card ai-trader-skeleton"></article>
+                <article class="ai-trader-position-card ai-trader-skeleton"></article>
+                <article class="ai-trader-position-card ai-trader-skeleton"></article>
+              </div>
+            </section>
+
+            <section class="ai-trader-scanner-panel" aria-labelledby="ai-trader-scanner-title">
+              <div class="section-header">
+                <h3 id="ai-trader-scanner-title">Signal Scanner</h3>
+                <span class="chip">AI brain live</span>
+              </div>
+              <div id="ai-trader-signal-list" class="ai-trader-signal-list ai-trader-skeleton-wrap">
+                <article class="ai-trader-signal-row ai-trader-skeleton"></article>
+                <article class="ai-trader-signal-row ai-trader-skeleton"></article>
+                <article class="ai-trader-signal-row ai-trader-skeleton"></article>
+              </div>
+            </section>
+
+            <section class="ai-trader-settings-panel" aria-labelledby="ai-trader-settings-title">
+              <div class="section-header">
+                <h3 id="ai-trader-settings-title">Bot Settings</h3>
+                <span id="ai-trader-settings-save-flash" class="chip hidden">Saved ✓</span>
+              </div>
+              <div class="ai-trader-settings-grid">
+                <article class="ai-trader-setting-card">
+                  <h4>Risk Level</h4>
+                  <div id="ai-trader-risk-level-cards" class="ai-trader-risk-level-cards">
+                    <button type="button" class="ai-trader-risk-card" data-risk-level="conservative">
+                      <strong>CONSERVATIVE</strong>
+                      <span>Lower risk per trade, steadier pace.</span>
+                    </button>
+                    <button type="button" class="ai-trader-risk-card" data-risk-level="moderate">
+                      <strong>MODERATE</strong>
+                      <span>Balanced risk and growth targets.</span>
+                    </button>
+                    <button type="button" class="ai-trader-risk-card" data-risk-level="aggressive">
+                      <strong>AGGRESSIVE</strong>
+                      <span>Higher risk, faster strategy rotation.</span>
+                    </button>
+                  </div>
+                </article>
+
+                <article class="ai-trader-setting-card">
+                  <h4>Stop Loss %</h4>
+                  <label class="ai-trader-slider-wrap" for="ai-trader-setting-stop-loss">
+                    <input id="ai-trader-setting-stop-loss" type="range" min="0.5" max="15" step="0.1" value="2.5" />
+                    <span id="ai-trader-setting-stop-loss-text" class="small-note">Sell if down 2.5%</span>
+                  </label>
+                </article>
+
+                <article class="ai-trader-setting-card">
+                  <h4>Take Profit %</h4>
+                  <label class="ai-trader-slider-wrap" for="ai-trader-setting-take-profit">
+                    <input id="ai-trader-setting-take-profit" type="range" min="1" max="30" step="0.1" value="5.5" />
+                    <span id="ai-trader-setting-take-profit-text" class="small-note">Sell if up 5.5%</span>
+                  </label>
+                </article>
+
+                <article class="ai-trader-setting-card">
+                  <h4>Max Position Size</h4>
+                  <label for="ai-trader-setting-max-position-size">
+                    <input id="ai-trader-setting-max-position-size" type="number" min="100" step="100" value="1000" />
+                  </label>
+                  <div class="ai-trader-progress-bar" aria-hidden="true">
+                    <div id="ai-trader-setting-position-size-fill" class="ai-trader-progress-fill"></div>
+                  </div>
+                  <p id="ai-trader-setting-position-size-text" class="small-note">0% of portfolio per position</p>
+                </article>
+
+                <article class="ai-trader-setting-card">
+                  <h4>Max Open Positions</h4>
+                  <div class="ai-trader-stepper">
+                    <button id="ai-trader-setting-max-open-minus" type="button" class="btn-secondary">-</button>
+                    <span id="ai-trader-setting-max-open-value" class="ai-trader-stepper-value">4</span>
+                    <button id="ai-trader-setting-max-open-plus" type="button" class="btn-secondary">+</button>
+                  </div>
+                </article>
+
+                <article class="ai-trader-setting-card">
+                  <h4>Stock Universe</h4>
+                  <div id="ai-trader-setting-universe" class="ai-trader-pill-row">
+                    <button type="button" class="ai-trader-pill" data-universe="sp500">S&amp;P 500</button>
+                    <button type="button" class="ai-trader-pill" data-universe="nasdaq100">NASDAQ 100</button>
+                    <button type="button" class="ai-trader-pill" data-universe="custom">Custom Watchlist</button>
+                  </div>
+                </article>
+
+                <article class="ai-trader-setting-card">
+                  <h4>Daily Max Loss Limit</h4>
+                  <label for="ai-trader-setting-daily-max-loss">
+                    <input id="ai-trader-setting-daily-max-loss" type="number" min="50" step="50" value="500" />
+                  </label>
+                  <p id="ai-trader-setting-daily-max-loss-text" class="small-note">Bot stops for the day if portfolio drops $500.</p>
+                </article>
+              </div>
+            </section>
+
+            <section class="ai-trader-performance-panel" aria-labelledby="ai-trader-performance-title">
+              <div class="section-header">
+                <h3 id="ai-trader-performance-title">Performance Summary</h3>
+                <span class="chip">Today / Week / Month / All Time</span>
+              </div>
+              <div id="ai-trader-performance-tabs" class="ai-trader-pill-row">
+                <button type="button" class="ai-trader-pill ai-trader-pill--tab is-active" data-performance-period="today">Today</button>
+                <button type="button" class="ai-trader-pill ai-trader-pill--tab" data-performance-period="week">This Week</button>
+                <button type="button" class="ai-trader-pill ai-trader-pill--tab" data-performance-period="month">This Month</button>
+                <button type="button" class="ai-trader-pill ai-trader-pill--tab" data-performance-period="all">All Time</button>
+              </div>
+              <div class="ai-trader-performance-metrics">
+                <article class="ai-trader-metric-card"><h4>Total P&amp;L</h4><p id="ai-trader-metric-pnl">$0.00 (0.00%)</p></article>
+                <article class="ai-trader-metric-card"><h4>Trades</h4><p id="ai-trader-metric-trades">0</p></article>
+                <article class="ai-trader-metric-card"><h4>Win Rate</h4><p id="ai-trader-metric-win-rate">0%</p></article>
+                <article class="ai-trader-metric-card"><h4>Best Trade</h4><p id="ai-trader-metric-best">None</p></article>
+                <article class="ai-trader-metric-card"><h4>Worst Trade</h4><p id="ai-trader-metric-worst">None</p></article>
+                <article class="ai-trader-metric-card"><h4>Avg Hold</h4><p id="ai-trader-metric-hold-time">0m</p></article>
+              </div>
+              <div id="ai-trader-performance-chart" class="ai-trader-performance-chart ai-trader-skeleton-wrap">
+                <span class="ai-trader-chart-label">Daily P&amp;L</span>
+                <div class="ai-trader-chart-bars">
+                  <span class="ai-trader-chart-bar ai-trader-skeleton"></span>
+                  <span class="ai-trader-chart-bar ai-trader-skeleton"></span>
+                  <span class="ai-trader-chart-bar ai-trader-skeleton"></span>
+                  <span class="ai-trader-chart-bar ai-trader-skeleton"></span>
+                </div>
+              </div>
+            </section>
+          </section>
+
           <section id="stock-outlook-module" class="card module-card module-wide">
             <div class="section-header">
               <h2>Search a Stock</h2>
@@ -740,6 +930,7 @@
         </div>
       </article>
     </div>
+    <script src="./ai-trader-hub.js"></script>
     <script src="./app.js"></script>
     <script src="./ai-copilot-widget.js"></script>
   </body>

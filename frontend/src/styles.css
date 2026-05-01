@@ -1590,6 +1590,933 @@ h1 {
   color: #dbeafe;
 }
 
+.dashboard-main-nav .ai-trader-nav-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  border-color: rgba(240, 185, 11, 0.55);
+  background: linear-gradient(180deg, rgba(240, 185, 11, 0.12), rgba(15, 20, 35, 0.72));
+  color: #fde68a;
+  font-weight: 800;
+}
+
+.dashboard-main-nav .ai-trader-nav-link:hover {
+  border-color: rgba(240, 185, 11, 0.9);
+  color: #fff5bf;
+}
+
+.ai-trader-nav-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 999px;
+  background: #6b7280;
+  box-shadow: 0 0 0 1px rgba(15, 23, 42, 0.55);
+}
+
+.ai-trader-nav-dot.is-running {
+  background: #00c896;
+  box-shadow:
+    0 0 0 1px rgba(15, 23, 42, 0.55),
+    0 0 12px rgba(0, 200, 150, 0.8);
+  animation: aiTraderPulseDot 1.4s ease-in-out infinite;
+}
+
+.ai-trader-nav-dot.is-paused {
+  background: #f0b90b;
+  box-shadow:
+    0 0 0 1px rgba(15, 23, 42, 0.55),
+    0 0 10px rgba(240, 185, 11, 0.7);
+}
+
+@keyframes aiTraderPulseDot {
+  0%,
+  100% { transform: scale(1); opacity: 1; }
+  50% { transform: scale(1.2); opacity: 0.8; }
+}
+
+@keyframes aiTraderPulseGreen {
+  0%,
+  100% { box-shadow: 0 0 0 0 rgba(0, 200, 150, 0.55), 0 0 22px rgba(0, 200, 150, 0.4); }
+  50% { box-shadow: 0 0 0 12px rgba(0, 200, 150, 0), 0 0 30px rgba(0, 200, 150, 0.72); }
+}
+
+@keyframes aiTraderPulseAmber {
+  0%,
+  100% { box-shadow: 0 0 0 0 rgba(240, 185, 11, 0.5), 0 0 20px rgba(240, 185, 11, 0.35); }
+  50% { box-shadow: 0 0 0 10px rgba(240, 185, 11, 0), 0 0 28px rgba(240, 185, 11, 0.65); }
+}
+
+@keyframes aiTraderScanline {
+  from { transform: translateX(-100%); opacity: 0.12; }
+  30% { opacity: 0.28; }
+  to { transform: translateX(100%); opacity: 0.1; }
+}
+
+@keyframes aiTraderSkeleton {
+  from { background-position: 100% 0; }
+  to { background-position: -100% 0; }
+}
+
+@keyframes aiTraderCardEnter {
+  from { opacity: 0; transform: translateY(8px) scale(0.985); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+@keyframes aiTraderCardExitPositive {
+  from { opacity: 1; transform: scale(1); box-shadow: 0 0 0 rgba(0, 200, 150, 0); }
+  to { opacity: 0; transform: scale(0.965); box-shadow: 0 0 24px rgba(0, 200, 150, 0.9); }
+}
+
+@keyframes aiTraderCardExitNegative {
+  from { opacity: 1; transform: scale(1); box-shadow: 0 0 0 rgba(255, 71, 87, 0); }
+  to { opacity: 0; transform: scale(0.965); box-shadow: 0 0 24px rgba(255, 71, 87, 0.88); }
+}
+
+.ai-trader-hub {
+  margin-bottom: 1rem;
+  padding: 1rem 1rem 1.05rem;
+  border: 1px solid rgba(240, 185, 11, 0.45);
+  border-radius: 16px;
+  background:
+    radial-gradient(circle at 88% 8%, rgba(240, 185, 11, 0.1), transparent 42%),
+    linear-gradient(180deg, rgba(19, 19, 26, 0.95), rgba(10, 10, 15, 0.95));
+  display: grid;
+  gap: 0.95rem;
+  box-shadow:
+    0 18px 40px rgba(0, 0, 0, 0.5),
+    inset 0 1px 0 rgba(255, 255, 255, 0.03);
+}
+
+.ai-trader-hub-header {
+  margin-bottom: 0.15rem;
+}
+
+.ai-trader-hub-header h2 {
+  font-size: 1.25rem;
+}
+
+.ai-trader-status-chip {
+  border-color: rgba(148, 163, 184, 0.55);
+  color: #cbd5e1;
+  background: rgba(15, 23, 42, 0.74);
+}
+
+.ai-trader-status-chip--running {
+  border-color: rgba(0, 200, 150, 0.74);
+  color: #9fffe7;
+  background: rgba(0, 200, 150, 0.18);
+  box-shadow: 0 0 14px rgba(0, 200, 150, 0.3);
+}
+
+.ai-trader-status-chip--paused {
+  border-color: rgba(240, 185, 11, 0.75);
+  color: #fff2af;
+  background: rgba(240, 185, 11, 0.2);
+}
+
+.ai-trader-status-chip--stopped {
+  border-color: rgba(255, 71, 87, 0.7);
+  color: #ffd0d5;
+  background: rgba(255, 71, 87, 0.18);
+}
+
+.ai-trader-status-chip--closed {
+  border-color: rgba(148, 163, 184, 0.65);
+  color: #d1d5db;
+  background: rgba(55, 65, 81, 0.45);
+}
+
+.ai-trader-control-center,
+.ai-trader-feed-panel,
+.ai-trader-positions-panel,
+.ai-trader-scanner-panel,
+.ai-trader-settings-panel,
+.ai-trader-performance-panel {
+  border: 1px solid rgba(240, 185, 11, 0.23);
+  border-radius: 14px;
+  padding: 0.8rem;
+  background: rgba(19, 19, 26, 0.88);
+}
+
+.ai-trader-control-center {
+  min-height: min(40vh, 490px);
+}
+
+.ai-trader-control-center h3,
+.ai-trader-feed-panel h3,
+.ai-trader-positions-panel h3,
+.ai-trader-scanner-panel h3,
+.ai-trader-settings-panel h3,
+.ai-trader-performance-panel h3 {
+  margin: 0 0 0.5rem;
+  color: #f9dc7a;
+}
+
+.ai-trader-control-grid {
+  display: grid;
+  grid-template-columns: minmax(220px, 300px) 1fr;
+  gap: 0.9rem;
+  align-items: stretch;
+}
+
+.ai-trader-status-panel {
+  border: 1px solid rgba(240, 185, 11, 0.3);
+  border-radius: 12px;
+  background: rgba(10, 10, 15, 0.82);
+  display: grid;
+  place-items: center;
+  align-content: center;
+  gap: 0.45rem;
+  padding: 0.85rem;
+}
+
+.ai-trader-status-orb {
+  width: 120px;
+  height: 120px;
+  border-radius: 999px;
+  border: 2px solid rgba(148, 163, 184, 0.45);
+  background: radial-gradient(circle at 35% 28%, rgba(255, 255, 255, 0.25), rgba(75, 85, 99, 0.5));
+}
+
+.ai-trader-status-orb--running {
+  border-color: rgba(0, 200, 150, 0.78);
+  background: radial-gradient(circle at 35% 28%, rgba(210, 255, 245, 0.75), rgba(0, 200, 150, 0.68));
+  animation: aiTraderPulseGreen 1.8s ease-in-out infinite;
+}
+
+.ai-trader-status-orb--paused {
+  border-color: rgba(240, 185, 11, 0.74);
+  background: radial-gradient(circle at 35% 28%, rgba(255, 250, 218, 0.75), rgba(240, 185, 11, 0.7));
+  animation: aiTraderPulseAmber 1.8s ease-in-out infinite;
+}
+
+.ai-trader-status-orb--stopped {
+  border-color: rgba(255, 71, 87, 0.74);
+  background: radial-gradient(circle at 35% 28%, rgba(255, 235, 238, 0.7), rgba(255, 71, 87, 0.66));
+}
+
+.ai-trader-status-orb--closed {
+  border-color: rgba(107, 114, 128, 0.7);
+  background: radial-gradient(circle at 35% 28%, rgba(229, 231, 235, 0.65), rgba(107, 114, 128, 0.64));
+}
+
+.ai-trader-status-word {
+  margin: 0;
+  font-size: 1.24rem;
+  font-weight: 900;
+  letter-spacing: 0.04em;
+  color: #f8fafc;
+}
+
+.ai-trader-status-subline {
+  text-align: center;
+  margin: 0;
+}
+
+.ai-trader-controls-panel {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.ai-trader-controls-row {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(120px, 1fr));
+  gap: 0.6rem;
+}
+
+.ai-trader-control-btn {
+  min-height: 54px;
+  border-radius: 12px;
+  border: 1px solid rgba(148, 163, 184, 0.4);
+  font-weight: 900;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.45rem;
+  box-shadow: 0 8px 18px rgba(2, 6, 23, 0.45);
+}
+
+.ai-trader-control-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  filter: grayscale(0.3);
+}
+
+.ai-trader-control-btn--start {
+  background: linear-gradient(180deg, rgba(0, 200, 150, 0.92), rgba(5, 150, 105, 0.93));
+  color: #f0fdf4;
+  border-color: rgba(0, 200, 150, 0.75);
+}
+
+.ai-trader-control-btn--pause {
+  background: linear-gradient(180deg, rgba(240, 185, 11, 0.92), rgba(217, 119, 6, 0.9));
+  color: #111827;
+  border-color: rgba(240, 185, 11, 0.75);
+}
+
+.ai-trader-control-btn--stop {
+  background: linear-gradient(180deg, rgba(255, 71, 87, 0.92), rgba(185, 28, 28, 0.9));
+  color: #fff1f2;
+  border-color: rgba(255, 71, 87, 0.74);
+}
+
+.ai-trader-control-icon {
+  font-weight: 900;
+}
+
+.ai-trader-stats-bar {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.55rem;
+}
+
+.ai-trader-stat {
+  border: 1px solid rgba(240, 185, 11, 0.24);
+  border-radius: 10px;
+  background: rgba(10, 10, 15, 0.72);
+  padding: 0.52rem 0.55rem;
+  display: grid;
+  gap: 0.15rem;
+}
+
+.ai-trader-stat-label {
+  color: #cbd5e1;
+  font-size: 0.74rem;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  font-weight: 700;
+}
+
+.ai-trader-stat-value {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  font-size: 0.92rem;
+  font-weight: 800;
+  color: #f8fafc;
+}
+
+.ai-trader-stat-value.is-positive {
+  color: #00c896;
+}
+
+.ai-trader-stat-value.is-negative {
+  color: #ff4757;
+}
+
+.ai-trader-activity-list {
+  display: grid;
+  gap: 0.55rem;
+  max-height: 400px;
+  overflow: auto;
+  padding-right: 0.15rem;
+}
+
+.ai-trader-activity-item {
+  border: 1px solid rgba(148, 163, 184, 0.28);
+  border-radius: 10px;
+  background: rgba(10, 10, 15, 0.76);
+  padding: 0.52rem 0.58rem;
+  display: grid;
+  gap: 0.24rem;
+}
+
+.ai-trader-activity-top {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.6rem;
+  align-items: center;
+}
+
+.ai-trader-activity-time {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  font-size: 0.76rem;
+  color: #9ca3af;
+}
+
+.ai-trader-activity-type {
+  color: #f8fafc;
+  font-size: 0.8rem;
+  font-weight: 700;
+}
+
+.ai-trader-activity-desc {
+  margin: 0;
+  font-size: 0.84rem;
+  color: #e5e7eb;
+}
+
+.ai-trader-activity-pnl {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  font-size: 0.84rem;
+  font-weight: 800;
+}
+
+.ai-trader-activity-pnl.is-positive {
+  color: #00c896;
+}
+
+.ai-trader-activity-pnl.is-negative {
+  color: #ff4757;
+}
+
+.ai-trader-empty-state {
+  border: 1px dashed rgba(148, 163, 184, 0.42);
+  border-radius: 10px;
+  padding: 0.75rem;
+  background: rgba(10, 10, 15, 0.62);
+}
+
+.ai-trader-empty-state h4 {
+  margin: 0 0 0.3rem;
+  color: #f9dc7a;
+}
+
+.ai-trader-empty-state p {
+  margin: 0;
+  color: #d1d5db;
+  font-size: 0.85rem;
+}
+
+.ai-trader-positions-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.68rem;
+}
+
+.ai-trader-position-card {
+  border: 1px solid rgba(148, 163, 184, 0.3);
+  border-radius: 12px;
+  background: rgba(10, 10, 15, 0.8);
+  padding: 0.6rem;
+  display: grid;
+  gap: 0.42rem;
+  animation: aiTraderCardEnter 0.28s ease both;
+}
+
+.ai-trader-position-card.is-positive {
+  border-color: rgba(0, 200, 150, 0.5);
+}
+
+.ai-trader-position-card.is-negative {
+  border-color: rgba(255, 71, 87, 0.52);
+}
+
+.ai-trader-card-enter {
+  animation: aiTraderCardEnter 0.33s ease both;
+}
+
+.ai-trader-card-exit-positive {
+  animation: aiTraderCardExitPositive 0.24s ease forwards;
+}
+
+.ai-trader-card-exit-negative {
+  animation: aiTraderCardExitNegative 0.24s ease forwards;
+}
+
+.ai-trader-position-top {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.45rem;
+  align-items: flex-start;
+}
+
+.ai-trader-position-top h4 {
+  margin: 0;
+  color: #f8fafc;
+  font-size: 1.03rem;
+}
+
+.ai-trader-pnl-badge {
+  border-radius: 999px;
+  padding: 0.16rem 0.48rem;
+  border: 1px solid rgba(148, 163, 184, 0.48);
+  font-size: 0.73rem;
+  font-weight: 900;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+}
+
+.ai-trader-pnl-badge.is-positive {
+  border-color: rgba(0, 200, 150, 0.68);
+  color: #9fffe7;
+  background: rgba(0, 200, 150, 0.16);
+}
+
+.ai-trader-pnl-badge.is-negative {
+  border-color: rgba(255, 71, 87, 0.72);
+  color: #ffd7dc;
+  background: rgba(255, 71, 87, 0.16);
+}
+
+.ai-trader-position-price {
+  margin: 0;
+  font-size: 1.24rem;
+  font-weight: 900;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+}
+
+.ai-trader-position-prices .small-note {
+  margin: 0.12rem 0 0;
+}
+
+.ai-trader-position-sparkline {
+  width: 100%;
+  height: 62px;
+  border-radius: 10px;
+  background: rgba(2, 6, 23, 0.66);
+  border: 1px solid rgba(148, 163, 184, 0.22);
+}
+
+.ai-trader-sparkline-path {
+  fill: none;
+  stroke: rgba(240, 185, 11, 0.9);
+  stroke-width: 2.1;
+}
+
+.ai-trader-sparkline-stop {
+  stroke: rgba(255, 71, 87, 0.75);
+  stroke-width: 1.4;
+  stroke-dasharray: 4 3;
+}
+
+.ai-trader-sparkline-take {
+  stroke: rgba(0, 200, 150, 0.72);
+  stroke-width: 1.4;
+  stroke-dasharray: 4 3;
+}
+
+.ai-trader-position-meta {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.4rem;
+  color: #d1d5db;
+  font-size: 0.75rem;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+}
+
+.ai-trader-close-position-btn {
+  border-radius: 9px;
+  border: 1px solid rgba(255, 71, 87, 0.65);
+  background: linear-gradient(180deg, rgba(255, 71, 87, 0.92), rgba(185, 28, 28, 0.9));
+  color: #fff1f2;
+  min-height: 36px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.ai-trader-scanner-panel {
+  position: relative;
+  overflow: hidden;
+}
+
+.ai-trader-scanner-panel::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -30%;
+  width: 30%;
+  height: 100%;
+  background: linear-gradient(90deg, transparent, rgba(240, 185, 11, 0.2), transparent);
+  pointer-events: none;
+  animation: aiTraderScanline 3.2s linear infinite;
+}
+
+.ai-trader-signal-list {
+  display: grid;
+  gap: 0.46rem;
+}
+
+.ai-trader-signal-row {
+  border: 1px solid rgba(148, 163, 184, 0.3);
+  border-radius: 10px;
+  background: rgba(10, 10, 15, 0.78);
+  padding: 0.46rem 0.55rem;
+  display: grid;
+  grid-template-columns: minmax(130px, 170px) 1fr minmax(84px, 100px);
+  gap: 0.55rem;
+  align-items: center;
+}
+
+.ai-trader-signal-symbol {
+  display: grid;
+  gap: 0.1rem;
+}
+
+.ai-trader-signal-symbol strong {
+  color: #f8fafc;
+}
+
+.ai-trader-signal-symbol span {
+  color: #cbd5e1;
+  font-size: 0.73rem;
+}
+
+.ai-trader-signal-bars {
+  display: grid;
+  gap: 0.18rem;
+}
+
+.ai-trader-signal-metric {
+  display: grid;
+  grid-template-columns: 64px 1fr;
+  gap: 0.35rem;
+  align-items: center;
+  color: #d1d5db;
+  font-size: 0.72rem;
+  text-transform: uppercase;
+}
+
+.ai-trader-signal-meter {
+  display: block;
+  height: 8px;
+  border-radius: 999px;
+  border: 1px solid rgba(148, 163, 184, 0.3);
+  background: rgba(31, 41, 55, 0.82);
+  overflow: hidden;
+}
+
+.ai-trader-signal-meter > span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+}
+
+.ai-trader-signal-meter--bullish > span {
+  background: linear-gradient(90deg, rgba(0, 200, 150, 0.46), rgba(0, 200, 150, 0.96));
+}
+
+.ai-trader-signal-meter--neutral > span {
+  background: linear-gradient(90deg, rgba(148, 163, 184, 0.45), rgba(156, 163, 175, 0.9));
+}
+
+.ai-trader-signal-meter--bearish > span {
+  background: linear-gradient(90deg, rgba(255, 71, 87, 0.46), rgba(255, 71, 87, 0.95));
+}
+
+.ai-trader-signal-score {
+  display: grid;
+  justify-items: end;
+  gap: 0.22rem;
+}
+
+.ai-trader-signal-score strong {
+  font-size: 1.02rem;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+}
+
+.ai-trader-signal-score.score-strong-buy strong {
+  color: #00c896;
+}
+
+.ai-trader-signal-score.score-buy strong {
+  color: #67e8b0;
+}
+
+.ai-trader-signal-score.score-neutral strong {
+  color: #d1d5db;
+}
+
+.ai-trader-signal-score.score-sell strong {
+  color: #f59e0b;
+}
+
+.ai-trader-signal-score.score-strong-sell strong {
+  color: #ff4757;
+}
+
+.ai-trader-settings-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.68rem;
+}
+
+.ai-trader-setting-card {
+  border: 1px solid rgba(148, 163, 184, 0.28);
+  border-radius: 10px;
+  background: rgba(10, 10, 15, 0.74);
+  padding: 0.56rem;
+  display: grid;
+  gap: 0.46rem;
+}
+
+.ai-trader-setting-card h4 {
+  margin: 0;
+  color: #f8fafc;
+  font-size: 0.92rem;
+}
+
+.ai-trader-risk-level-cards {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.45rem;
+}
+
+.ai-trader-risk-card {
+  border-radius: 10px;
+  border: 1px solid rgba(148, 163, 184, 0.4);
+  background: rgba(15, 23, 42, 0.7);
+  color: #e5e7eb;
+  text-align: left;
+  padding: 0.5rem;
+  cursor: pointer;
+  display: grid;
+  gap: 0.18rem;
+}
+
+.ai-trader-risk-card strong {
+  font-size: 0.75rem;
+  letter-spacing: 0.03em;
+}
+
+.ai-trader-risk-card span {
+  font-size: 0.73rem;
+  color: #cbd5e1;
+}
+
+.ai-trader-risk-card.is-active {
+  border-color: rgba(240, 185, 11, 0.9);
+  box-shadow:
+    inset 0 0 0 1px rgba(240, 185, 11, 0.35),
+    0 0 15px rgba(240, 185, 11, 0.28);
+  color: #fff2bf;
+}
+
+.ai-trader-slider-wrap {
+  display: grid;
+  gap: 0.35rem;
+}
+
+.ai-trader-slider-wrap input[type='range'] {
+  width: 100%;
+  accent-color: #f0b90b;
+}
+
+.ai-trader-progress-bar {
+  width: 100%;
+  height: 10px;
+  border-radius: 999px;
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  background: rgba(17, 24, 39, 0.82);
+  overflow: hidden;
+}
+
+.ai-trader-progress-fill {
+  height: 100%;
+  width: 0;
+  background: linear-gradient(90deg, rgba(240, 185, 11, 0.3), rgba(240, 185, 11, 0.92));
+}
+
+.ai-trader-stepper {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.ai-trader-stepper-value {
+  min-width: 52px;
+  text-align: center;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  font-weight: 900;
+  font-size: 1.03rem;
+}
+
+.ai-trader-pill-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.ai-trader-pill {
+  border-radius: 999px;
+  border: 1px solid rgba(148, 163, 184, 0.5);
+  background: rgba(15, 23, 42, 0.78);
+  color: #e5e7eb;
+  font-size: 0.76rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  padding: 0.28rem 0.56rem;
+  cursor: pointer;
+}
+
+.ai-trader-pill.is-active {
+  border-color: rgba(240, 185, 11, 0.85);
+  color: #fff2bf;
+  background: rgba(240, 185, 11, 0.18);
+}
+
+.ai-trader-performance-metrics {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.52rem;
+}
+
+.ai-trader-metric-card {
+  border: 1px solid rgba(148, 163, 184, 0.3);
+  border-radius: 10px;
+  background: rgba(10, 10, 15, 0.72);
+  padding: 0.5rem;
+}
+
+.ai-trader-metric-card h4 {
+  margin: 0;
+  color: #cbd5e1;
+  font-size: 0.74rem;
+  text-transform: uppercase;
+}
+
+.ai-trader-metric-card p {
+  margin: 0.26rem 0 0;
+  font-size: 0.93rem;
+  font-weight: 800;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+}
+
+.ai-trader-metric-card p.is-positive {
+  color: #00c896;
+}
+
+.ai-trader-metric-card p.is-negative {
+  color: #ff4757;
+}
+
+.ai-trader-performance-chart {
+  border: 1px solid rgba(148, 163, 184, 0.3);
+  border-radius: 10px;
+  background: rgba(10, 10, 15, 0.74);
+  padding: 0.52rem;
+  display: grid;
+  gap: 0.4rem;
+}
+
+.ai-trader-chart-label {
+  color: #cbd5e1;
+  font-size: 0.74rem;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.ai-trader-chart-bars {
+  display: flex;
+  align-items: end;
+  gap: 0.42rem;
+  min-height: 92px;
+}
+
+.ai-trader-chart-col {
+  display: grid;
+  justify-items: center;
+  gap: 0.22rem;
+  flex: 1 1 0;
+  min-width: 16px;
+}
+
+.ai-trader-chart-bar {
+  width: 100%;
+  max-width: 20px;
+  min-height: 10px;
+  border-radius: 6px 6px 3px 3px;
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  background: rgba(107, 114, 128, 0.5);
+}
+
+.ai-trader-chart-bar.is-positive {
+  border-color: rgba(0, 200, 150, 0.6);
+  background: linear-gradient(180deg, rgba(0, 200, 150, 0.8), rgba(4, 120, 87, 0.95));
+}
+
+.ai-trader-chart-bar.is-negative {
+  border-color: rgba(255, 71, 87, 0.62);
+  background: linear-gradient(180deg, rgba(255, 71, 87, 0.8), rgba(185, 28, 28, 0.95));
+}
+
+.ai-trader-chart-day {
+  font-size: 0.65rem;
+  color: #9ca3af;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+}
+
+.ai-trader-chart-empty {
+  color: #9ca3af;
+  font-size: 0.8rem;
+}
+
+.ai-trader-skeleton {
+  background: linear-gradient(90deg, rgba(30, 41, 59, 0.6), rgba(71, 85, 105, 0.35), rgba(30, 41, 59, 0.6));
+  background-size: 220% 100%;
+  animation: aiTraderSkeleton 1.2s linear infinite;
+}
+
+.ai-trader-skeleton-wrap .ai-trader-activity-item.ai-trader-skeleton {
+  min-height: 58px;
+}
+
+.ai-trader-skeleton-wrap .ai-trader-position-card.ai-trader-skeleton {
+  min-height: 170px;
+}
+
+.ai-trader-skeleton-wrap .ai-trader-signal-row.ai-trader-skeleton {
+  min-height: 74px;
+}
+
+.ai-trader-skeleton-wrap .ai-trader-chart-bar.ai-trader-skeleton {
+  height: 60px;
+}
+
+.ai-trader-float-pill {
+  position: fixed;
+  right: 16px;
+  bottom: 74px;
+  z-index: 1180;
+  border-radius: 999px;
+  border: 1px solid rgba(148, 163, 184, 0.55);
+  background: rgba(10, 10, 15, 0.95);
+  color: #e5e7eb;
+  text-decoration: none;
+  padding: 0.5rem 0.7rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.44rem;
+  font-size: 0.78rem;
+  font-weight: 800;
+  box-shadow: 0 14px 28px rgba(0, 0, 0, 0.5);
+}
+
+.ai-trader-float-pill-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 999px;
+  background: #6b7280;
+}
+
+.ai-trader-float-pill.is-running {
+  border-color: rgba(0, 200, 150, 0.72);
+  color: #9fffe7;
+}
+
+.ai-trader-float-pill.is-running .ai-trader-float-pill-dot {
+  background: #00c896;
+  animation: aiTraderPulseDot 1.2s ease-in-out infinite;
+}
+
+.ai-trader-float-pill.is-paused {
+  border-color: rgba(240, 185, 11, 0.74);
+  color: #fff2bf;
+}
+
+.ai-trader-float-pill.is-paused .ai-trader-float-pill-dot {
+  background: #f0b90b;
+}
+
+.ai-trader-float-pill.is-off {
+  border-color: rgba(148, 163, 184, 0.55);
+  color: #d1d5db;
+}
+
+.ai-trader-float-pill.is-off .ai-trader-float-pill-dot {
+  background: #6b7280;
+}
+
 .settings-placeholder {
   margin-top: 0.4rem;
   padding: 0.6rem 0.7rem;
@@ -3041,6 +3968,46 @@ button[aria-busy='true']::after {
   .ai-copilot-shell {
     right: 10px;
     bottom: 10px;
+  }
+}
+
+@media (max-width: 880px) {
+  .ai-trader-control-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .ai-trader-controls-row {
+    grid-template-columns: 1fr;
+  }
+
+  .ai-trader-status-orb {
+    width: 92px;
+    height: 92px;
+  }
+}
+
+@media (max-width: 640px) {
+  .ai-trader-hub {
+    padding: 0.82rem;
+    gap: 0.75rem;
+  }
+
+  .ai-trader-settings-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .ai-trader-positions-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .ai-trader-performance-metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .ai-trader-float-pill {
+    right: 10px;
+    bottom: 10px;
+    padding: 0.45rem 0.6rem;
   }
 }
 

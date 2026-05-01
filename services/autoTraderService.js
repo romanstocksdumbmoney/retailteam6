@@ -1635,6 +1635,75 @@ function cancelPendingTradeProposal(user, input = {}) {
   };
 }
 
+function manualCloseAutoTraderPosition(user, input = {}) {
+  const userId = user?.id;
+  if (!userId) {
+    throw new Error('missing_user');
+  }
+  const positionId = String(input.positionId || input.id || '').trim();
+  if (!positionId) {
+    throw new Error('position_not_found');
+  }
+  const state = getState(userId);
+  const openPositions = Array.isArray(state.openPositions) ? state.openPositions : [];
+  const index = openPositions.findIndex((row) => String(row?.id || '').trim() === positionId);
+  if (index < 0) {
+    throw new Error('position_not_found');
+  }
+  const position = openPositions[index];
+  const fallbackMarkPrice = estimatePositionMarkPrice(userId, position);
+  const providedMarkPrice = Number(input.markPrice);
+  const markPrice = Number.isFinite(providedMarkPrice) && providedMarkPrice > 0
+    ? roundUsd(providedMarkPrice)
+    : fallbackMarkPrice;
+  const entry = Number(position.entry || 0);
+  const shares = Number(position.shares || 0);
+  const direction = String(position.direction || 'long').toLowerCase() === 'short' ? 'short' : 'long';
+  const rawPnl = direction === 'short'
+    ? (entry - markPrice) * shares
+    : (markPrice - entry) * shares;
+  const pnlUsd = roundUsd(rawPnl);
+  const releasedCash = roundUsd(Number(position.notionalUsd || 0) + pnlUsd);
+  state.cashUsd = roundUsd(Number(state.cashUsd || 0) + releasedCash);
+  state.openPositions = openPositions.filter((row) => String(row?.id || '').trim() !== positionId);
+
+  const closedAt = nowIso();
+  const closedTrade = {
+    id: position.id,
+    ticker: position.ticker,
+    direction: position.direction,
+    shares: Number(position.shares || 0),
+    entry: Number(position.entry || 0),
+    stopLoss: Number(position.stopLoss || 0),
+    takeProfit: Number(position.takeProfit || 0),
+    maxLossUsd: Number(position.maxLossUsd || position.riskUsd || 0),
+    riskLevel: position.riskLevel || 'Medium',
+    confidenceScore: Number(position.confidenceScore || 0),
+    whyAiLikesThis: position.whyAiLikesThis || '',
+    mode: position.mode || (state.tradingMode || 'paper'),
+    openedAt: position.openedAt || null,
+    closedAt,
+    pnlUsd,
+    result: pnlUsd > 0
+      ? 'manual_close_gain'
+      : pnlUsd < 0
+        ? 'manual_close_loss'
+        : 'manual_close_flat'
+  };
+  applyClosedTradeToHistory(state, closedTrade);
+  state.updatedAt = closedAt;
+  return {
+    closed: {
+      ...closedTrade,
+      markPrice
+    },
+    portfolio: {
+      cashUsd: state.cashUsd,
+      openPositionsCount: state.openPositions.length
+    }
+  };
+}
+
 function buildSyntheticAccountReference(userId, broker, accountHolder) {
   const base = hashString(`${userId}:${broker}:${accountHolder}`).toString(16).slice(-8).toUpperCase();
   return `AI-${base || '00000000'}`;
@@ -3346,6 +3415,7 @@ module.exports = {
   testAutoTraderBrokerBridge,
   disconnectAutoTraderBrokerBridge,
   queueAiTradeForExecution,
+  manualCloseAutoTraderPosition,
   approvePendingTradeProposal,
   cancelPendingTradeProposal,
   updateAutoTraderPromptControl,

@@ -885,9 +885,107 @@ function mountAiCopilotWidget() {
   }
 }
 
+function ensureAiTraderFloatingStatusPill() {
+  if (document.getElementById('ai-trader-floating-pill')) {
+    return;
+  }
+  const pill = document.createElement('a');
+  pill.id = 'ai-trader-floating-pill';
+  pill.className = 'ai-trader-float-pill is-off';
+  pill.href = '/#ai-trader-hub';
+  pill.setAttribute('aria-label', 'Open AI Trader dashboard');
+  pill.innerHTML = '<span class="ai-trader-float-pill-dot" aria-hidden="true"></span><span id="ai-trader-floating-pill-text">Bot Off</span>';
+  document.body.appendChild(pill);
+
+  const label = pill.querySelector('#ai-trader-floating-pill-text');
+  const applyState = (detail = {}) => {
+    const stateClass = String(detail.stateClass || '').trim().toLowerCase();
+    const href = String(detail.href || '/#ai-trader-hub').trim() || '/#ai-trader-hub';
+    let labelText = 'Bot Off';
+    let cssClass = 'is-off';
+    if (stateClass === 'running') {
+      cssClass = 'is-running';
+      labelText = 'Bot Running';
+    } else if (stateClass === 'paused') {
+      cssClass = 'is-paused';
+      labelText = 'Bot Paused';
+    } else if (stateClass === 'off') {
+      cssClass = 'is-off';
+      labelText = 'Bot Off';
+    }
+    pill.classList.remove('is-running', 'is-paused', 'is-off');
+    pill.classList.add(cssClass);
+    pill.href = href;
+    if (label instanceof HTMLElement) {
+      label.textContent = labelText;
+    }
+  };
+
+  const authHeaders = () => {
+    const token = getStoredAuthToken();
+    return token ? { authorization: `Bearer ${token}` } : {};
+  };
+
+  const inferStateFromBotPayload = (payload = {}) => {
+    const isActive = Boolean(payload?.isActive);
+    const brokerConnected = Boolean(payload?.execution?.brokerConnection?.isConnected);
+    if (isActive && brokerConnected) {
+      return {
+        stateClass: 'running',
+        href: '/#ai-trader-hub'
+      };
+    }
+    if (isActive && !brokerConnected) {
+      return {
+        stateClass: 'paused',
+        href: '/#ai-trader-hub'
+      };
+    }
+    return {
+      stateClass: 'off',
+      href: '/#ai-trader-hub'
+    };
+  };
+
+  const refreshFromApi = async () => {
+    const headers = authHeaders();
+    if (!headers.authorization) {
+      applyState({ stateClass: 'off', href: '/ai-trade-access.html?mode=login&next=%2F' });
+      return;
+    }
+    try {
+      const response = await fetch('/api/market/auto-trader/bot', {
+        method: 'GET',
+        headers
+      });
+      if (response.status === 401) {
+        applyState({ stateClass: 'off', href: '/ai-trade-access.html?mode=login&next=%2F' });
+        return;
+      }
+      if (!response.ok) {
+        return;
+      }
+      const payload = await response.json();
+      applyState(inferStateFromBotPayload(payload));
+    } catch (_error) {
+      // Keep last known state on network issues.
+    }
+  };
+
+  window.addEventListener('dumbdollars:bot-status-update', (event) => {
+    applyState(event?.detail || {});
+  });
+
+  refreshFromApi().catch(() => {});
+  window.setInterval(() => {
+    refreshFromApi().catch(() => {});
+  }, 30000);
+}
+
 function initAiCopilotWidget() {
   mountAiQuickNav();
   mountAiCopilotWidget();
+  ensureAiTraderFloatingStatusPill();
 }
 
 window.dumbdollarsAiCopilot = window.dumbdollarsAiCopilot || {};

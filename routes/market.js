@@ -38,6 +38,7 @@ const {
   testAutoTraderBrokerBridge,
   disconnectAutoTraderBrokerBridge,
   queueAiTradeForExecution,
+  manualCloseAutoTraderPosition,
   approvePendingTradeProposal,
   cancelPendingTradeProposal,
   updateAutoTraderPromptControl,
@@ -1640,6 +1641,29 @@ router.post('/auto-trader/proposals/:ticketId/cancel', requireSignedIn, (req, re
     return res.status(400).json({
       error: 'invalid_request',
       message: 'Could not cancel this trade idea.'
+    });
+  }
+});
+
+router.post('/auto-trader/positions/:positionId/close', requireSignedIn, (req, res) => {
+  try {
+    const markPrice = Number(req.body?.markPrice);
+    const payload = manualCloseAutoTraderPosition(req.user, {
+      positionId: req.params.positionId,
+      markPrice: Number.isFinite(markPrice) ? markPrice : undefined
+    });
+    return res.json(payload);
+  } catch (error) {
+    const code = String(error.message || '');
+    if (code === 'position_not_found') {
+      return res.status(404).json({
+        error: 'position_not_found',
+        message: 'Open position was not found.'
+      });
+    }
+    return res.status(400).json({
+      error: 'invalid_request',
+      message: 'Could not close this open position.'
     });
   }
 });
