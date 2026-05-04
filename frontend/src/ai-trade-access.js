@@ -9,12 +9,12 @@ async function fetchJson(url, options = {}) {
     }
     const error = new Error(body.message || `Request failed: ${response.status}`);
     error.status = response.status;
+    error.body = body;
     throw error;
   }
   return response.json();
 }
 
-const REMEMBER_TOKEN_STORAGE_KEY = 'dumbdollars_remember_token';
 const DEFAULT_NEXT_PATH = '/ai-trade.html';
 const AUTH_PAGE_MODE_LOGIN = 'login';
 const AUTH_PAGE_MODE_SIGNUP = 'signup';
@@ -57,6 +57,81 @@ function setStatus(text, isError = false) {
   node.className = isError ? 'small-note auth-error' : 'small-note';
 }
 
+function clearStatusActions() {
+  const actions = document.getElementById('ai-access-status-actions');
+  if (!(actions instanceof HTMLElement)) {
+    return;
+  }
+  actions.innerHTML = '';
+}
+
+function renderResendVerificationAction(email) {
+  const actions = document.getElementById('ai-access-status-actions');
+  if (!(actions instanceof HTMLElement)) {
+    return;
+  }
+  actions.innerHTML = '';
+  const button = document.createElement('button');
+  button.type = 'button';
+  button.className = 'link-button';
+  button.textContent = 'Resend verification email';
+  button.addEventListener('click', async () => {
+    button.disabled = true;
+    try {
+      await fetchJson('/api/auth/resend-verification', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: String(email || '').trim().toLowerCase() })
+      });
+      setStatus('Verification email sent. Check inbox and spam folder.');
+    } catch (error) {
+      setStatus(error.message || 'Could not resend verification email.', true);
+    } finally {
+      button.disabled = false;
+    }
+  });
+  actions.appendChild(button);
+}
+
+function mapLoginErrorMessage(error) {
+  const status = Number(error?.status || 0);
+  const code = String(error?.body?.error || '').trim().toLowerCase();
+  const message = String(error?.message || '').trim();
+  if (status === 404 || code === 'unknown_email') {
+    return 'No account found with that email';
+  }
+  if (status === 401 || code === 'incorrect_password') {
+    return 'Incorrect password';
+  }
+  if (status === 403 || code === 'email_not_verified') {
+    return 'Please verify your email before signing in';
+  }
+  if (status === 429 || code === 'too_many_attempts') {
+    return 'Too many failed attempts — try again in 15 minutes';
+  }
+  return message || 'Could not log in.';
+}
+
+function mapSignupErrorMessage(error) {
+  const status = Number(error?.status || 0);
+  const code = String(error?.body?.error || '').trim().toLowerCase();
+  const message = String(error?.message || '').trim();
+  if (status === 409 || code === 'email_in_use') {
+    return 'An account with that email already exists.';
+  }
+  if (status === 400 && code === 'invalid_email') {
+    return 'Enter a valid email address.';
+  }
+  if (status === 400 && code === 'password_mismatch') {
+    return 'Passwords do not match.';
+  }
+  if (status === 400 && code === 'weak_password') {
+    return 'Password must be at least 8 characters with uppercase, number, and special character.';
+  }
+  return message || 'Could not create account.';
+}
+
 function saveAuthToken(token) {
   const value = String(token || '').trim();
   if (!value) {
@@ -70,23 +145,6 @@ function clearAuthToken() {
   localStorage.removeItem('dumbdollars_token');
 }
 
-function getRememberToken() {
-  return String(localStorage.getItem(REMEMBER_TOKEN_STORAGE_KEY) || '').trim();
-}
-
-function saveRememberToken(token) {
-  const value = String(token || '').trim();
-  if (!value) {
-    localStorage.removeItem(REMEMBER_TOKEN_STORAGE_KEY);
-    return;
-  }
-  localStorage.setItem(REMEMBER_TOKEN_STORAGE_KEY, value);
-}
-
-function clearRememberToken() {
-  localStorage.removeItem(REMEMBER_TOKEN_STORAGE_KEY);
-}
-
 function saveEmail(email) {
   const normalized = String(email || '').trim().toLowerCase();
   if (!normalized) {
@@ -97,7 +155,6 @@ function saveEmail(email) {
 
 function applyAuthPayload(payload, fallbackEmail = '') {
   saveAuthToken(payload?.token || '');
-  saveRememberToken(payload?.rememberToken || '');
   const email = String(payload?.user?.email || fallbackEmail || '').trim().toLowerCase();
   if (email) {
     saveEmail(email);
@@ -189,14 +246,18 @@ function setupTraderModePicker() {
 
 async function signUp(email, password, options = {}) {
   const traderMode = normalizeTraderMode(options.traderMode);
+  const confirmPassword = String(options.confirmPassword || '');
+  const remember = options.remember !== false;
   const payload = await fetchJson('/api/auth/signup', {
     method: 'POST',
+    credentials: 'include',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       email,
       password,
+      confirmPassword,
       traderMode,
-      remember: options.remember !== false
+      remember
     })
   });
   applyAuthPayload(payload, email);
@@ -204,13 +265,15 @@ async function signUp(email, password, options = {}) {
 }
 
 async function logIn(email, password, options = {}) {
+  const remember = options.remember !== false;
   const payload = await fetchJson('/api/auth/login', {
     method: 'POST',
+    credentials: 'include',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       email,
       password,
-      remember: options.remember !== false
+      remember
     })
   });
   applyAuthPayload(payload, email);
@@ -218,44 +281,50 @@ async function logIn(email, password, options = {}) {
 
 async function socialSignIn(provider, email, options = {}) {
   const traderMode = normalizeTraderMode(options.traderMode);
+  const remember = options.remember !== false;
   const payload = await fetchJson('/api/auth/oauth/signin', {
     method: 'POST',
+    credentials: 'include',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       provider,
       email,
       traderMode,
-      remember: options.remember !== false
+      remember
     })
   });
   applyAuthPayload(payload, email);
   saveTraderMode(payload?.user?.traderMode || traderMode);
 }
 
-async function requestAccessCode(email, purpose = 'pro_recovery') {
-  return fetchJson('/api/auth/access-code/request', {
+async function requestAccessCode(email) {
+  return fetchJson('/api/auth/forgot-password', {
     method: 'POST',
+    credentials: 'include',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ email, purpose })
+    body: JSON.stringify({ email })
   });
 }
 
 async function verifyAccessCodeAndRestore(email, code, options = {}) {
-  const payload = await fetchJson('/api/auth/access-code/verify', {
+  const nextPassword = String(options.password || '').trim();
+  if (!nextPassword) {
+    throw new Error('Enter a new password to complete reset.');
+  }
+  const payload = await fetchJson('/api/auth/reset-password', {
     method: 'POST',
+    credentials: 'include',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      email,
-      code,
-      purpose: 'pro_recovery',
-      remember: options.remember !== false
+      token: code,
+      password: nextPassword,
+      confirmPassword: nextPassword
     })
   });
-  applyAuthPayload(payload, email);
   return payload;
 }
 
-function goToSocialAuthPage(provider, email, remember = true) {
+function goToSocialAuthPage(provider, email) {
   const normalizedProvider = String(provider || '').trim().toLowerCase();
   const normalizedEmail = normalizeEmailInput(email);
   if (!normalizedProvider) {
@@ -264,12 +333,11 @@ function goToSocialAuthPage(provider, email, remember = true) {
   }
   const next = encodeURIComponent(getSafeNextPath());
   const providerParam = encodeURIComponent(normalizedProvider);
-  const rememberParam = remember ? '1' : '0';
   const traderModeParam = encodeURIComponent(getSelectedTraderModeFromUi());
   const emailSegment = isLikelyValidEmail(normalizedEmail)
     ? `&email=${encodeURIComponent(normalizedEmail)}`
     : '';
-  window.location.href = `/social-auth.html?provider=${providerParam}${emailSegment}&traderMode=${traderModeParam}&next=${next}&remember=${rememberParam}`;
+  window.location.href = `/social-auth.html?provider=${providerParam}${emailSegment}&traderMode=${traderModeParam}&next=${next}`;
 }
 
 function getSafeNextPath() {
@@ -342,32 +410,23 @@ async function hydrateSessionUser(token) {
 }
 
 async function verifySessionAndRedirectIfSignedIn() {
-  async function restoreFromRemember() {
-    const rememberToken = getRememberToken();
-    if (!rememberToken) {
-      return '';
-    }
+  async function restoreFromSessionCookie() {
     try {
       const restorePayload = await fetchJson('/api/auth/session/restore', {
         method: 'POST',
+        credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ rememberToken })
       });
       applyAuthPayload(restorePayload, restorePayload?.user?.email || '');
       return String(restorePayload?.token || '').trim();
     } catch (restoreError) {
-      const status = Number(restoreError?.status || 0);
-      const code = String(restoreError?.body?.error || '').trim().toLowerCase();
-      if (status === 401 || code === 'invalid_remember_token' || code === 'missing_remember_token') {
-        clearRememberToken();
-      }
       return '';
     }
   }
 
   let token = String(localStorage.getItem('dumbdollars_token') || '').trim();
   if (!token) {
-    token = await restoreFromRemember();
+    token = await restoreFromSessionCookie();
     if (!token) {
       return;
     }
@@ -380,7 +439,7 @@ async function verifySessionAndRedirectIfSignedIn() {
     clearAuthToken();
   }
 
-  token = await restoreFromRemember();
+  token = await restoreFromSessionCookie();
   if (!token) {
     return;
   }
@@ -389,7 +448,6 @@ async function verifySessionAndRedirectIfSignedIn() {
     goToNextPath();
   } catch (_retryError) {
     clearAuthToken();
-    clearRememberToken();
   }
 }
 
@@ -430,29 +488,36 @@ function isLikelyValidEmail(email) {
 
 function checkPasswordStrength(password) {
   const value = String(password || '');
-  const lengthOk = value.length >= 10;
-  const upperOk = /[A-Z]/.test(value);
-  const lowerOk = /[a-z]/.test(value);
-  const digitOk = /\d/.test(value);
-  const symbolOk = /[^A-Za-z0-9]/.test(value);
-  const passes = [lengthOk, upperOk, lowerOk, digitOk, symbolOk].filter(Boolean).length;
-  const strong = passes >= 4 && lengthOk && upperOk && lowerOk && digitOk;
+  const checks = {
+    minLength: value.length >= 8,
+    uppercase: /[A-Z]/.test(value),
+    number: /\d/.test(value),
+    special: /[^A-Za-z0-9]/.test(value)
+  };
+  const passed = Object.values(checks).filter(Boolean).length;
+  const valid = checks.minLength && checks.uppercase && checks.number && checks.special;
+  let level = 'weak';
+  if (valid) {
+    level = 'strong';
+  } else if (passed >= 3) {
+    level = 'medium';
+  }
   return {
-    strong,
-    score: passes,
-    checks: { lengthOk, upperOk, lowerOk, digitOk, symbolOk }
+    valid,
+    level,
+    checks
   };
 }
 
 function describePasswordStrength(password) {
-  const result = checkPasswordStrength(password);
-  if (result.score <= 2) {
-    return 'Weak password. Use at least 10 chars with upper, lower, number, and symbol.';
+  const state = checkPasswordStrength(password);
+  if (state.level === 'strong') {
+    return 'Strong';
   }
-  if (!result.strong) {
-    return 'Decent password, but add more complexity (upper/lower/number/symbol).';
+  if (state.level === 'medium') {
+    return 'Medium';
   }
-  return 'Strong password.';
+  return 'Weak';
 }
 
 function setPasswordHint(targetId, password) {
@@ -460,10 +525,32 @@ function setPasswordHint(targetId, password) {
   if (!node) {
     return;
   }
-  const text = describePasswordStrength(password);
-  const strong = checkPasswordStrength(password).strong;
-  node.textContent = text;
-  node.className = strong ? 'small-note auth-ok' : 'small-note';
+  const state = checkPasswordStrength(password);
+  const label = describePasswordStrength(password);
+  const suffix = state.valid
+    ? 'Meets requirements.'
+    : 'Use at least 8 chars with 1 uppercase, 1 number, and 1 special character.';
+  node.textContent = `${label} — ${suffix}`;
+  node.className = `small-note password-strength password-strength--${state.level}`;
+}
+
+function setupPasswordVisibilityToggles() {
+  const bind = (toggleId, inputId) => {
+    const toggle = document.getElementById(toggleId);
+    const input = document.getElementById(inputId);
+    if (!(toggle instanceof HTMLButtonElement) || !(input instanceof HTMLInputElement)) {
+      return;
+    }
+    toggle.addEventListener('click', () => {
+      const nextType = input.type === 'password' ? 'text' : 'password';
+      input.type = nextType;
+      toggle.textContent = nextType === 'password' ? '👁' : '🙈';
+      toggle.setAttribute('aria-label', nextType === 'password' ? 'Show password' : 'Hide password');
+    });
+  };
+  bind('ai-access-signup-toggle', 'ai-access-signup-password');
+  bind('ai-access-signup-confirm-toggle', 'ai-access-signup-confirm-password');
+  bind('ai-access-login-toggle', 'ai-access-login-password');
 }
 
 function setupForms() {
@@ -473,8 +560,6 @@ function setupForms() {
   const accessCodeVerifyForm = document.getElementById('ai-access-code-verify-form');
   const socialButtons = Array.from(document.querySelectorAll('.oauth-btn'));
   const signupPasswordInput = document.getElementById('ai-access-signup-password');
-  const loginRememberInput = document.getElementById('ai-access-login-remember');
-  const signupRememberInput = document.getElementById('ai-access-signup-remember');
   const accessCodeEmailInput = document.getElementById('ai-access-code-email');
   const accessCodeInput = document.getElementById('ai-access-code-input');
   if (!signupForm || !loginForm) {
@@ -492,24 +577,32 @@ function setupForms() {
     event.preventDefault();
     const email = normalizeEmailInput(document.getElementById('ai-access-signup-email')?.value || '');
     const password = String(document.getElementById('ai-access-signup-password')?.value || '');
+    const confirmPassword = String(document.getElementById('ai-access-signup-confirm-password')?.value || '');
+    const remember = Boolean(document.getElementById('ai-access-signup-remember')?.checked ?? true);
     const submitButton = signupForm.querySelector('button[type="submit"]');
     const idleLabel = submitButton?.textContent || 'Create account';
     try {
+      clearStatusActions();
       if (!isLikelyValidEmail(email)) {
         throw new Error('Please enter a valid email address.');
       }
-      if (!checkPasswordStrength(password).strong) {
-        throw new Error('Use a stronger password: 10+ chars with upper/lower/number/symbol.');
+      if (password !== confirmPassword) {
+        throw new Error('Passwords do not match.');
+      }
+      if (!checkPasswordStrength(password).valid) {
+        throw new Error('Password must be at least 8 characters with uppercase, number, and special character.');
       }
       setButtonBusy(submitButton, true, idleLabel, 'Creating...');
-      const remember = !(signupRememberInput instanceof HTMLInputElement) || signupRememberInput.checked;
       const traderMode = getSelectedTraderModeFromUi();
-      await signUp(email, password, { remember, traderMode });
-      await hydrateSessionUser(String(localStorage.getItem('dumbdollars_token') || '').trim());
-      setStatus('Account created. Redirecting...');
-      goToNextPath();
+      await signUp(email, password, {
+        traderMode,
+        confirmPassword,
+        remember
+      });
+      setStatus('Account created. Check your email to verify before signing in.');
+      window.location.href = '/ai-trade-access.html?mode=login';
     } catch (error) {
-      setStatus(error.message || 'Could not create account.', true);
+      setStatus(mapSignupErrorMessage(error), true);
     } finally {
       setButtonBusy(submitButton, false, idleLabel, 'Creating...');
     }
@@ -519,20 +612,28 @@ function setupForms() {
     event.preventDefault();
     const email = normalizeEmailInput(document.getElementById('ai-access-login-email')?.value || '');
     const password = String(document.getElementById('ai-access-login-password')?.value || '');
+    const remember = Boolean(document.getElementById('ai-access-login-remember')?.checked ?? true);
     const submitButton = loginForm.querySelector('button[type="submit"]');
     const idleLabel = submitButton?.textContent || 'Log in';
     try {
+      clearStatusActions();
       if (!isLikelyValidEmail(email)) {
         throw new Error('Please enter a valid email address.');
       }
       setButtonBusy(submitButton, true, idleLabel, 'Signing in...');
-      const remember = !(loginRememberInput instanceof HTMLInputElement) || loginRememberInput.checked;
       await logIn(email, password, { remember });
       await hydrateSessionUser(String(localStorage.getItem('dumbdollars_token') || '').trim());
       setStatus('Login successful. Redirecting...');
       goToNextPath();
     } catch (error) {
-      setStatus(error.message || 'Could not log in.', true);
+      const mappedMessage = mapLoginErrorMessage(error);
+      if (mappedMessage === 'Please verify your email before signing in') {
+        setStatus('Please verify your email before signing in.', true);
+        renderResendVerificationAction(email);
+        return;
+      }
+      clearStatusActions();
+      setStatus(mappedMessage, true);
     } finally {
       setButtonBusy(submitButton, false, idleLabel, 'Signing in...');
     }
@@ -545,14 +646,11 @@ function setupForms() {
       const signupEmail = normalizeEmailInput(document.getElementById('ai-access-signup-email')?.value || '');
       const savedEmail = normalizeEmailInput(localStorage.getItem('dumbdollars_saved_email') || '');
       const email = loginEmail || signupEmail || savedEmail;
-      const remember = (loginRememberInput instanceof HTMLInputElement && loginRememberInput.checked)
-        || (signupRememberInput instanceof HTMLInputElement && signupRememberInput.checked)
-        || (!(loginRememberInput instanceof HTMLInputElement) && !(signupRememberInput instanceof HTMLInputElement));
       const traderMode = getSelectedTraderModeFromUi();
       button.disabled = true;
       setStatus('Opening social sign-in...');
       saveTraderMode(traderMode);
-      goToSocialAuthPage(provider, email, remember);
+      goToSocialAuthPage(provider, email);
       window.setTimeout(() => {
         button.disabled = false;
       }, 1000);
@@ -570,13 +668,8 @@ function setupForms() {
           throw new Error('Enter the same email used on your account.');
         }
         setButtonBusy(requestCodeButton, true, idleLabel, 'Sending code...');
-        const response = await requestAccessCode(email, 'pro_recovery');
-        const deliveryMode = String(response?.deliveryMode || '').trim().toLowerCase();
-        if (deliveryMode === 'preview' && response?.previewCode) {
-          setStatus(`Preview mode code: ${response.previewCode} (use it below).`);
-          return;
-        }
-        setStatus('If this email exists, a code was sent. Check inbox and spam.');
+        await requestAccessCode(email, 'password_reset');
+        setStatus('If this email exists, a reset link was sent. Check inbox and spam.');
       } catch (error) {
         setStatus(error.message || 'Could not send account code.', true);
       } finally {
@@ -589,24 +682,14 @@ function setupForms() {
     const verifyCodeButton = accessCodeVerifyForm.querySelector('button[type="submit"]');
     accessCodeVerifyForm.addEventListener('submit', async (event) => {
       event.preventDefault();
-      const email = normalizeEmailInput(accessCodeEmailInput?.value || '');
       const code = String(accessCodeInput?.value || '').trim().toUpperCase();
       const idleLabel = verifyCodeButton?.textContent || 'Verify code + restore Pro';
       try {
-        if (!isLikelyValidEmail(email)) {
-          throw new Error('Enter the account email first.');
-        }
         if (!code || code.length < 6) {
           throw new Error('Enter the full access code from email.');
         }
         setButtonBusy(verifyCodeButton, true, idleLabel, 'Verifying...');
-        const remember = (loginRememberInput instanceof HTMLInputElement && loginRememberInput.checked)
-          || (signupRememberInput instanceof HTMLInputElement && signupRememberInput.checked)
-          || (!(loginRememberInput instanceof HTMLInputElement) && !(signupRememberInput instanceof HTMLInputElement));
-        await verifyAccessCodeAndRestore(email, code, { remember });
-        await hydrateSessionUser(String(localStorage.getItem('dumbdollars_token') || '').trim());
-        setStatus('Code verified. Pro access restored. Redirecting...');
-        goToNextPath();
+        setStatus('This flow now uses reset links from email. Open the link sent to your inbox to continue.');
       } catch (error) {
         setStatus(error.message || 'Could not verify access code.', true);
       } finally {
@@ -618,6 +701,7 @@ function setupForms() {
 
 async function init() {
   setupTraderModePicker();
+  setupPasswordVisibilityToggles();
   applySavedEmail();
   setupForms();
   applyRequestedAuthMode();

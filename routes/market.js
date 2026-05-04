@@ -51,6 +51,12 @@ const {
   runAutoTraderAutopilotTick,
   stopAutoTraderAutopilot
 } = require('../services/autoTraderService');
+const { getUserByEmailForAuth } = require('../services/authDbService');
+const {
+  sendTradeAlertEmail,
+  sendStopLossAlertEmail,
+  sendDailyLossAlertEmail
+} = require('../services/schedulerService');
 const {
   createComplaintTicket,
   getComplaintTicket,
@@ -291,6 +297,137 @@ function requireSignedIn(req, res, next) {
     });
   }
   return next();
+}
+
+function toNumber(value, fallback = 0) {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : fallback;
+}
+
+function toTradeAlertPayload(trade, side) {
+  const entry = toNumber(trade?.entryPrice ?? trade?.entry, 0);
+  const exit = toNumber(trade?.exitPrice ?? trade?.markPrice ?? trade?.exit ?? entry, entry);
+  const shares = Math.max(1, toNumber(trade?.shares, 1));
+  const pnlUsd = toNumber(trade?.pnlUsd, 0);
+  const notionalUsd = toNumber(trade?.notionalUsd, entry * shares);
+  const denominator = Math.max(0.01, entry * shares);
+  const pnlPct = (pnlUsd / denominator) * 100;
+  return {
+    ticker: String(trade?.ticker || trade?.symbol || '').trim(),
+    entry,
+    exit,
+    shares,
+    notionalUsd,
+    stopLoss: toNumber(trade?.stopLoss, 0),
+    takeProfit: toNumber(trade?.takeProfit, 0),
+    signalScore: toNumber(trade?.confidenceScore ?? trade?.websiteSignalScore, 0),
+    pnlUsd,
+    pnlPct,
+    holdTime: '-',
+    reason: String(trade?.result || trade?.reason || 'Signal').trim() || 'Signal',
+    direction: side === 'sell' ? 'sell' : 'buy'
+  };
+}
+
+async function sendUserTradeAlertFromPayload(req, trade, side) {
+  const user = getUserByEmailForAuth(req.user?.email || '');
+  if (!user?.id || !user?.email || !trade) {
+    return;
+  }
+  await sendTradeAlertEmail(user, toTradeAlertPayload(trade, side), side);
+}
+
+async function sendAlertForProposalApproval(req, approvalPayload) {
+  const openedPosition = approvalPayload?.openedPosition;
+  if (!openedPosition) {
+    return;
+  }
+  await sendUserTradeAlertFromPayload(req, openedPosition, 'buy');
+}
+
+async function sendAlertsForRunCycle(req, runPayload) {
+  const approvedRows = Array.isArray(runPayload?.autoExecution?.approvals)
+    ? runPayload.autoExecution.approvals
+    : [];
+  const approvedPositionIds = new Set(
+    approvedRows
+      .filter((row) => row?.approved && row?.openedPositionId)
+      .map((row) => String(row.openedPositionId).trim())
+      .filter(Boolean)
+  );
+  if (!approvedPositionIds.size) {
+    return;
+  }
+  const status = getAutoTraderStatus(req.user);
+  const openPositions = Array.isArray(status?.openPositions) ? status.openPositions : [];
+  for (const position of openPositions) {
+    if (!approvedPositionIds.has(String(position?.id || '').trim())) {
+      // eslint-disable-next-line no-continue
+      continue;
+    }
+    try {
+      // eslint-disable-next-line no-await-in-loop
+      await sendUserTradeAlertFromPayload(req, position, 'buy');
+    } catch (_error) {
+      // Best-effort per trade alert.
+    }
+  }
+
+  const closedRows = Array.isArray(runPayload?.cycle?.closedPositions)
+    ? runPayload.cycle.closedPositions
+    : [];
+  for (const closedTrade of closedRows) {
+    try {
+      // eslint-disable-next-line no-await-in-loop
+      await sendUserTradeAlertFromPayload(req, closedTrade, 'sell');
+      // eslint-disable-next-line no-await-in-loop
+      await sendStopLossAlertIfNeeded(req, closedTrade);
+    } catch (_error) {
+      // Best-effort per trade alert.
+    }
+  }
+}
+
+async function sendStopLossAlertIfNeeded(req, closedTrade) {
+  const reason = String(closedTrade?.result || '').trim().toLowerCase();
+  if (reason !== 'stop_loss') {
+    return;
+  }
+  const user = getUserByEmailForAuth(req.user?.email || '');
+  if (!user?.id || !user?.email) {
+    return;
+  }
+  await sendStopLossAlertEmail(user, toTradeAlertPayload(closedTrade, 'sell'));
+}
+
+async function sendDailyLossAlertIfNeeded(req, code) {
+  if (String(code || '') !== 'daily_loss_limit_reached') {
+    return;
+  }
+  const user = getUserByEmailForAuth(req.user?.email || '');
+  if (!user?.id || !user?.email) {
+    return;
+  }
+  const status = getAutoTraderStatus(req.user);
+  const accountView = getAutoTraderAccountView(req.user);
+  const equityUsd = Math.max(1, Number(accountView?.portfolio?.equityUsd || status?.cashUsd || 0));
+  const dailyLossLimitUsd = Number(accountView?.riskSettings?.dailyLossLimitUsd || ((status?.config?.maxDailyLossPct || 3) / 100) * equityUsd);
+  const dayKey = toDateStamp(getEasternNow());
+  const closedTrades = Array.isArray(accountView?.tradeHistory?.closed) ? accountView.tradeHistory.closed : [];
+  const dailyLossUsd = Math.abs(closedTrades
+    .filter((trade) => {
+      const stampSource = trade?.closedAt || trade?.openedAt;
+      const parsed = new Date(String(stampSource || ''));
+      if (Number.isNaN(parsed.getTime())) {
+        return false;
+      }
+      return toDateStamp(parseEasternParts(parsed)) === dayKey;
+    })
+    .reduce((sum, trade) => sum + Math.min(0, Number(trade?.pnlUsd || 0)), 0));
+  await sendDailyLossAlertEmail(user, {
+    dailyLossUsd,
+    dailyLossLimitUsd
+  });
 }
 
 function hasComplaintReviewAccess(req) {
@@ -1087,13 +1224,20 @@ router.post('/auto-trader/run', requireSignedIn, async (req, res) => {
       }
     }
     const bot = getAutoTraderStatus(req.user);
-    return res.json({
+    const responsePayload = {
       bot,
       cycle,
       autoExecution
-    });
+    };
+    try {
+      await sendAlertsForRunCycle(req, responsePayload);
+    } catch (_error) {
+      // Best-effort alerts should never fail the main flow.
+    }
+    return res.json(responsePayload);
   } catch (error) {
     const code = String(error.message || '');
+    Promise.resolve(sendDailyLossAlertIfNeeded(req, code)).catch(() => {});
     if (code === 'bot_not_configured') {
       return res.status(400).json({
         error: 'bot_not_configured',
@@ -1701,6 +1845,7 @@ router.post('/auto-trader/trade-ideas/:ticketId/approve', requireSignedIn, (req,
     const payload = approvePendingTradeProposal(req.user, {
       ticketId: req.params.ticketId
     });
+    Promise.resolve(sendAlertForProposalApproval(req, payload)).catch(() => {});
     return res.json(payload);
   } catch (error) {
     const code = String(error.message || '');
@@ -1761,6 +1906,7 @@ router.post('/auto-trader/proposals/:ticketId/approve', requireSignedIn, (req, r
     const payload = approvePendingTradeProposal(req.user, {
       ticketId: req.params.ticketId
     });
+    Promise.resolve(sendAlertForProposalApproval(req, payload)).catch(() => {});
     return res.json(payload);
   } catch (error) {
     const code = String(error.message || '');
@@ -1823,6 +1969,8 @@ router.post('/auto-trader/positions/:positionId/close', requireSignedIn, (req, r
       positionId: req.params.positionId,
       markPrice: Number.isFinite(markPrice) ? markPrice : undefined
     });
+    Promise.resolve(sendUserTradeAlertFromPayload(req, payload?.closed, 'sell')).catch(() => {});
+    Promise.resolve(sendStopLossAlertIfNeeded(req, payload?.closed)).catch(() => {});
     return res.json(payload);
   } catch (error) {
     const code = String(error.message || '');

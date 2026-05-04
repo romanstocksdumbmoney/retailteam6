@@ -33,7 +33,6 @@ let traderModeShowAll = false;
 const AUTH_EMAIL_STORAGE_KEY = 'dumbdollars_saved_email';
 const SAVED_EMAIL_KEY = 'dumbdollars_saved_email';
 const AUTH_TOKEN_STORAGE_KEY = 'dumbdollars_token';
-const REMEMBER_TOKEN_STORAGE_KEY = 'dumbdollars_remember_token';
 const PREMIUM_SPIKE_PROOF_STORAGE_KEY = 'dumbdollars_premium_spike_proofs_v1';
 const FALLBACK_AI_DISCOVERY_LINK = 'https://x.com';
 const CHECKOUT_RETURN_PATH_STORAGE_KEY = 'dumbdollars_return_after_checkout';
@@ -615,22 +614,6 @@ function loadPreferredEmail() {
   return String(localStorage.getItem(SAVED_EMAIL_KEY) || '').trim().toLowerCase();
 }
 
-function getRememberToken() {
-  return String(localStorage.getItem(REMEMBER_TOKEN_STORAGE_KEY) || '').trim();
-}
-
-function saveRememberToken(token) {
-  const value = String(token || '').trim();
-  if (!value) {
-    localStorage.removeItem(REMEMBER_TOKEN_STORAGE_KEY);
-    return;
-  }
-  localStorage.setItem(REMEMBER_TOKEN_STORAGE_KEY, value);
-}
-
-function clearRememberToken() {
-  localStorage.removeItem(REMEMBER_TOKEN_STORAGE_KEY);
-}
 
 function getCurrentAppPath() {
   const path = `${window.location.pathname || '/'}${window.location.search || ''}${window.location.hash || ''}`;
@@ -705,10 +688,6 @@ function applyAuthPayload(payload, fallbackEmail = '') {
     user: payload?.user || null,
     loading: false
   }, { skipRender: true, skipLog: false, persistToken: true });
-  const rememberToken = String(payload?.rememberToken || '').trim();
-  if (rememberToken) {
-    saveRememberToken(rememberToken);
-  }
   const email = String(payload?.user?.email || fallbackEmail || '').trim().toLowerCase();
   if (email) {
     saveAuthEmail(email);
@@ -720,26 +699,19 @@ function applyAuthPayload(payload, fallbackEmail = '') {
 }
 
 async function restoreAuthSessionFromRememberToken() {
-  const rememberToken = getRememberToken();
-  if (!rememberToken || restoreSessionInFlight) {
+  if (restoreSessionInFlight) {
     return false;
   }
   restoreSessionInFlight = true;
   try {
     const payload = await fetchJson('/api/auth/session/restore', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ rememberToken })
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' }
     });
     applyAuthPayload(payload, payload?.user?.email || '');
     return true;
   } catch (error) {
-    const status = Number(error?.status || 0);
-    const code = String(error?.body?.error || '').trim().toLowerCase();
-    // Only purge remember token when server confirms it is invalid/expired.
-    if (status === 401 || code === 'invalid_remember_token' || code === 'missing_remember_token') {
-      clearRememberToken();
-    }
     return false;
   } finally {
     restoreSessionInFlight = false;
@@ -811,9 +783,8 @@ function getPasswordStrength(password) {
 function isSignupPasswordStrong(password) {
   const value = String(password || '');
   return (
-    value.length >= 10
+    value.length >= 8
     && /[A-Z]/.test(value)
-    && /[a-z]/.test(value)
     && /\d/.test(value)
     && /[^A-Za-z0-9]/.test(value)
   );
@@ -828,7 +799,7 @@ function updatePasswordHint(inputId, targetId) {
   const update = () => {
     const value = String(input.value || '');
     if (!value) {
-      target.textContent = 'Use 12+ chars with uppercase, lowercase, number, and symbol.';
+      target.textContent = 'Use 8+ chars with uppercase, number, and symbol.';
       target.className = 'small-note';
       return;
     }
@@ -2506,6 +2477,62 @@ function setAuthMessage(text, isError = false) {
   applyStatusClass(node, 'small-note', text, isError);
 }
 
+function renderResendVerificationAction(email) {
+  const actions = document.getElementById('auth-message-actions');
+  if (!(actions instanceof HTMLElement)) {
+    return;
+  }
+  actions.innerHTML = '';
+  const button = document.createElement('button');
+  button.type = 'button';
+  button.className = 'link-button';
+  button.textContent = 'Resend verification email';
+  button.addEventListener('click', async () => {
+    button.disabled = true;
+    try {
+      await fetchJson('/api/auth/resend-verification', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: String(email || '').trim().toLowerCase() })
+      });
+      setAuthMessage('Verification email sent. Check your inbox and spam folder.');
+    } catch (error) {
+      setAuthMessage(error.message || 'Could not resend verification email.', true);
+    } finally {
+      button.disabled = false;
+    }
+  });
+  actions.appendChild(button);
+}
+
+function clearAuthMessageActions() {
+  const actions = document.getElementById('auth-message-actions');
+  if (!(actions instanceof HTMLElement)) {
+    return;
+  }
+  actions.innerHTML = '';
+}
+
+function mapLoginErrorMessage(error, email) {
+  const code = String(error?.body?.error || '').trim().toLowerCase();
+  const message = String(error?.message || '').trim();
+  if (code === 'unknown_email' || error?.status === 404) {
+    return 'No account found with that email';
+  }
+  if (code === 'incorrect_password' || error?.status === 401) {
+    return 'Incorrect password';
+  }
+  if (code === 'email_not_verified' || message.toLowerCase().includes('verify your email')) {
+    renderResendVerificationAction(email);
+    return 'Please verify your email before signing in';
+  }
+  if (code === 'too_many_attempts' || error?.status === 429) {
+    return 'Too many failed attempts — try again in 15 minutes';
+  }
+  return message || 'Login failed.';
+}
+
 function setEmailAutomationStatus(text, isError = false) {
   const node = document.getElementById('email-automation-status');
   if (!node) {
@@ -2539,8 +2566,7 @@ function setEmailAutomationBusy(button, isBusy, idleLabel, busyLabel) {
 
 function buildEmailAutomationHeaders() {
   return {
-    'Content-Type': 'application/json',
-    ...headersWithPlan()
+    'Content-Type': 'application/json'
   };
 }
 
@@ -2557,8 +2583,8 @@ function toggleEmailAutomationCardVisibility(isVisible) {
 }
 
 function populateEmailAutomationFormFromSettings(payload) {
-  const settings = payload?.settings || {};
-  const accountEmail = String(payload?.accountEmail || currentUser?.email || '').trim().toLowerCase();
+  const settings = payload?.preferences || payload?.settings || {};
+  const accountEmail = String(payload?.email || payload?.accountEmail || currentUser?.email || '').trim().toLowerCase();
   const confirmEmailInput = document.getElementById('email-automation-confirm-email');
   const enabledInput = document.getElementById('email-automation-enabled');
   const freePromoInput = document.getElementById('email-automation-free-promo');
@@ -2569,21 +2595,21 @@ function populateEmailAutomationFormFromSettings(payload) {
     confirmEmailInput.value = accountEmail;
   }
   if (enabledInput instanceof HTMLInputElement) {
-    enabledInput.checked = settings.enabled !== false;
+    enabledInput.checked = settings.daily_report !== false;
   }
   if (freePromoInput instanceof HTMLInputElement) {
-    freePromoInput.checked = settings.freePromoEnabled !== false;
+    freePromoInput.checked = settings.trade_alerts_buy === true;
   }
   if (proUpdateInput instanceof HTMLInputElement) {
-    proUpdateInput.checked = settings.proUpdateEnabled !== false;
+    proUpdateInput.checked = settings.weekly_report !== false;
   }
   if (cadenceInput instanceof HTMLInputElement) {
-    const cadenceDays = Number(settings.cadenceDays);
+    const cadenceDays = Number(settings.cadenceDays || 3);
     cadenceInput.value = Number.isFinite(cadenceDays) ? String(Math.max(1, Math.min(30, Math.trunc(cadenceDays)))) : '3';
   }
   const statusLine = transportReady
-    ? 'Email automation ready. SMTP is configured for real delivery.'
-    : 'Email automation active in preview mode (SMTP not configured yet).';
+    ? 'Email notifications ready.'
+    : 'Email notifications active (provider readiness pending).';
   setEmailAutomationStatus(statusLine, false);
 }
 
@@ -2597,8 +2623,8 @@ async function loadEmailAutomationSettings() {
   toggleEmailAutomationCardVisibility(true);
   setEmailAutomationStatus('Loading email automation settings...', false);
   try {
-    const payload = await fetchJson('/api/auth/email-automation/settings', {
-      headers: headersWithPlan()
+    const payload = await fetchJson('/api/auth/email/preferences', {
+      headers: buildEmailAutomationHeaders()
     });
     populateEmailAutomationFormFromSettings(payload);
   } catch (error) {
@@ -2624,20 +2650,22 @@ function setupEmailAutomationCard() {
     const idleLabel = saveButton instanceof HTMLButtonElement ? saveButton.textContent || 'Save Email Automation' : 'Save Email Automation';
     try {
       setEmailAutomationBusy(saveButton, true, idleLabel, 'Saving...');
-      const confirmEmail = String(document.getElementById('email-automation-confirm-email')?.value || '').trim().toLowerCase();
       const enabled = Boolean(document.getElementById('email-automation-enabled')?.checked);
-      const freePromoEnabled = Boolean(document.getElementById('email-automation-free-promo')?.checked);
-      const proUpdateEnabled = Boolean(document.getElementById('email-automation-pro-update')?.checked);
+      const tradeAlertBuy = Boolean(document.getElementById('email-automation-free-promo')?.checked);
+      const weeklyReport = Boolean(document.getElementById('email-automation-pro-update')?.checked);
       const cadenceDays = Number(document.getElementById('email-automation-cadence-days')?.value || 3);
-      const payload = await fetchJson('/api/auth/email-automation/settings', {
+      const payload = await fetchJson('/api/auth/email/preferences', {
         method: 'POST',
         headers: buildEmailAutomationHeaders(),
         body: JSON.stringify({
-          confirmEmail,
-          enabled,
-          freePromoEnabled,
-          proUpdateEnabled,
-          cadenceDays
+          daily_report: enabled,
+          weekly_report: weeklyReport,
+          trade_alerts_buy: tradeAlertBuy,
+          trade_alerts_sell: false,
+          stop_loss_alerts: true,
+          daily_loss_alerts: true,
+          bot_status_alerts: true,
+          report_time: cadenceDays >= 4 ? '18:00' : '16:30'
         })
       });
       populateEmailAutomationFormFromSettings(payload);
@@ -2658,21 +2686,12 @@ function setupEmailAutomationCard() {
     const idleLabel = sendTestButton.textContent || 'Send Test Email Now';
     try {
       setEmailAutomationBusy(sendTestButton, true, idleLabel, 'Sending...');
-      const payload = await fetchJson('/api/auth/email-automation/send', {
+      const payload = await fetchJson('/api/auth/email/test', {
         method: 'POST',
-        headers: buildEmailAutomationHeaders(),
-        body: JSON.stringify({
-          type: 'auto',
-          reason: 'manual_test'
-        })
+        headers: buildEmailAutomationHeaders()
       });
-      const deliveryStatus = String(payload?.delivery?.status || '').trim().toLowerCase();
-      if (deliveryStatus === 'sent') {
+      if (payload?.ok) {
         setEmailAutomationStatus('Test email sent successfully.', false);
-      } else if (deliveryStatus === 'preview') {
-        setEmailAutomationStatus('SMTP not configured yet. Test email generated in preview mode.', false);
-      } else if (payload?.skipped) {
-        setEmailAutomationStatus(`Test email skipped: ${payload.reason || 'not eligible right now'}.`, false);
       } else {
         setEmailAutomationStatus('Test email request completed.', false);
       }
@@ -2809,6 +2828,8 @@ function renderAuthState() {
   const authGrid = document.querySelector('#account-center .auth-grid');
   const socialAuthRow = document.getElementById('social-auth-row');
   const openAuthAccessPageLink = document.getElementById('open-auth-access-page');
+  const emailVerifyBanner = document.getElementById('email-verify-banner');
+  const emailVerifyResendBtn = document.getElementById('email-verify-resend-btn');
   const hasOwnerAccess = Boolean(authSnapshot.user && authSnapshot.user.ownerAccess);
 
   activePlan = authSnapshot.user && authSnapshot.user.plan === PLAN_PRO ? PLAN_PRO : PLAN_FREE;
@@ -2866,6 +2887,37 @@ function renderAuthState() {
   }
   if (openAuthAccessPageLink instanceof HTMLElement) {
     openAuthAccessPageLink.classList.toggle('hidden', authSnapshot.loading || Boolean(authSnapshot.user));
+  }
+  const needsEmailVerification = Boolean(
+    !authSnapshot.loading
+    && authSnapshot.user
+    && authSnapshot.user.emailVerified === false
+  );
+  if (emailVerifyBanner instanceof HTMLElement) {
+    emailVerifyBanner.classList.toggle('hidden', !needsEmailVerification);
+  }
+  if (emailVerifyResendBtn instanceof HTMLButtonElement) {
+    emailVerifyResendBtn.disabled = authSnapshot.loading || !needsEmailVerification;
+    emailVerifyResendBtn.onclick = async () => {
+      const email = String(authSnapshot?.user?.email || '').trim().toLowerCase();
+      if (!email) {
+        return;
+      }
+      emailVerifyResendBtn.disabled = true;
+      try {
+        await fetchJson('/api/auth/resend-verification', {
+          method: 'POST',
+          credentials: 'include',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email })
+        });
+        setAuthMessage('Verification email sent. Check inbox and spam folder.');
+      } catch (error) {
+        setAuthMessage(error.message || 'Could not resend verification email.', true);
+      } finally {
+        emailVerifyResendBtn.disabled = false;
+      }
+    };
   }
   ensureEmailAutomationCardVisibility();
   renderDashboardGreeting();
@@ -3996,7 +4048,10 @@ async function fetchCurrentUser() {
   }
 
   try {
-    const payload = await fetchJson('/api/auth/me', { headers: headersWithPlan() });
+    const payload = await fetchJson('/api/auth/me', {
+      credentials: 'include',
+      headers: headersWithPlan()
+    });
     applyAuthStatePatch({
       loading: false,
       user: payload.user || null
@@ -4023,7 +4078,10 @@ async function fetchCurrentUser() {
   const restored = await restoreAuthSessionFromRememberToken();
   if (restored) {
     try {
-      const retryPayload = await fetchJson('/api/auth/me', { headers: headersWithPlan() });
+      const retryPayload = await fetchJson('/api/auth/me', {
+        credentials: 'include',
+        headers: headersWithPlan()
+      });
       applyAuthStatePatch({
         loading: false,
         user: retryPayload.user || null
@@ -4035,7 +4093,6 @@ async function fetchCurrentUser() {
     } catch (retryError) {
       const retryStatus = Number(retryError?.status || 0);
       if (retryStatus === 401) {
-        clearRememberToken();
         setAuthMessage('Session expired. Please sign in again.', true);
       }
       applyAuthStatePatch({
@@ -4065,13 +4122,15 @@ async function runPostAuthHydration() {
 }
 
 async function login(email, password, options = {}) {
+  const remember = options.remember !== false;
   const payload = await fetchJson('/api/auth/login', {
     method: 'POST',
+    credentials: 'include',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       email,
       password,
-      remember: options.remember !== false
+      remember
     })
   });
   applyAuthPayload(payload, email);
@@ -4081,14 +4140,18 @@ async function login(email, password, options = {}) {
 
 async function signup(email, password, options = {}) {
   const traderMode = normalizeTraderMode(options.traderMode || getActiveTraderMode());
+  const confirmPassword = String(options.confirmPassword || password || '');
+  const remember = options.remember !== false;
   const payload = await fetchJson('/api/auth/signup', {
     method: 'POST',
+    credentials: 'include',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       email,
       password,
+      confirmPassword,
       traderMode,
-      remember: options.remember !== false
+      remember
     })
   });
   applyAuthPayload(payload, email);
@@ -4099,14 +4162,16 @@ async function signup(email, password, options = {}) {
 
 async function socialSignIn(provider, email, options = {}) {
   const traderMode = normalizeTraderMode(options.traderMode || getActiveTraderMode());
+  const remember = options.remember !== false;
   const payload = await fetchJson('/api/auth/oauth/signin', {
     method: 'POST',
+    credentials: 'include',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       provider,
       email,
       traderMode,
-      remember: options.remember !== false
+      remember
     })
   });
   applyAuthPayload(payload, email);
@@ -4138,8 +4203,6 @@ function openSocialAuthPage(provider, email, redirectPath, remember = true, trad
 function setupAuthForms() {
   const loginForm = document.getElementById('login-form');
   const signupForm = document.getElementById('signup-form');
-  const loginRememberInput = document.getElementById('login-remember');
-  const signupRememberInput = document.getElementById('signup-remember');
   const socialButtons = Array.from(document.querySelectorAll('.oauth-btn'));
   const logoutButton = document.getElementById('logout-btn');
   const openAuthAccessPageLink = document.getElementById('open-auth-access-page');
@@ -4231,20 +4294,22 @@ function setupAuthForms() {
     event.preventDefault();
     const email = document.getElementById('login-email').value.trim().toLowerCase();
     const password = document.getElementById('login-password').value;
+    const remember = true;
     const submitButton = loginForm.querySelector('button[type="submit"]');
     const idleLabel = submitButton?.textContent || 'Log in';
     try {
+      clearAuthMessageActions();
       setButtonBusy(submitButton, true, idleLabel, 'Signing in...');
-      const remember = !(loginRememberInput instanceof HTMLInputElement) || loginRememberInput.checked;
       const payload = await login(email, password, { remember });
       savePreferredEmail(email);
       if (!hasAuthenticatedSession()) {
         throw new Error('Login succeeded but session did not persist. Please try again.');
       }
+      clearAuthMessageActions();
       setAuthMessage(`Logged in successfully as ${payload?.user?.email || email}.`);
       await refreshAfterAuth();
     } catch (error) {
-      setAuthMessage(error.message || 'Login failed.', true);
+      setAuthMessage(mapLoginErrorMessage(error, email), true);
     } finally {
       setButtonBusy(submitButton, false, idleLabel, 'Signing in...');
     }
@@ -4254,6 +4319,7 @@ function setupAuthForms() {
     event.preventDefault();
     const email = document.getElementById('signup-email').value.trim().toLowerCase();
     const password = document.getElementById('signup-password').value;
+    const remember = true;
     const submitButton = signupForm.querySelector('button[type="submit"]');
     const idleLabel = submitButton?.textContent || 'Sign up';
     if (!isLikelyRealEmail(email)) {
@@ -4261,13 +4327,16 @@ function setupAuthForms() {
       return;
     }
     if (!isSignupPasswordStrong(password)) {
-      setAuthMessage('Use at least 10 characters with uppercase, lowercase, number, and symbol.', true);
+      setAuthMessage('Use at least 8 characters with uppercase, number, and symbol.', true);
       return;
     }
     try {
+      clearAuthMessageActions();
       setButtonBusy(submitButton, true, idleLabel, 'Creating...');
-      const remember = !(signupRememberInput instanceof HTMLInputElement) || signupRememberInput.checked;
-      const payload = await signup(email, password, { remember });
+      const payload = await signup(email, password, {
+        confirmPassword: password,
+        remember
+      });
       savePreferredEmail(email);
       if (hasAuthenticatedSession()) {
         setAuthMessage('Account created and logged in.');
@@ -4277,7 +4346,7 @@ function setupAuthForms() {
       const requiresEmailConfirmation = Boolean(
         payload?.requiresEmailConfirmation
         || payload?.emailConfirmationRequired
-        || (!payload?.token && !payload?.rememberToken)
+        || !payload?.token
       );
       if (requiresEmailConfirmation) {
         setAuthMessage('Check your email to confirm your account.');
@@ -4302,33 +4371,26 @@ function setupAuthForms() {
       const signupInput = document.getElementById('signup-email');
       const fallbackEmail = loadPreferredEmail() || getSavedAuthEmail();
       const preferred = String(loginInput?.value || signupInput?.value || fallbackEmail || '').trim().toLowerCase();
-      const remember = (loginRememberInput instanceof HTMLInputElement && loginRememberInput.checked)
-        || (signupRememberInput instanceof HTMLInputElement && signupRememberInput.checked)
-        || (!(loginRememberInput instanceof HTMLInputElement) && !(signupRememberInput instanceof HTMLInputElement));
       button.disabled = true;
-      openSocialAuthPage(provider, preferred, window.location.pathname || '/', remember, getActiveTraderMode());
+      openSocialAuthPage(provider, preferred, window.location.pathname || '/', true, getActiveTraderMode());
     });
   });
 
   logoutButton.addEventListener('click', async () => {
-    const rememberToken = getRememberToken();
-    if (rememberToken) {
-      try {
-        await fetchJson('/api/auth/session/revoke', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ rememberToken })
-        });
-      } catch (_error) {
-        // Best-effort revoke only.
-      }
+    try {
+      await fetchJson('/api/auth/logout', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' }
+      });
+    } catch (_error) {
+      // Best-effort revoke only.
     }
     applyAuthStatePatch({
       session: null,
       user: null,
       loading: false
     });
-    clearRememberToken();
     closeBillingCard();
     setAuthMessage('Logged out.');
     await refreshAfterAuth();
@@ -4346,7 +4408,6 @@ function setupAuthForms() {
         user: null,
         loading: false
       });
-      clearRememberToken();
       setAuthMessage('Logged out.');
     });
   }

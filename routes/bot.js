@@ -1,17 +1,20 @@
 const express = require('express');
-const { parseAuthToken } = require('../services/authService');
+const { setUserAiTraderSetupById } = require('../services/userStore');
+const { requireApiAuth } = require('../services/routeAuth');
+const { getUserByEmailForAuth } = require('../services/authDbService');
 const {
-  getUserById,
-  findUserByEmail,
-  setUserAiTraderSetupById
-} = require('../services/userStore');
+  sendTradeAlertEmail,
+  sendStopLossAlertEmail,
+  sendDailyLossAlertEmail
+} = require('../services/schedulerService');
 const {
   configureAutoTrader,
   getAutoTraderStatus,
   getAutoTraderAccountView,
   setBotActive,
   stopAutoTraderAutopilot,
-  runAutoTraderCycle
+  runAutoTraderCycle,
+  manualCloseAutoTraderPosition
 } = require('../services/autoTraderService');
 
 const router = express.Router();
@@ -52,25 +55,16 @@ const ET_TIME_FORMATTER = new Intl.DateTimeFormat('en-US', {
 });
 
 function requireSignedIn(req, res, next) {
-  const parsed = parseAuthToken(req.header('authorization'));
-  if (!parsed.ok) {
-    return res.status(401).json({
-      error: 'unauthorized',
-      message: 'Sign in to use AI Trader bot controls.'
-    });
-  }
-  let user = getUserById(parsed.userId);
-  if (!user && parsed.email) {
-    user = findUserByEmail(parsed.email);
-  }
-  if (!user) {
-    return res.status(401).json({
-      error: 'unauthorized',
-      message: 'Your account session is no longer valid. Please sign in again.'
-    });
-  }
-  req.user = user;
-  return next();
+  return requireApiAuth(req, res, () => {
+    const authUser = getUserByEmailForAuth(req.user?.email || '');
+    if (!authUser?.email_verified) {
+      return res.status(403).json({
+        error: 'email_not_verified',
+        message: 'Please verify your email before starting the bot or placing trades.'
+      });
+    }
+    return next();
+  });
 }
 
 function toNum(value, fallback = 0) {
@@ -84,6 +78,86 @@ function clamp(value, min, max) {
 
 function roundUsd(value) {
   return Number(Number(value || 0).toFixed(2));
+}
+
+function toNumber(value, fallback = 0) {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : fallback;
+}
+
+function toTradeAlertPayload(trade, side) {
+  const entry = toNumber(trade?.entryPrice ?? trade?.entry, 0);
+  const exit = toNumber(trade?.exitPrice ?? trade?.markPrice ?? trade?.exit ?? entry, entry);
+  const shares = Math.max(1, toNumber(trade?.shares, 1));
+  const pnlUsd = toNumber(trade?.pnlUsd, 0);
+  const notionalUsd = toNumber(trade?.notionalUsd, entry * shares);
+  const denominator = Math.max(0.01, entry * shares);
+  const pnlPct = (pnlUsd / denominator) * 100;
+  return {
+    ticker: String(trade?.ticker || trade?.symbol || '').trim(),
+    entry,
+    exit,
+    shares,
+    notionalUsd,
+    stopLoss: toNumber(trade?.stopLoss, 0),
+    takeProfit: toNumber(trade?.takeProfit, 0),
+    signalScore: toNumber(trade?.confidenceScore ?? trade?.websiteSignalScore, 0),
+    pnlUsd,
+    pnlPct,
+    holdTime: '-',
+    reason: String(trade?.result || trade?.reason || 'Signal').trim() || 'Signal',
+    direction: side === 'sell' ? 'sell' : 'buy'
+  };
+}
+
+async function sendCycleTradeAlerts(req, cycle) {
+  const userForAlert = getUserByEmailForAuth(req.user?.email || '');
+  if (!userForAlert?.id || !userForAlert?.email) {
+    return;
+  }
+  const closedRows = Array.isArray(cycle?.closedPositions) ? cycle.closedPositions : [];
+  for (const closedTrade of closedRows) {
+    try {
+      // eslint-disable-next-line no-await-in-loop
+      await sendTradeAlertEmail(userForAlert, toTradeAlertPayload(closedTrade, 'sell'), 'sell');
+      if (String(closedTrade?.result || '').trim().toLowerCase() === 'stop_loss') {
+        // eslint-disable-next-line no-await-in-loop
+        await sendStopLossAlertEmail(userForAlert, toTradeAlertPayload(closedTrade, 'sell'));
+      }
+    } catch (_error) {
+      // Best-effort per-trade alert.
+    }
+  }
+}
+
+async function sendDailyLossAlertIfNeeded(req, errorCode) {
+  if (String(errorCode || '').trim() !== 'daily_loss_limit_reached') {
+    return;
+  }
+  const userForAlert = getUserByEmailForAuth(req.user?.email || '');
+  if (!userForAlert?.id || !userForAlert?.email) {
+    return;
+  }
+  const { accountView, status } = loadStatusAndAccount(req);
+  const equityUsd = Math.max(1, Number(accountView?.portfolio?.equityUsd || status?.cashUsd || 0));
+  const dailyLossLimitUsd = Number(accountView?.riskSettings?.dailyLossLimitUsd || ((status?.config?.maxDailyLossPct || 3) / 100) * equityUsd);
+  const closedTrades = Array.isArray(accountView?.tradeHistory?.closed) ? accountView.tradeHistory.closed : [];
+  const nowParts = parseEasternParts(new Date());
+  const dayKey = toDateStamp(nowParts);
+  const dailyLossUsd = Math.abs(closedTrades
+    .filter((trade) => {
+      const stampSource = trade?.closedAt || trade?.openedAt;
+      const parsed = new Date(String(stampSource || ''));
+      if (Number.isNaN(parsed.getTime())) {
+        return false;
+      }
+      return toDateStamp(parseEasternParts(parsed)) === dayKey;
+    })
+    .reduce((sum, trade) => sum + Math.min(0, Number(trade?.pnlUsd || 0)), 0));
+  await sendDailyLossAlertEmail(userForAlert, {
+    dailyLossUsd,
+    dailyLossLimitUsd
+  });
 }
 
 function parseEasternParts(value = new Date()) {
@@ -770,8 +844,10 @@ router.post('/start', requireSignedIn, (req, res) => {
       botStartedOnce: true
     });
     try {
-      runAutoTraderCycle(req.user);
-    } catch (_error) {
+      const cycle = runAutoTraderCycle(req.user);
+      Promise.resolve(sendCycleTradeAlerts(req, cycle)).catch(() => {});
+    } catch (cycleError) {
+      Promise.resolve(sendDailyLossAlertIfNeeded(req, cycleError?.message || '')).catch(() => {});
       // Non-fatal for start; status remains RUNNING.
     }
     const refreshed = loadStatusAndAccount(req);
@@ -934,6 +1010,65 @@ router.get('/positions', requireSignedIn, (req, res) => {
     return res.status(500).json({
       error: 'positions_unavailable',
       message: 'Could not load open positions right now. Please retry.'
+    });
+  }
+});
+
+router.post('/positions/:id/close', requireSignedIn, (req, res) => {
+  try {
+    if (!req.user?.emailVerified) {
+      return res.status(403).json({
+        error: 'email_not_verified',
+        message: 'Please verify your email before managing live positions.'
+      });
+    }
+    const positionId = String(req.params?.id || '').trim();
+    if (!positionId) {
+      return res.status(400).json({
+        error: 'invalid_position_id',
+        message: 'Position ID is required.'
+      });
+    }
+    const payload = manualCloseAutoTraderPosition(req.user, {
+      positionId
+    });
+    try {
+      if (payload?.closed) {
+        const direction = String(payload.closed?.direction || '').toLowerCase();
+        const userForAlert = getUserByEmailForAuth(req.user?.email || '');
+        if (userForAlert) {
+          sendTradeAlertEmail(userForAlert, {
+            ticker: payload.closed.ticker,
+            entry: payload.closed.entry,
+            exit: payload.closed.markPrice,
+            pnlUsd: payload.closed.pnlUsd,
+            pnlPct: payload.closed.entry > 0
+              ? ((Number(payload.closed.pnlUsd || 0) / (Number(payload.closed.entry || 1) * Math.max(1, Number(payload.closed.shares || 1)))) * 100)
+              : 0,
+            holdTime: '-',
+            reason: payload.closed.result,
+            direction
+          }, 'sell');
+        }
+      }
+    } catch (_alertError) {
+      // Best-effort email alert.
+    }
+    return res.json({
+      ok: true,
+      ...payload
+    });
+  } catch (error) {
+    const code = String(error?.message || '');
+    if (code === 'position_not_found') {
+      return res.status(404).json({
+        error: 'position_not_found',
+        message: 'Open position not found.'
+      });
+    }
+    return res.status(400).json({
+      error: 'close_failed',
+      message: 'Could not close this position.'
     });
   }
 });

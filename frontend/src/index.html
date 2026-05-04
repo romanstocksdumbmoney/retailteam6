@@ -86,6 +86,12 @@
           <h2 id="dashboard-greeting-title" class="dashboard-greeting-title">Hello, Trader 👋</h2>
           <p id="dashboard-greeting-subtext" class="small-note dashboard-greeting-subtext">Logged out. Log in to save your dashboard and history.</p>
         </section>
+        <section id="email-verify-banner" class="card hidden" aria-live="polite">
+          <p class="small-note">
+            Please verify your email to unlock all features.
+            <button id="email-verify-resend-btn" class="link-button" type="button">Resend verification email</button>
+          </p>
+        </section>
 
         <section id="dashboard-next-step" class="card dashboard-next-step" aria-labelledby="dashboard-next-step-title">
           <div class="section-header">
@@ -318,17 +324,13 @@
                   <input
                     id="signup-password"
                     type="password"
-                    placeholder="min 10 chars, upper/lower/number/symbol"
-                    minlength="10"
+                    placeholder="min 8 chars, upper/number/symbol"
+                    minlength="8"
                     autocomplete="new-password"
                     required
                   />
                 </label>
                 <p id="signup-password-strength" class="small-note auth-hint"></p>
-                <label class="auth-remember">
-                  <input id="signup-remember" type="checkbox" checked />
-                  Keep me signed in on this device
-                </label>
                 <button type="submit">Sign up</button>
               </form>
               <form id="login-form" class="auth-form">
@@ -339,10 +341,6 @@
                 <label>
                   Password
                   <input id="login-password" type="password" placeholder="password" autocomplete="current-password" required />
-                </label>
-                <label class="auth-remember">
-                  <input id="login-remember" type="checkbox" checked />
-                  Keep me signed in on this device
                 </label>
                 <button type="submit">Log in</button>
               </form>
@@ -403,6 +401,7 @@
               </div>
             </article>
             <p id="auth-message" class="small-note"></p>
+            <div id="auth-message-actions" class="auth-actions"></div>
           </section>
         </details>
       </header>
@@ -1141,6 +1140,7 @@
         </div>
       </article>
     </div>
+    <script src="./session-helper.js"></script>
     <script src="./ai-trader-hub.js"></script>
     <script src="./app.js"></script>
     <script src="./ai-copilot-widget.js"></script>
