@@ -70,9 +70,180 @@ const { getUserById } = require('../services/userStore');
 const router = express.Router();
 const FREE_SCAN_METHODS = new Set(['llm-sentiment']);
 const COMPLAINT_REVIEW_TOKEN = String(process.env.COMPLAINT_REVIEW_TOKEN || '').trim();
+const NYSE_HOLIDAYS_2026 = new Set([
+  '2026-01-01', // New Year's Day
+  '2026-01-19', // Martin Luther King, Jr. Day
+  '2026-02-16', // Washington's Birthday
+  '2026-04-03', // Good Friday
+  '2026-05-25', // Memorial Day
+  '2026-06-19', // Juneteenth National Independence Day
+  '2026-07-03', // Independence Day (observed)
+  '2026-09-07', // Labor Day
+  '2026-11-26', // Thanksgiving Day
+  '2026-12-25' // Christmas Day
+]);
+const ET_TIME_FORMATTER = new Intl.DateTimeFormat('en-US', {
+  timeZone: 'America/New_York',
+  weekday: 'short',
+  year: 'numeric',
+  month: '2-digit',
+  day: '2-digit',
+  hour: '2-digit',
+  minute: '2-digit',
+  second: '2-digit',
+  hour12: false
+});
 
 function parsePlan(req) {
   return req.user && req.user.plan === 'pro' ? 'pro' : 'free';
+}
+
+function parseEasternParts(value = new Date()) {
+  const source = value instanceof Date ? value : new Date(value);
+  const parts = ET_TIME_FORMATTER.formatToParts(source);
+  const bag = {};
+  parts.forEach((part) => {
+    bag[part.type] = part.value;
+  });
+  const weekdayMap = {
+    Sun: 0,
+    Mon: 1,
+    Tue: 2,
+    Wed: 3,
+    Thu: 4,
+    Fri: 5,
+    Sat: 6
+  };
+  return {
+    year: Number(bag.year),
+    month: Number(bag.month),
+    day: Number(bag.day),
+    hour: Number(bag.hour),
+    minute: Number(bag.minute),
+    second: Number(bag.second),
+    weekday: weekdayMap[bag.weekday] ?? 0
+  };
+}
+
+function toDateStamp(parts) {
+  return [
+    String(parts.year).padStart(4, '0'),
+    String(parts.month).padStart(2, '0'),
+    String(parts.day).padStart(2, '0')
+  ].join('-');
+}
+
+function formatDurationHhMm(totalSeconds) {
+  const seconds = Math.max(0, Math.round(Number(totalSeconds || 0)));
+  const hours = Math.floor(seconds / 3600);
+  const minutes = Math.floor((seconds % 3600) / 60);
+  return `${hours}h ${minutes}m`;
+}
+
+function getEasternNow() {
+  return parseEasternParts(new Date());
+}
+
+function makeEtDateParts(parts, extraDays = 0, hour = 0, minute = 0, second = 0) {
+  const utcDate = new Date(Date.UTC(parts.year, parts.month - 1, parts.day + extraDays, 0, 0, 0));
+  const next = parseEasternParts(utcDate);
+  return {
+    ...next,
+    hour,
+    minute,
+    second
+  };
+}
+
+function etPartsToComparable(parts) {
+  return (
+    (parts.year * 10_000_000_000)
+    + (parts.month * 100_000_000)
+    + (parts.day * 1_000_000)
+    + (parts.hour * 10_000)
+    + (parts.minute * 100)
+    + parts.second
+  );
+}
+
+function secondsBetweenEtParts(fromParts, toParts) {
+  // Approximate seconds based on ET civil-clock components for countdown messaging.
+  const fromComparable = etPartsToComparable(fromParts);
+  const toComparable = etPartsToComparable(toParts);
+  if (toComparable <= fromComparable) {
+    return 0;
+  }
+  const fromDate = new Date(Date.UTC(
+    fromParts.year,
+    fromParts.month - 1,
+    fromParts.day,
+    fromParts.hour,
+    fromParts.minute,
+    fromParts.second
+  ));
+  const toDate = new Date(Date.UTC(
+    toParts.year,
+    toParts.month - 1,
+    toParts.day,
+    toParts.hour,
+    toParts.minute,
+    toParts.second
+  ));
+  return Math.max(0, Math.round((toDate.getTime() - fromDate.getTime()) / 1000));
+}
+
+function computeMarketStatusSnapshot() {
+  const nowEt = getEasternNow();
+  const todayStamp = toDateStamp(nowEt);
+  const isWeekend = nowEt.weekday === 0 || nowEt.weekday === 6;
+  const isHoliday = NYSE_HOLIDAYS_2026.has(todayStamp);
+  const openEt = { ...nowEt, hour: 9, minute: 30, second: 0 };
+  const closeEt = { ...nowEt, hour: 16, minute: 0, second: 0 };
+  const nowComparable = etPartsToComparable(nowEt);
+  const openComparable = etPartsToComparable(openEt);
+  const closeComparable = etPartsToComparable(closeEt);
+  let state = 'CLOSED';
+  let detail = 'Closed';
+  let secondsUntilOpen = null;
+  let secondsUntilClose = null;
+
+  if (isWeekend) {
+    detail = 'CLOSED — Weekend';
+  } else if (isHoliday) {
+    detail = 'CLOSED — Holiday';
+  } else if (nowComparable >= openComparable && nowComparable < closeComparable) {
+    state = 'OPEN';
+    secondsUntilClose = secondsBetweenEtParts(nowEt, closeEt);
+    detail = `OPEN • Closes in ${formatDurationHhMm(secondsUntilClose)}`;
+  } else if (nowComparable < openComparable) {
+    secondsUntilOpen = secondsBetweenEtParts(nowEt, openEt);
+    detail = `CLOSED • Opens in ${formatDurationHhMm(secondsUntilOpen)}`;
+  } else {
+    // After 4:00 PM ET on a weekday.
+    let offsetDays = 1;
+    while (offsetDays <= 7) {
+      const candidate = makeEtDateParts(nowEt, offsetDays, 9, 30, 0);
+      const candidateStamp = toDateStamp(candidate);
+      const isCandidateWeekend = candidate.weekday === 0 || candidate.weekday === 6;
+      const isCandidateHoliday = NYSE_HOLIDAYS_2026.has(candidateStamp);
+      if (!isCandidateWeekend && !isCandidateHoliday) {
+        secondsUntilOpen = secondsBetweenEtParts(nowEt, candidate);
+        break;
+      }
+      offsetDays += 1;
+    }
+    detail = `CLOSED • Opens in ${formatDurationHhMm(secondsUntilOpen || 0)}`;
+  }
+
+  return {
+    state,
+    detail,
+    secondsUntilOpen,
+    secondsUntilClose,
+    isWeekend,
+    isHoliday,
+    observedAt: new Date().toISOString()
+  };
 }
 
 function isPro(req) {
@@ -1869,6 +2040,14 @@ router.get('/options', requirePro, optionsHandler);
 router.get('/options/:ticker', requirePro, (req, res) => {
   req.query.ticker = req.query.ticker || req.params.ticker;
   return optionsHandler(req, res);
+});
+
+router.get('/status', (_req, res) => {
+  const snapshot = computeMarketStatusSnapshot();
+  return res.json({
+    market: snapshot,
+    holidays: [...NYSE_HOLIDAYS_2026]
+  });
 });
 
 module.exports = router;

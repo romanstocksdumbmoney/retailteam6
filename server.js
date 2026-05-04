@@ -9,6 +9,8 @@ require('dotenv').config({ path: path.join(__dirname, '.env') });
 const newsRoutes = require('./routes/news');
 const earningsRoutes = require('./routes/earnings');
 const marketRoutes = require('./routes/market');
+const botRoutes = require('./routes/bot');
+const brokerRoutes = require('./routes/broker');
 const authRoutes = require('./routes/auth');
 const { runAutoTraderAutopilotSweep } = require('./services/autoTraderService');
 const { warmTickerUniverseCache } = require('./services/stockAnalyzerService');
@@ -174,6 +176,8 @@ app.get('/health', (_req, res) => {
 app.use('/api/news', newsRoutes);
 app.use('/api/earnings', earningsRoutes);
 app.use('/api/market', marketRoutes);
+app.use('/api/bot', botRoutes);
+app.use('/api/broker', brokerRoutes);
 app.use('/api/auth', authRoutes);
 
 void warmTickerUniverseCache();

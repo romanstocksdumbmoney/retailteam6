@@ -37,6 +37,13 @@ const DISPOSABLE_EMAIL_DOMAINS = new Set([
 ]);
 const ALLOWED_TRADER_MODES = new Set(['scalper', 'day', 'swing', 'long']);
 const DEFAULT_TRADER_MODE = 'day';
+const AI_TRADER_SETUP_STEP_KEYS = Object.freeze([
+  'accountCreated',
+  'settingsSaved',
+  'brokerageReady',
+  'brokerConnected',
+  'botStartedOnce'
+]);
 
 function normalizeEmail(email) {
   return String(email || '')
@@ -71,6 +78,42 @@ function normalizeTraderMode(mode) {
     return value;
   }
   return DEFAULT_TRADER_MODE;
+}
+
+function defaultAiTraderSetup() {
+  const now = nowIso();
+  return {
+    steps: {
+      accountCreated: false,
+      settingsSaved: false,
+      brokerageReady: false,
+      brokerConnected: false,
+      botStartedOnce: false
+    },
+    completed: false,
+    completedAt: null,
+    updatedAt: now
+  };
+}
+
+function normalizeAiTraderSetup(rawSetup) {
+  const fallback = defaultAiTraderSetup();
+  const source = rawSetup && typeof rawSetup === 'object' ? rawSetup : {};
+  const sourceSteps = source.steps && typeof source.steps === 'object' ? source.steps : {};
+  const steps = AI_TRADER_SETUP_STEP_KEYS.reduce((acc, key) => {
+    acc[key] = Boolean(sourceSteps[key]);
+    return acc;
+  }, {});
+  const completed = AI_TRADER_SETUP_STEP_KEYS.every((key) => steps[key]);
+  const completedAt = completed
+    ? String(source.completedAt || fallback.completedAt || nowIso())
+    : null;
+  return {
+    steps,
+    completed,
+    completedAt,
+    updatedAt: String(source.updatedAt || fallback.updatedAt || nowIso())
+  };
 }
 
 function getUsernameFromEmail(email) {
@@ -154,6 +197,7 @@ function persistUsersToDisk(options = {}) {
       subscriptionStatus: user.subscriptionStatus || (user.plan === 'pro' ? 'active' : 'inactive'),
       displayName: normalizeDisplayName(user.email, user.displayName),
       traderMode: normalizeTraderMode(user.traderMode),
+      aiTraderSetup: normalizeAiTraderSetup(user.aiTraderSetup),
       rememberSessions: normalizeRememberSessions(user.rememberSessions),
       createdAt: user.createdAt || nowIso(),
       updatedAt: user.updatedAt || nowIso()
@@ -202,6 +246,7 @@ function loadUsersFromDisk() {
         subscriptionStatus: String(record?.subscriptionStatus || (record?.plan === 'pro' ? 'active' : 'inactive')),
         displayName: normalizeDisplayName(email, record?.displayName),
         traderMode: normalizeTraderMode(record?.traderMode),
+        aiTraderSetup: normalizeAiTraderSetup(record?.aiTraderSetup),
         rememberSessions: normalizeRememberSessions(record?.rememberSessions),
         createdAt: String(record?.createdAt || nowIso()),
         updatedAt: String(record?.updatedAt || nowIso())
@@ -299,6 +344,7 @@ function sanitizeUser(user) {
     subscriptionStatus: user.subscriptionStatus || 'inactive',
     displayName: normalizeDisplayName(user.email, user.displayName),
     traderMode: normalizeTraderMode(user.traderMode),
+    aiTraderSetup: normalizeAiTraderSetup(user.aiTraderSetup),
     createdAt: user.createdAt,
     updatedAt: user.updatedAt
   };
@@ -383,6 +429,7 @@ function createUser({ email, password, passwordHash, authProvider = 'password', 
     subscriptionStatus: 'inactive',
     displayName: normalizeDisplayName(normalizedEmail),
     traderMode: normalizeTraderMode(traderMode),
+    aiTraderSetup: defaultAiTraderSetup(),
     rememberSessions: [],
     createdAt: nowIso(),
     updatedAt: nowIso()
@@ -539,6 +586,25 @@ function updateUser(userId, patch) {
 
   if (Object.prototype.hasOwnProperty.call(patch, 'traderMode')) {
     user.traderMode = normalizeTraderMode(patch.traderMode);
+  }
+
+  if (Object.prototype.hasOwnProperty.call(patch, 'aiTraderSetup')) {
+    const current = normalizeAiTraderSetup(user.aiTraderSetup);
+    const incomingPatch = patch.aiTraderSetup && typeof patch.aiTraderSetup === 'object'
+      ? patch.aiTraderSetup
+      : {};
+    const merged = normalizeAiTraderSetup({
+      ...current,
+      ...incomingPatch,
+      steps: {
+        ...current.steps,
+        ...(incomingPatch.steps && typeof incomingPatch.steps === 'object' ? incomingPatch.steps : {})
+      }
+    });
+    user.aiTraderSetup = {
+      ...merged,
+      updatedAt: nowIso()
+    };
   }
 
   user.updatedAt = nowIso();
@@ -711,6 +777,11 @@ function setUserPlanById(userId, { plan, stripeSubscriptionId = null }) {
   return updated ? sanitizeUser(updated) : null;
 }
 
+function setUserAiTraderSetupById(userId, setupPatch = {}) {
+  const updated = updateUser(userId, { aiTraderSetup: setupPatch });
+  return updated ? sanitizeUser(updated) : null;
+}
+
 function setUserPlanByCustomerId(customerId, { plan, stripeSubscriptionId = null }) {
   const userId = usersByStripeCustomerId.get(customerId);
   if (!userId) {
@@ -745,6 +816,7 @@ module.exports = {
   getUserByStripeCustomerId,
   setUserTraderModeById,
   setUserPlanById,
+  setUserAiTraderSetupById,
   setUserPlanByCustomerId,
   setSubscriptionStatus,
   isUserOwnerById,
