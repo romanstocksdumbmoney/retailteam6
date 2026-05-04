@@ -1,79 +1,69 @@
-const AI_TRADER_POLL_MS = 5000;
 const AI_TRADER_STATUS_PILL_EVENT = 'dumbdollars:bot-status-update';
 const AUTH_TOKEN_STORAGE_KEY = 'dumbdollars_token';
 const REMEMBER_TOKEN_STORAGE_KEY = 'dumbdollars_remember_token';
+const SETUP_COMPLETE_STORAGE_KEY = 'dumbdollars_ai_trader_setup_complete';
+const NYSE_HOLIDAYS_2026 = new Set([
+  '2026-01-01',
+  '2026-01-19',
+  '2026-02-16',
+  '2026-04-03',
+  '2026-05-25',
+  '2026-06-19',
+  '2026-07-03',
+  '2026-09-07',
+  '2026-11-26',
+  '2026-12-25'
+]);
 
-const riskProfiles = Object.freeze({
-  conservative: {
-    riskPerTradePct: 0.8,
-    maxRiskPerTradePct: 0.8,
-    stopLossPct: 2.2,
-    takeProfitPct: 4.4,
-    maxPositions: 4,
-    maxTradesPerDay: 6,
-    maxDailyLossPct: 2
-  },
-  moderate: {
-    riskPerTradePct: 1.2,
-    maxRiskPerTradePct: 1.2,
-    stopLossPct: 2.8,
-    takeProfitPct: 6.2,
-    maxPositions: 6,
-    maxTradesPerDay: 8,
-    maxDailyLossPct: 3
-  },
-  aggressive: {
-    riskPerTradePct: 2,
-    maxRiskPerTradePct: 2,
-    stopLossPct: 3.8,
-    takeProfitPct: 8.8,
-    maxPositions: 8,
-    maxTradesPerDay: 12,
-    maxDailyLossPct: 5
-  }
+const ET_TIME_FORMATTER = new Intl.DateTimeFormat('en-US', {
+  timeZone: 'America/New_York',
+  weekday: 'short',
+  year: 'numeric',
+  month: '2-digit',
+  day: '2-digit',
+  hour: '2-digit',
+  minute: '2-digit',
+  second: '2-digit',
+  hour12: false
 });
 
 const state = {
   mounted: false,
-  loading: true,
   authRequired: false,
-  saveInFlight: false,
-  latest: null,
+  status: null,
+  positions: [],
+  activity: [],
+  scanner: {
+    isScanning: false,
+    rows: []
+  },
+  performance: null,
   selectedPerformancePeriod: 'today',
   selectedRiskLevel: 'moderate',
   selectedUniverse: 'sp500',
+  connectionIssues: 0,
+  scanIntervalSeconds: 300,
   nextScanSeconds: null,
-  scanIntervalMs: null,
-  pollTimer: null,
-  countdownTimer: null,
-  saveFlashTimer: null,
-  syncingForm: false,
-  feedRows: [],
-  signalRows: [],
-  lastKnownPositionIds: new Set()
+  localMarket: null,
+  seenActivityIds: new Set(),
+  setupCompleteLocally: false,
+  selectedBroker: 'alpaca',
+  timers: {
+    oneSecond: null,
+    marketStatus: null,
+    status: null,
+    positions: null,
+    scanner: null,
+    activity: null,
+    performance: null
+  }
 };
-
-function promoteHubToTop() {
-  const hub = byId('ai-trader-hub');
-  const greeting = byId('dashboard-greeting');
-  const hero = document.querySelector('.hero');
-  if (!(hub instanceof HTMLElement) || !(greeting instanceof HTMLElement) || !(hero instanceof HTMLElement)) {
-    return;
-  }
-  if (greeting.parentElement !== hero) {
-    return;
-  }
-  if (hub.parentElement === hero && hub.nextElementSibling === greeting) {
-    return;
-  }
-  hero.insertBefore(hub, greeting);
-}
 
 function byId(id) {
   return document.getElementById(id);
 }
 
-function num(value, fallback = 0) {
+function toNum(value, fallback = 0) {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : fallback;
 }
@@ -82,26 +72,25 @@ function clamp(value, min, max) {
   return Math.max(min, Math.min(max, value));
 }
 
-function fmtUsd(value) {
-  const parsed = num(value, 0);
+function formatUsd(value) {
+  const parsed = toNum(value, 0);
   return `$${parsed.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
-function fmtSignedUsd(value) {
-  const parsed = num(value, 0);
+function formatSignedUsd(value) {
+  const parsed = toNum(value, 0);
   const sign = parsed > 0 ? '+' : parsed < 0 ? '-' : '';
   return `${sign}$${Math.abs(parsed).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
-function fmtPct(value, decimals = 1) {
-  const parsed = num(value, 0);
-  return `${parsed.toLocaleString(undefined, { minimumFractionDigits: decimals, maximumFractionDigits: decimals })}%`;
+function formatPct(value, digits = 1) {
+  return `${toNum(value, 0).toLocaleString(undefined, { minimumFractionDigits: digits, maximumFractionDigits: digits })}%`;
 }
 
-function fmtSignedPct(value, decimals = 1) {
-  const parsed = num(value, 0);
+function formatSignedPct(value, digits = 1) {
+  const parsed = toNum(value, 0);
   const sign = parsed > 0 ? '+' : parsed < 0 ? '-' : '';
-  return `${sign}${Math.abs(parsed).toLocaleString(undefined, { minimumFractionDigits: decimals, maximumFractionDigits: decimals })}%`;
+  return `${sign}${Math.abs(parsed).toLocaleString(undefined, { minimumFractionDigits: digits, maximumFractionDigits: digits })}%`;
 }
 
 function escapeHtml(value) {
@@ -129,14 +118,32 @@ function getStoredRememberToken() {
   }
 }
 
+function getStoredSetupCompleted() {
+  try {
+    return localStorage.getItem(SETUP_COMPLETE_STORAGE_KEY) === '1';
+  } catch (_error) {
+    return false;
+  }
+}
+
+function setStoredSetupCompleted(completed) {
+  try {
+    if (completed) {
+      localStorage.setItem(SETUP_COMPLETE_STORAGE_KEY, '1');
+    } else {
+      localStorage.removeItem(SETUP_COMPLETE_STORAGE_KEY);
+    }
+  } catch (_error) {
+    // Non-fatal.
+  }
+}
+
 function buildAuthHeaders() {
   const token = getStoredToken();
   if (!token) {
     return {};
   }
-  return {
-    authorization: `Bearer ${token}`
-  };
+  return { authorization: `Bearer ${token}` };
 }
 
 async function tryRestoreAuthSession() {
@@ -165,22 +172,40 @@ async function tryRestoreAuthSession() {
   }
 }
 
-async function fetchJsonWithAuthRetry(url, options = {}) {
-  const fetchOptions = {
+async function fetchJsonWithAuthRetry(url, options = {}, timeoutMs = 12000) {
+  const controller = new AbortController();
+  const timeout = window.setTimeout(() => controller.abort(), timeoutMs);
+  const request = {
     ...options,
+    signal: controller.signal,
     headers: {
       ...(options.headers || {}),
       ...buildAuthHeaders()
     }
   };
-  let response = await fetch(url, fetchOptions);
+  let response;
+  try {
+    response = await fetch(url, request);
+  } catch (error) {
+    window.clearTimeout(timeout);
+    if (error?.name === 'AbortError') {
+      const timeoutError = new Error('Request timed out. Retrying…');
+      timeoutError.status = 408;
+      throw timeoutError;
+    }
+    throw error;
+  }
+  window.clearTimeout(timeout);
   if (response.status === 401) {
     await tryRestoreAuthSession();
-    fetchOptions.headers = {
-      ...(options.headers || {}),
-      ...buildAuthHeaders()
-    };
-    response = await fetch(url, fetchOptions);
+    const retryResponse = await fetch(url, {
+      ...options,
+      headers: {
+        ...(options.headers || {}),
+        ...buildAuthHeaders()
+      }
+    });
+    response = retryResponse;
   }
   let payload = {};
   try {
@@ -189,87 +214,12 @@ async function fetchJsonWithAuthRetry(url, options = {}) {
     payload = {};
   }
   if (!response.ok) {
-    const error = new Error(payload.message || `Request failed (${response.status})`);
+    const error = new Error(payload?.message || `Request failed (${response.status})`);
     error.status = response.status;
     error.body = payload;
     throw error;
   }
   return payload;
-}
-
-function setTopStatusChip(statusWord, statusClass) {
-  const chip = byId('ai-trader-hub-top-status');
-  if (!chip) {
-    return;
-  }
-  chip.className = `chip ai-trader-status-chip ${statusClass}`;
-  chip.textContent = `BOT ${statusWord}`;
-}
-
-function setStatusOrb(statusWord, statusClass, subline) {
-  const orb = byId('ai-trader-status-orb');
-  const word = byId('ai-trader-status-word');
-  const sub = byId('ai-trader-status-subline');
-  if (orb) {
-    orb.className = `ai-trader-status-orb ${statusClass}`;
-  }
-  if (word) {
-    word.textContent = statusWord;
-  }
-  if (sub) {
-    sub.textContent = subline;
-  }
-}
-
-function inferBotVisualStatus(snapshot) {
-  const bot = snapshot?.bot || snapshot?.status || snapshot || {};
-  const isActive = Boolean(bot.isActive);
-  const isConfigured = Boolean(bot.configured);
-  const marketClosed = inferIsMarketClosed();
-  const brokerConnected = Boolean(snapshot?.execution?.brokerConnection?.isConnected);
-  if (!isConfigured) {
-    return {
-      word: 'STOPPED',
-      chipClass: 'ai-trader-status-chip--stopped',
-      orbClass: 'ai-trader-status-orb--stopped',
-      navDotClass: 'off',
-      subline: 'Save your bot settings to begin live scanning.'
-    };
-  }
-  if (marketClosed) {
-    return {
-      word: 'MARKET CLOSED',
-      chipClass: 'ai-trader-status-chip--closed',
-      orbClass: 'ai-trader-status-orb--closed',
-      navDotClass: isActive ? 'paused' : 'off',
-      subline: 'Market is closed. Bot will resume scanning at open.'
-    };
-  }
-  if (isActive && brokerConnected) {
-    return {
-      word: 'RUNNING',
-      chipClass: 'ai-trader-status-chip--running',
-      orbClass: 'ai-trader-status-orb--running',
-      navDotClass: 'running',
-      subline: 'Bot is active and scanning for trade opportunities.'
-    };
-  }
-  if (isActive && !brokerConnected) {
-    return {
-      word: 'MARKET CLOSED',
-      chipClass: 'ai-trader-status-chip--closed',
-      orbClass: 'ai-trader-status-orb--closed',
-      navDotClass: 'off',
-      subline: 'Broker disconnected. Reconnect broker bridge to resume live trading.'
-    };
-  }
-  return {
-    word: 'STOPPED',
-    chipClass: 'ai-trader-status-chip--stopped',
-    orbClass: 'ai-trader-status-orb--stopped',
-    navDotClass: 'off',
-    subline: 'Bot is currently stopped. Press START to begin.'
-  };
 }
 
 function emitBotStatusPill(payload) {
@@ -280,111 +230,336 @@ function emitBotStatusPill(payload) {
   }
 }
 
-function applyVisualBotStatus(visual) {
+function showConnectionBanner(show) {
+  const banner = byId('ai-trader-connection-banner');
+  if (!banner) {
+    return;
+  }
+  banner.classList.toggle('hidden', !show);
+}
+
+function registerConnectionFailure() {
+  state.connectionIssues += 1;
+  showConnectionBanner(true);
+}
+
+function registerConnectionSuccess() {
+  state.connectionIssues = 0;
+  showConnectionBanner(false);
+}
+
+function showToast(message, tone = 'info', durationMs = 2600) {
+  const stack = byId('ai-trader-toast-stack');
+  if (!stack) {
+    return;
+  }
+  const toast = document.createElement('article');
+  toast.className = `ai-trader-toast ai-trader-toast--${tone}`;
+  toast.textContent = String(message || '').trim();
+  stack.appendChild(toast);
+  window.setTimeout(() => {
+    toast.classList.add('is-leaving');
+    window.setTimeout(() => {
+      toast.remove();
+    }, 240);
+  }, durationMs);
+}
+
+function setButtonLoading(button, loading) {
+  if (!(button instanceof HTMLButtonElement)) {
+    return;
+  }
+  const spinner = button.querySelector('.ai-trader-button-spinner');
+  if (spinner) {
+    spinner.classList.toggle('hidden', !loading);
+  }
+  button.classList.toggle('is-loading', loading);
+  button.dataset.loading = loading ? '1' : '0';
+}
+
+function etParts(date = new Date()) {
+  const parts = ET_TIME_FORMATTER.formatToParts(date);
+  const bag = {};
+  parts.forEach((part) => {
+    bag[part.type] = part.value;
+  });
+  const dayMap = {
+    Sun: 0,
+    Mon: 1,
+    Tue: 2,
+    Wed: 3,
+    Thu: 4,
+    Fri: 5,
+    Sat: 6
+  };
+  return {
+    year: Number(bag.year),
+    month: Number(bag.month),
+    day: Number(bag.day),
+    hour: Number(bag.hour),
+    minute: Number(bag.minute),
+    second: Number(bag.second),
+    weekday: dayMap[bag.weekday] ?? 0
+  };
+}
+
+function etDateStamp(parts) {
+  return `${String(parts.year).padStart(4, '0')}-${String(parts.month).padStart(2, '0')}-${String(parts.day).padStart(2, '0')}`;
+}
+
+function etComparable(parts) {
+  return (
+    (parts.year * 10000000000)
+    + (parts.month * 100000000)
+    + (parts.day * 1000000)
+    + (parts.hour * 10000)
+    + (parts.minute * 100)
+    + parts.second
+  );
+}
+
+function makeEtParts(baseParts, addDays = 0, hour = 0, minute = 0, second = 0) {
+  const utcDate = new Date(Date.UTC(baseParts.year, baseParts.month - 1, baseParts.day + addDays, 0, 0, 0));
+  const next = etParts(utcDate);
+  return {
+    ...next,
+    hour,
+    minute,
+    second
+  };
+}
+
+function secondsBetweenEt(fromParts, toParts) {
+  if (etComparable(toParts) <= etComparable(fromParts)) {
+    return 0;
+  }
+  const fromDate = new Date(Date.UTC(
+    fromParts.year,
+    fromParts.month - 1,
+    fromParts.day,
+    fromParts.hour,
+    fromParts.minute,
+    fromParts.second
+  ));
+  const toDate = new Date(Date.UTC(
+    toParts.year,
+    toParts.month - 1,
+    toParts.day,
+    toParts.hour,
+    toParts.minute,
+    toParts.second
+  ));
+  return Math.max(0, Math.round((toDate.getTime() - fromDate.getTime()) / 1000));
+}
+
+function formatHoursMinutes(secondsRaw) {
+  const seconds = Math.max(0, Math.round(Number(secondsRaw || 0)));
+  const hours = Math.floor(seconds / 3600);
+  const minutes = Math.floor((seconds % 3600) / 60);
+  return `${hours}h ${minutes}m`;
+}
+
+function computeLocalMarketStatus() {
+  const nowEt = etParts(new Date());
+  const dateStamp = etDateStamp(nowEt);
+  const isWeekend = nowEt.weekday === 0 || nowEt.weekday === 6;
+  const isHoliday = NYSE_HOLIDAYS_2026.has(dateStamp);
+  const openEt = { ...nowEt, hour: 9, minute: 30, second: 0 };
+  const closeEt = { ...nowEt, hour: 16, minute: 0, second: 0 };
+  const nowValue = etComparable(nowEt);
+  const openValue = etComparable(openEt);
+  const closeValue = etComparable(closeEt);
+  if (isWeekend) {
+    return {
+      state: 'CLOSED',
+      detail: 'CLOSED — Weekend',
+      isOpen: false
+    };
+  }
+  if (isHoliday) {
+    return {
+      state: 'CLOSED',
+      detail: 'CLOSED — Holiday',
+      isOpen: false
+    };
+  }
+  if (nowValue >= openValue && nowValue < closeValue) {
+    const closeIn = secondsBetweenEt(nowEt, closeEt);
+    return {
+      state: 'OPEN',
+      detail: `Closes in ${formatHoursMinutes(closeIn)}`,
+      isOpen: true
+    };
+  }
+  if (nowValue < openValue) {
+    const openIn = secondsBetweenEt(nowEt, openEt);
+    return {
+      state: 'CLOSED',
+      detail: `Opens in ${formatHoursMinutes(openIn)}`,
+      isOpen: false
+    };
+  }
+  let offset = 1;
+  while (offset <= 7) {
+    const candidate = makeEtParts(nowEt, offset, 9, 30, 0);
+    const candidateWeekend = candidate.weekday === 0 || candidate.weekday === 6;
+    const candidateHoliday = NYSE_HOLIDAYS_2026.has(etDateStamp(candidate));
+    if (!candidateWeekend && !candidateHoliday) {
+      const openIn = secondsBetweenEt(nowEt, candidate);
+      return {
+        state: 'CLOSED',
+        detail: `Opens in ${formatHoursMinutes(openIn)}`,
+        isOpen: false
+      };
+    }
+    offset += 1;
+  }
+  return {
+    state: 'CLOSED',
+    detail: 'Opens next session',
+    isOpen: false
+  };
+}
+
+function statusVisualWord() {
+  const control = String(state.status?.controlState || '').toLowerCase();
+  if (control === 'running') {
+    return 'RUNNING';
+  }
+  if (control === 'paused') {
+    return 'PAUSED';
+  }
+  return 'STOPPED';
+}
+
+function applyTopStatus() {
+  const chip = byId('ai-trader-hub-top-status');
+  const orb = byId('ai-trader-status-orb');
+  const word = byId('ai-trader-status-word');
+  const subline = byId('ai-trader-status-subline');
+  const statusWord = statusVisualWord();
+  const chipClass = statusWord === 'RUNNING'
+    ? 'ai-trader-status-chip--running'
+    : statusWord === 'PAUSED'
+      ? 'ai-trader-status-chip--paused'
+      : 'ai-trader-status-chip--stopped';
+  const orbClass = statusWord === 'RUNNING'
+    ? 'ai-trader-status-orb--running'
+    : statusWord === 'PAUSED'
+      ? 'ai-trader-status-orb--paused'
+      : 'ai-trader-status-orb--stopped';
+  if (chip) {
+    chip.className = `chip ai-trader-status-chip ${chipClass}`;
+    chip.textContent = `BOT ${statusWord}`;
+  }
+  if (orb) {
+    orb.className = `ai-trader-status-orb ${orbClass}`;
+  }
+  if (word) {
+    word.textContent = statusWord;
+  }
+  if (subline) {
+    if (statusWord === 'RUNNING') {
+      subline.textContent = 'Bot is scanning and can place new trades.';
+    } else if (statusWord === 'PAUSED') {
+      subline.textContent = 'Bot is paused. Open positions remain monitored.';
+    } else {
+      subline.textContent = 'Bot is stopped. Press START when ready.';
+    }
+  }
   emitBotStatusPill({
-    statusWord: visual.word,
-    stateClass: visual.navDotClass,
-    isRunning: visual.word === 'RUNNING',
+    statusWord,
+    stateClass: statusWord === 'RUNNING' ? 'running' : statusWord === 'PAUSED' ? 'paused' : 'off',
+    isRunning: statusWord === 'RUNNING',
     href: '/#ai-trader-hub'
   });
   const navDot = byId('ai-trader-nav-dot');
   if (navDot) {
-    navDot.classList.toggle('is-running', visual.word === 'RUNNING');
-    navDot.classList.toggle('is-paused', visual.word === 'PAUSED' || visual.word === 'MARKET CLOSED');
+    navDot.classList.toggle('is-running', statusWord === 'RUNNING');
+    navDot.classList.toggle('is-paused', statusWord === 'PAUSED');
   }
 }
 
-function inferIsMarketClosed() {
-  const now = new Date();
-  const utcDay = now.getUTCDay();
-  if (utcDay === 0 || utcDay === 6) {
-    return true;
+function setControlsDisabledState() {
+  const startBtn = byId('ai-trader-start-btn');
+  const pauseBtn = byId('ai-trader-pause-btn');
+  const stopBtn = byId('ai-trader-stop-btn');
+  const statusWord = statusVisualWord();
+  const startBusy = startBtn?.dataset.loading === '1';
+  const pauseBusy = pauseBtn?.dataset.loading === '1';
+  const stopBusy = stopBtn?.dataset.loading === '1';
+  if (startBtn instanceof HTMLButtonElement) {
+    startBtn.disabled = startBusy || statusWord === 'RUNNING';
   }
-  const utcHour = now.getUTCHours();
-  const utcMinute = now.getUTCMinutes();
-  const minutes = utcHour * 60 + utcMinute;
-  const openMinutes = (13 * 60) + 30;
-  const closeMinutes = 20 * 60;
-  return minutes < openMinutes || minutes >= closeMinutes;
+  if (pauseBtn instanceof HTMLButtonElement) {
+    pauseBtn.disabled = pauseBusy || statusWord === 'STOPPED';
+  }
+  if (stopBtn instanceof HTMLButtonElement) {
+    stopBtn.disabled = stopBusy || statusWord === 'STOPPED';
+  }
 }
 
-function computeMarketStatusLine() {
-  const now = new Date();
-  const utcDay = now.getUTCDay();
-  const utcHour = now.getUTCHours();
-  const utcMinute = now.getUTCMinutes();
-  const minutes = utcHour * 60 + utcMinute;
-  const openMinutes = (13 * 60) + 30;
-  const closeMinutes = 20 * 60;
-  const isWeekend = utcDay === 0 || utcDay === 6;
-  if (isWeekend) {
-    return 'CLOSED • opens Monday';
-  }
-  if (minutes < openMinutes) {
-    const toOpen = openMinutes - minutes;
-    return `CLOSED • opens in ${toOpen}m`;
-  }
-  if (minutes >= closeMinutes) {
-    return 'CLOSED • opens tomorrow';
-  }
-  const toClose = closeMinutes - minutes;
-  return `OPEN • closes in ${toClose}m`;
-}
-
-function renderStatsBar(snapshot) {
-  const stats = snapshot?.stats || {};
-  const risk = snapshot?.riskSettings || {};
-  const history = snapshot?.tradeHistory || {};
-  const openPositions = Array.isArray(snapshot?.openPositions) ? snapshot.openPositions : [];
-  const maxOpenPositions = num(snapshot?.config?.maxPositions, Math.max(1, openPositions.length));
-  const tradesToday = num(risk.tradesOpenedToday, 0);
-  const winRate = num(history?.summary?.winRatePct ?? stats?.winRatePct, 0);
-  const closedHistory = Array.isArray(history?.closed) ? history.closed : [];
-  const todayPnl = closedHistory
-    .filter((row) => isTodayIso(row.closedAt))
-    .reduce((sum, row) => sum + num(row.pnlUsd, 0), 0);
-
-  const pnlNode = byId('ai-trader-stat-pnl-today');
+function renderStatsBar() {
+  const stats = state.status?.stats || {};
   const tradesNode = byId('ai-trader-stat-trades-today');
-  const winRateNode = byId('ai-trader-stat-win-rate');
+  const winNode = byId('ai-trader-stat-win-rate');
+  const pnlNode = byId('ai-trader-stat-pnl-today');
   const openNode = byId('ai-trader-stat-open-positions');
-  const nextScanNode = byId('ai-trader-stat-next-scan');
+  const openProgress = byId('ai-trader-stat-open-progress-fill');
+  const scanNode = byId('ai-trader-stat-next-scan');
   const marketNode = byId('ai-trader-stat-market-status');
-
+  const marketDetail = byId('ai-trader-stat-market-detail');
+  const pnlToday = toNum(stats.pnlToday, 0);
+  const openPositions = Math.max(0, toNum(stats.openPositions, 0));
+  const maxOpenPositions = Math.max(1, toNum(stats.maxOpenPositions, 1));
+  const market = state.localMarket || computeLocalMarketStatus();
   if (tradesNode) {
-    tradesNode.textContent = String(tradesToday);
+    tradesNode.textContent = String(toNum(stats.tradesToday, 0));
   }
-  if (winRateNode) {
-    winRateNode.textContent = fmtPct(winRate, 0);
+  if (winNode) {
+    winNode.textContent = formatPct(stats.winRateToday, 0);
   }
   if (pnlNode) {
-    pnlNode.textContent = fmtSignedUsd(todayPnl);
-    pnlNode.classList.toggle('is-positive', todayPnl > 0);
-    pnlNode.classList.toggle('is-negative', todayPnl < 0);
+    pnlNode.textContent = formatSignedUsd(pnlToday);
+    pnlNode.classList.toggle('is-positive', pnlToday > 0);
+    pnlNode.classList.toggle('is-negative', pnlToday < 0);
+    pnlNode.classList.toggle('is-neutral', pnlToday === 0);
   }
   if (openNode) {
-    openNode.textContent = `${openPositions.length} / ${maxOpenPositions}`;
+    openNode.textContent = `${openPositions} / ${maxOpenPositions}`;
   }
-  if (nextScanNode) {
-    nextScanNode.textContent = state.nextScanSeconds === null ? '--s' : `${Math.max(0, Math.round(state.nextScanSeconds))}s`;
+  if (openProgress) {
+    const pct = clamp((openPositions / maxOpenPositions) * 100, 0, 100);
+    openProgress.style.width = `${pct}%`;
+  }
+  if (scanNode) {
+    scanNode.textContent = state.nextScanSeconds === null ? '--s' : `${Math.max(0, Math.round(state.nextScanSeconds))}s`;
   }
   if (marketNode) {
-    marketNode.textContent = computeMarketStatusLine();
+    marketNode.textContent = market.state;
+    marketNode.classList.toggle('is-market-open', market.isOpen);
+    marketNode.classList.toggle('is-market-closed', !market.isOpen);
+  }
+  if (marketDetail) {
+    marketDetail.textContent = market.detail || '--';
   }
 }
 
-function isTodayIso(value) {
-  if (!value) {
-    return false;
+function typeDotClass(typeRaw) {
+  const type = String(typeRaw || '').toUpperCase();
+  if (type.includes('BUY')) {
+    return 'buy';
   }
-  const date = new Date(String(value));
-  if (Number.isNaN(date.getTime())) {
-    return false;
+  if (type.includes('SELL')) {
+    return 'sell';
   }
-  const now = new Date();
-  return date.getUTCFullYear() === now.getUTCFullYear()
-    && date.getUTCMonth() === now.getUTCMonth()
-    && date.getUTCDate() === now.getUTCDate();
+  if (type.includes('STOP LOSS')) {
+    return 'stop-loss';
+  }
+  if (type.includes('TAKE PROFIT')) {
+    return 'take-profit';
+  }
+  return 'scan';
 }
 
 function formatClock(value) {
@@ -398,414 +573,178 @@ function formatClock(value) {
   return date.toLocaleTimeString([], { hour12: false });
 }
 
-function makeActivityRows(snapshot) {
-  const rows = [];
-  const cycle = snapshot?.lastCycle || {};
-  const recentBrokerOrders = Array.isArray(snapshot?.execution?.recentBrokerOrders)
-    ? snapshot.execution.recentBrokerOrders
-    : [];
-  const pendingIdeas = Array.isArray(snapshot?.execution?.pendingTradeProposals)
-    ? snapshot.execution.pendingTradeProposals
-    : [];
-  const openPositions = Array.isArray(snapshot?.openPositions) ? snapshot.openPositions : [];
-  const closed = Array.isArray(cycle?.closedPositions) ? cycle.closedPositions : [];
-  const planned = Array.isArray(cycle?.plannedTrades) ? cycle.plannedTrades : [];
-
-  recentBrokerOrders.slice(0, 8).forEach((order) => {
-    const status = String(order?.status || '').toLowerCase();
-    const side = String(order?.orderPayload?.side || '').toUpperCase();
-    const isBuy = side.includes('BUY');
-    const icon = isBuy ? '🟢' : '🔴';
-    const action = `${isBuy ? 'BUY' : 'SELL'} executed`;
-    const ticker = order?.orderPayload?.symbol || order?.ticker || 'N/A';
-    rows.push({
-      at: order?.submittedAt,
-      icon,
-      type: action,
-      ticker,
-      description: status === 'submitted'
-        ? `${isBuy ? 'Bought' : 'Sold'} ${ticker} via broker route.`
-        : `Order rejected for ${ticker}.`,
-      pnlUsd: null
-    });
-  });
-
-  closed.slice(0, 8).forEach((row) => {
-    const pnl = num(row?.pnlUsd, 0);
-    const isProfit = pnl > 0;
-    const isLoss = pnl < 0;
-    let icon = '⚪';
-    let type = 'Position closed';
-    if (String(row?.result || '').includes('take_profit')) {
-      icon = '🔵';
-      type = 'Take profit triggered';
-    } else if (String(row?.result || '').includes('stop_loss')) {
-      icon = '⚪';
-      type = 'Stop loss triggered';
-    }
-    rows.push({
-      at: row?.closedAt,
-      icon,
-      type,
-      ticker: row?.ticker || 'N/A',
-      description: `${row?.ticker || 'Position'} closed at ${fmtSignedUsd(pnl)} (${isProfit ? 'gain' : isLoss ? 'loss' : 'flat'}).`,
-      pnlUsd: pnl
-    });
-  });
-
-  planned.slice(0, 6).forEach((trade) => {
-    const score = num(trade?.promptAlignment?.score, 0);
-    rows.push({
-      at: trade?.createdAt || cycle?.executedAt,
-      icon: '🟡',
-      type: 'Signal scanned (no trade)',
-      ticker: trade?.ticker || 'N/A',
-      description: `Scanned ${trade?.ticker || 'symbol'} — Score: ${score >= 0 ? '+' : ''}${score} — awaiting approval.`,
-      pnlUsd: null
-    });
-  });
-
-  pendingIdeas.slice(0, 6).forEach((idea) => {
-    rows.push({
-      at: idea?.proposedAt || cycle?.executedAt,
-      icon: '🟡',
-      type: 'Signal scanned (no trade)',
-      ticker: idea?.symbol || idea?.ticker || 'N/A',
-      description: `Scanned ${idea?.symbol || idea?.ticker || 'symbol'} — Score: +${num(idea?.confidenceScore, 0)} — Below threshold, no trade.`,
-      pnlUsd: null
-    });
-  });
-
-  if (cycle?.executedAt) {
-    rows.push({
-      at: cycle.executedAt,
-      icon: '⚙️',
-      type: 'Bot cycle executed',
-      ticker: 'SYSTEM',
-      description: `Cycle complete — ${planned.length} planned trades, ${openPositions.length} open positions.`,
-      pnlUsd: null
-    });
-  }
-
-  const dailyLoss = num(snapshot?.riskSettings?.dailyRealizedLossUsd, 0);
-  const dailyLimit = num(snapshot?.riskSettings?.maxDailyLossUsd, 0);
-  if (dailyLimit > 0 && dailyLoss >= dailyLimit) {
-    rows.push({
-      at: new Date().toISOString(),
-      icon: '🚨',
-      type: 'Daily loss limit hit',
-      ticker: 'RISK',
-      description: `Daily max loss reached (${fmtUsd(dailyLoss)} / ${fmtUsd(dailyLimit)}). Bot halted for safety.`,
-      pnlUsd: -Math.abs(dailyLoss)
-    });
-  }
-
-  rows.sort((a, b) => new Date(String(b.at || 0)).getTime() - new Date(String(a.at || 0)).getTime());
-  return rows.slice(0, 20);
-}
-
-function renderActivityFeed(rows) {
+function renderActivityFeed() {
   const list = byId('ai-trader-activity-list');
   if (!list) {
     return;
   }
+  const rows = Array.isArray(state.activity) ? state.activity : [];
   if (!rows.length) {
-    list.classList.remove('ai-trader-skeleton-wrap');
     list.innerHTML = `
-      <article class="ai-trader-empty-state">
-        <h4>No bot activity yet</h4>
-        <p>Start the bot to see scans, trade actions, and safety events appear in real time.</p>
+      <article class="ai-trader-empty-state ai-trader-empty-state--center">
+        <div class="ai-trader-empty-icon">📡</div>
+        <h4>No activity yet</h4>
+        <p>Start the bot to see live trade actions here</p>
       </article>
     `;
     return;
   }
-  list.classList.remove('ai-trader-skeleton-wrap');
-  list.innerHTML = rows
-    .map((row) => {
-      const pnl = num(row.pnlUsd, 0);
-      const pnlClass = pnl > 0 ? 'is-positive' : pnl < 0 ? 'is-negative' : '';
-      const pnlText = row.pnlUsd === null || row.pnlUsd === undefined ? '' : `<span class="ai-trader-activity-pnl ${pnlClass}">${fmtSignedUsd(pnl)}</span>`;
-      return `
-        <article class="ai-trader-activity-item">
-          <div class="ai-trader-activity-top">
-            <span class="ai-trader-activity-time">${formatClock(row.at)}</span>
-            <span class="ai-trader-activity-type">${row.icon} ${escapeHtml(row.type)}</span>
-          </div>
-          <p class="ai-trader-activity-desc"><strong>${escapeHtml(row.ticker)}</strong> ${escapeHtml(row.description)}</p>
-          ${pnlText}
-        </article>
-      `;
-    })
-    .join('');
+  list.innerHTML = rows.map((row) => {
+    const id = String(row?.id || `${row?.timestamp || ''}:${row?.ticker || ''}`);
+    const isNew = !state.seenActivityIds.has(id);
+    const pnlUsd = row?.pnlUsd;
+    const pnlClass = toNum(pnlUsd, 0) > 0 ? 'is-positive' : toNum(pnlUsd, 0) < 0 ? 'is-negative' : '';
+    const pnlMarkup = pnlUsd === null || pnlUsd === undefined
+      ? ''
+      : `<span class="ai-trader-activity-pnl ${pnlClass}">${formatSignedUsd(pnlUsd)}</span>`;
+    state.seenActivityIds.add(id);
+    return `
+      <article class="ai-trader-activity-item ${isNew ? 'is-new' : ''}">
+        <div class="ai-trader-activity-left">
+          <span class="ai-trader-activity-dot ${typeDotClass(row?.type)}" aria-hidden="true"></span>
+          <span class="ai-trader-activity-time">${formatClock(row?.timestamp)}</span>
+          <strong class="ai-trader-activity-ticker">${escapeHtml(row?.ticker || 'N/A')}</strong>
+          <span class="ai-trader-activity-desc">${escapeHtml(row?.description || '')}</span>
+        </div>
+        ${pnlMarkup}
+      </article>
+    `;
+  }).join('');
+  list.scrollTop = 0;
 }
 
-function pseudoSeries(seed, points = 18, amplitude = 0.03) {
-  const out = [];
-  let cursor = (seed % 97) / 97;
-  for (let i = 0; i < points; i += 1) {
-    cursor = (Math.sin((cursor + i) * 11.7) + 1) / 2;
-    const val = 1 + ((cursor - 0.5) * 2 * amplitude);
-    out.push(val);
-  }
-  return out;
-}
-
-function buildSparklinePath(series, width = 220, height = 60, padding = 6) {
-  if (!series.length) {
-    return '';
-  }
-  const min = Math.min(...series);
-  const max = Math.max(...series);
-  const range = Math.max(0.0001, max - min);
-  const usableW = width - (padding * 2);
-  const usableH = height - (padding * 2);
-  return series
-    .map((value, index) => {
-      const x = padding + ((index / Math.max(1, series.length - 1)) * usableW);
-      const y = padding + ((max - value) / range) * usableH;
-      return `${index === 0 ? 'M' : 'L'} ${x.toFixed(2)} ${y.toFixed(2)}`;
-    })
-    .join(' ');
-}
-
-function heldDurationText(openedAt) {
-  if (!openedAt) {
-    return 'just opened';
-  }
-  const opened = new Date(String(openedAt));
-  if (Number.isNaN(opened.getTime())) {
-    return 'just opened';
-  }
-  const deltaMs = Math.max(0, Date.now() - opened.getTime());
-  const hours = Math.floor(deltaMs / 3600000);
-  const minutes = Math.floor((deltaMs % 3600000) / 60000);
-  if (hours <= 0) {
-    return `${minutes}m`;
-  }
+function heldTimeLabel(secondsRaw) {
+  const seconds = Math.max(0, Math.round(toNum(secondsRaw, 0)));
+  const hours = Math.floor(seconds / 3600);
+  const minutes = Math.floor((seconds % 3600) / 60);
   return `${hours}h ${minutes}m`;
 }
 
-function renderPositionCards(snapshot) {
+function renderPositions() {
   const grid = byId('ai-trader-positions-grid');
   const chip = byId('ai-trader-positions-chip');
   if (!grid) {
     return;
   }
-  const rows = Array.isArray(snapshot?.openPositions) ? snapshot.openPositions : [];
+  const rows = Array.isArray(state.positions) ? state.positions : [];
   if (chip) {
     chip.textContent = `${rows.length} open`;
   }
   if (!rows.length) {
-    grid.classList.remove('ai-trader-skeleton-wrap');
     grid.innerHTML = `
-      <article class="ai-trader-empty-state">
-        <h4>No open positions</h4>
-        <p>No active trades yet. The bot will open position cards here when trade ideas are approved and executed.</p>
-      </article>
-    `;
-    state.lastKnownPositionIds = new Set();
-    return;
-  }
-  const previousIds = state.lastKnownPositionIds;
-  const nextIds = new Set(rows.map((row) => String(row?.id || '')));
-
-  grid.classList.remove('ai-trader-skeleton-wrap');
-  grid.innerHTML = rows
-    .map((row) => {
-      const entry = num(row.entry, 0);
-      const mark = num(row.markPrice || row.entry, entry);
-      const shares = Math.max(0, num(row.shares, 0));
-      const pnlUsd = num(row.unrealizedPnlUsd, 0);
-      const pnlPct = entry > 0 ? ((mark - entry) / entry) * 100 : 0;
-      const positive = pnlUsd >= 0;
-      const cardClass = positive ? 'is-positive' : 'is-negative';
-      const symbolSeed = Array.from(String(row.ticker || ''))
-        .reduce((sum, char) => sum + char.charCodeAt(0), 0);
-      const series = pseudoSeries(symbolSeed);
-      const path = buildSparklinePath(series);
-      const hasStop = num(row.stopLoss, 0) > 0;
-      const hasTake = num(row.takeProfit, 0) > 0;
-      const stopY = hasStop ? clamp(((Math.max(...series) - (num(row.stopLoss, entry) / Math.max(1, entry))) / Math.max(0.0001, Math.max(...series) - Math.min(...series))) * 60, 2, 58) : 56;
-      const takeY = hasTake ? clamp(((Math.max(...series) - (num(row.takeProfit, entry) / Math.max(1, entry))) / Math.max(0.0001, Math.max(...series) - Math.min(...series))) * 60, 2, 58) : 8;
-      const animClass = previousIds.has(String(row?.id || '')) ? '' : 'ai-trader-card-enter';
-      return `
-        <article class="ai-trader-position-card ${cardClass} ${animClass}" data-position-id="${escapeHtml(row.id)}">
-          <div class="ai-trader-position-top">
-            <div>
-              <h4>${escapeHtml(row.ticker || 'N/A')}</h4>
-              <p class="small-note">${escapeHtml(row.companyName || `${row.ticker || 'Ticker'} Holdings`)}</p>
-            </div>
-            <span class="ai-trader-pnl-badge ${cardClass}">${fmtSignedUsd(pnlUsd)} (${fmtSignedPct(pnlPct, 2)})</span>
-          </div>
-          <div class="ai-trader-position-prices">
-            <p class="ai-trader-position-price">${fmtUsd(mark)}</p>
-            <p class="small-note">Entry ${fmtUsd(entry)}</p>
-          </div>
-          <svg class="ai-trader-position-sparkline" viewBox="0 0 220 60" preserveAspectRatio="none" aria-hidden="true">
-            <path d="${path}" class="ai-trader-sparkline-path"></path>
-            <line x1="0" y1="${stopY}" x2="220" y2="${stopY}" class="ai-trader-sparkline-stop"></line>
-            <line x1="0" y1="${takeY}" x2="220" y2="${takeY}" class="ai-trader-sparkline-take"></line>
-          </svg>
-          <p class="small-note">SL ${fmtUsd(row.stopLoss)} • TP ${fmtUsd(row.takeProfit)}</p>
-          <div class="ai-trader-position-meta">
-            <span>${escapeHtml(row.sector || 'Watchlist')} • Held ${heldDurationText(row.openedAt)}</span>
-            <span>${shares.toLocaleString()} shares</span>
-          </div>
-          <button type="button" class="ai-trader-close-position-btn" data-close-position-id="${escapeHtml(row.id)}">CLOSE</button>
-        </article>
-      `;
-    })
-    .join('');
-  state.lastKnownPositionIds = nextIds;
-}
-
-function scoreClass(score) {
-  const value = num(score, 0);
-  if (value > 50) {
-    return 'score-strong-buy';
-  }
-  if (value >= 20) {
-    return 'score-buy';
-  }
-  if (value > -20) {
-    return 'score-neutral';
-  }
-  if (value > -50) {
-    return 'score-sell';
-  }
-  return 'score-strong-sell';
-}
-
-function scoreBadge(score) {
-  const value = num(score, 0);
-  if (value > 50) {
-    return 'BUY';
-  }
-  if (value >= 20) {
-    return 'WATCH';
-  }
-  if (value > -20) {
-    return 'SKIP';
-  }
-  return 'SELL';
-}
-
-function makeSignalRows(snapshot) {
-  const rows = [];
-  const ranked = Array.isArray(snapshot?.execution?.lastWebsiteSignalSnapshot?.rankedSymbols)
-    ? snapshot.execution.lastWebsiteSignalSnapshot.rankedSymbols
-    : [];
-  const ideas = Array.isArray(snapshot?.execution?.tradeIdeas) ? snapshot.execution.tradeIdeas : [];
-  const trendMap = snapshot?.execution?.lastWebsiteSignalSnapshot?.trendBySymbol || {};
-  const promptControl = snapshot?.execution?.promptControl || {};
-
-  ranked.slice(0, 15).forEach((symbol, index) => {
-    const idea = ideas.find((row) => String(row?.symbol || row?.ticker || '').toUpperCase() === String(symbol).toUpperCase());
-    const trend = trendMap?.[symbol] || {};
-    const bullishBias = num(trend.trendScore, 0) / 100;
-    const promptBias = promptControl.preferredTickers?.includes(symbol) ? 0.2 : 0;
-    const score = clamp(Math.round((bullishBias * 85) + (promptBias * 55) + (num(idea?.confidenceScore, 35) - 35)), -100, 100);
-    rows.push({
-      symbol,
-      company: `${symbol} Holdings`,
-      score,
-      action: scoreBadge(score),
-      bars: {
-        rsi: clamp(Math.round((score + 100) / 2), 0, 100),
-        macd: clamp(Math.round((score + 75) / 1.8), 0, 100),
-        volume: clamp(Math.round((score + 90) / 1.9), 0, 100),
-        bollinger: clamp(Math.round((score + 60) / 1.6), 0, 100),
-        ema: clamp(Math.round((score + 80) / 1.7), 0, 100)
-      },
-      index
-    });
-  });
-
-  if (!rows.length) {
-    ideas.slice(0, 15).forEach((idea, index) => {
-      const symbol = idea?.symbol || idea?.ticker || `SCAN-${index + 1}`;
-      const score = clamp(Math.round(num(idea?.confidenceScore, 20) - 20), -100, 100);
-      rows.push({
-        symbol,
-        company: `${symbol} Holdings`,
-        score,
-        action: scoreBadge(score),
-        bars: {
-          rsi: clamp(Math.round((score + 100) / 2), 0, 100),
-          macd: clamp(Math.round((score + 100) / 2), 0, 100),
-          volume: clamp(Math.round((score + 100) / 2), 0, 100),
-          bollinger: clamp(Math.round((score + 100) / 2), 0, 100),
-          ema: clamp(Math.round((score + 100) / 2), 0, 100)
-        },
-        index
-      });
-    });
-  }
-
-  return rows.slice(0, 15);
-}
-
-function barTone(value) {
-  const parsed = num(value, 0);
-  if (parsed >= 65) {
-    return 'bullish';
-  }
-  if (parsed <= 35) {
-    return 'bearish';
-  }
-  return 'neutral';
-}
-
-function renderSignalScanner(rows) {
-  const list = byId('ai-trader-signal-list');
-  if (!list) {
-    return;
-  }
-  if (!rows.length) {
-    list.classList.remove('ai-trader-skeleton-wrap');
-    list.innerHTML = `
-      <article class="ai-trader-empty-state">
-        <h4>Scanner warming up</h4>
-        <p>Signal bars will populate after the next completed scan cycle.</p>
+      <article class="ai-trader-empty-state ai-trader-empty-state--center">
+        <div class="ai-trader-empty-icon">📈</div>
+        <h4>No open positions — the bot will display active trades here</h4>
       </article>
     `;
     return;
   }
-  list.classList.remove('ai-trader-skeleton-wrap');
-  list.innerHTML = rows.map((row) => {
-    const scoreTone = scoreClass(row.score);
-    const signalBar = (label, key) => `
-      <span class="ai-trader-signal-metric">
-        <span>${label}</span>
-        <span class="ai-trader-signal-meter ai-trader-signal-meter--${barTone(row.bars[key])}">
-          <span style="width:${clamp(num(row.bars[key], 0), 0, 100)}%"></span>
-        </span>
-      </span>
-    `;
+  grid.innerHTML = rows.map((row) => {
+    const pnlUsd = toNum(row?.pnlUsd, 0);
+    const pnlPct = toNum(row?.pnlPct, 0);
+    const cardClass = pnlUsd >= 0 ? 'is-positive' : 'is-negative';
     return `
-      <article class="ai-trader-signal-row">
-        <div class="ai-trader-signal-symbol">
-          <strong>${escapeHtml(row.symbol)}</strong>
-          <span>${escapeHtml(row.company)}</span>
+      <article class="ai-trader-position-card ${cardClass}">
+        <div class="ai-trader-position-top">
+          <div>
+            <h4>${escapeHtml(row?.ticker || 'N/A')}</h4>
+            <p class="small-note">${escapeHtml(row?.companyName || '')}</p>
+          </div>
+          <span class="ai-trader-pnl-badge ${cardClass}">${formatSignedUsd(pnlUsd)} (${formatSignedPct(pnlPct, 2)})</span>
         </div>
-        <div class="ai-trader-signal-bars">
-          ${signalBar('RSI', 'rsi')}
-          ${signalBar('MACD', 'macd')}
-          ${signalBar('Volume', 'volume')}
-          ${signalBar('Bollinger', 'bollinger')}
-          ${signalBar('EMA', 'ema')}
+        <div class="ai-trader-position-prices">
+          <p class="ai-trader-position-price">${formatUsd(row?.currentPrice)}</p>
+          <p class="small-note">Entry ${formatUsd(row?.entryPrice)}</p>
         </div>
-        <div class="ai-trader-signal-score ${scoreTone}">
-          <strong>${row.score >= 0 ? '+' : ''}${row.score}</strong>
-          <span class="chip">${escapeHtml(row.action)}</span>
+        <div class="ai-trader-position-foot">
+          <span>🔴 Stop ${formatUsd(row?.stopLoss)}</span>
+          <span>🟢 Target ${formatUsd(row?.takeProfit)}</span>
+          <span>⏱ ${heldTimeLabel(row?.heldSeconds)}</span>
+        </div>
+        <div class="ai-trader-position-actions">
+          <button type="button" class="ai-trader-close-position-btn" data-close-position-id="${escapeHtml(row?.id || '')}">CLOSE</button>
         </div>
       </article>
     `;
   }).join('');
 }
 
-function inferRiskLevelFromConfig(config) {
-  const risk = num(config?.riskPerTradePct, 1.2);
+function scoreClass(scoreRaw) {
+  const score = toNum(scoreRaw, 0);
+  if (score >= 60) {
+    return 'score-strong-buy';
+  }
+  if (score >= 20) {
+    return 'score-buy';
+  }
+  if (score <= -35) {
+    return 'score-sell';
+  }
+  return 'score-neutral';
+}
+
+function actionClass(actionRaw) {
+  const action = String(actionRaw || '').toUpperCase();
+  if (action === 'BUY') {
+    return 'buy';
+  }
+  if (action === 'SELL') {
+    return 'sell';
+  }
+  if (action === 'WATCH') {
+    return 'watch';
+  }
+  return 'skip';
+}
+
+function renderScanner() {
+  const panel = byId('ai-trader-scanner-panel');
+  const list = byId('ai-trader-signal-list');
+  if (!(panel && list)) {
+    return;
+  }
+  panel.classList.toggle('is-scanning', Boolean(state.scanner?.isScanning));
+  const rows = Array.isArray(state.scanner?.rows) ? state.scanner.rows : [];
+  if (!rows.length) {
+    list.innerHTML = `
+      <article class="ai-trader-empty-state ai-trader-empty-state--center">
+        <div class="ai-trader-empty-icon">📡</div>
+        <h4>Bot is not scanning. Press START to begin.</h4>
+      </article>
+    `;
+    return;
+  }
+  list.innerHTML = rows.map((row) => {
+    const signals = row?.signals || {};
+    const pill = (name) => {
+      const signal = signals[name] || {};
+      const tone = String(signal?.tone || 'grey').toLowerCase();
+      return `<span class="ai-trader-signal-pill tone-${escapeHtml(tone)}">${escapeHtml(name)}</span>`;
+    };
+    return `
+      <article class="ai-trader-signal-row">
+        <div class="ai-trader-signal-symbol">
+          <strong>${escapeHtml(row?.ticker || 'N/A')}</strong>
+          <span>${escapeHtml(row?.company || '')}</span>
+        </div>
+        <div class="ai-trader-signal-pill-row">
+          ${pill('RSI')}
+          ${pill('MACD')}
+          ${pill('VOL')}
+          ${pill('BB')}
+          ${pill('EMA')}
+        </div>
+        <div class="ai-trader-signal-score ${scoreClass(row?.score)}">
+          <strong>${toNum(row?.score, 0)}</strong>
+          <span class="ai-trader-action-badge ${actionClass(row?.action)}">${escapeHtml(row?.action || 'SKIP')}</span>
+        </div>
+      </article>
+    `;
+  }).join('');
+}
+
+function inferRiskLevelFromStatus() {
+  const risk = toNum(state.status?.bot?.config?.riskPerTradePct, 1.2);
   if (risk <= 1) {
     return 'conservative';
   }
@@ -815,10 +754,10 @@ function inferRiskLevelFromConfig(config) {
   return 'moderate';
 }
 
-function inferUniverseFromConfig(config) {
-  const sectors = Array.isArray(config?.sectors) ? config.sectors : [];
-  const lower = sectors.map((sector) => String(sector).toLowerCase());
-  if (lower.includes('technology') && lower.includes('communication services') && lower.includes('consumer discretionary')) {
+function inferUniverseFromStatus() {
+  const sectors = Array.isArray(state.status?.bot?.config?.sectors) ? state.status.bot.config.sectors : [];
+  const normalized = sectors.map((sector) => String(sector || '').toLowerCase());
+  if (normalized.includes('technology') && normalized.includes('communication services') && normalized.includes('consumer discretionary')) {
     return 'nasdaq100';
   }
   if (sectors.length >= 6) {
@@ -827,49 +766,26 @@ function inferUniverseFromConfig(config) {
   return 'custom';
 }
 
-function applyVisualSettingsFromConfig(config, snapshot) {
-  state.syncingForm = true;
-  const stopLoss = clamp(num(config?.stopLossPct, 2.5), 0.5, 15);
-  const takeProfit = clamp(num(config?.takeProfitPct, 5.5), 1, 30);
-  const maxPositions = Math.max(1, Math.round(num(config?.maxPositions, 4)));
-  const maxPositionSizeNode = byId('ai-trader-setting-max-position-size');
-  const portfolioBase = Math.max(1, num(snapshot?.portfolio?.equityUsd ?? snapshot?.cashUsd, 10000));
-  const allocationPct = clamp(num(config?.allocationPerTradePct, 20), 1, 90);
-  const estimatedPositionSize = Math.round((allocationPct / 100) * portfolioBase);
-  const maxPositionSize = Math.max(100, estimatedPositionSize);
-  const dailyLossUsd = Math.round((Math.max(1, num(config?.maxDailyLossPct, 3)) / 100) * portfolioBase);
+function renderRiskLevelSelection() {
+  document.querySelectorAll('.ai-trader-risk-card').forEach((node) => {
+    if (!(node instanceof HTMLButtonElement)) {
+      return;
+    }
+    const active = String(node.dataset.riskLevel || '').toLowerCase() === state.selectedRiskLevel;
+    node.classList.toggle('is-active', active);
+    node.setAttribute('aria-pressed', active ? 'true' : 'false');
+  });
+}
 
-  const stopNode = byId('ai-trader-setting-stop-loss');
-  const takeNode = byId('ai-trader-setting-take-profit');
-  const maxOpenValueNode = byId('ai-trader-setting-max-open-value');
-  const dailyLossNode = byId('ai-trader-setting-daily-max-loss');
-
-  if (stopNode instanceof HTMLInputElement) {
-    stopNode.value = String(stopLoss);
-  }
-  if (takeNode instanceof HTMLInputElement) {
-    takeNode.value = String(takeProfit);
-  }
-  if (maxOpenValueNode) {
-    maxOpenValueNode.textContent = String(maxPositions);
-  }
-  if (maxPositionSizeNode instanceof HTMLInputElement) {
-    maxPositionSizeNode.value = String(maxPositionSize);
-  }
-  if (dailyLossNode instanceof HTMLInputElement) {
-    dailyLossNode.value = String(Math.max(50, dailyLossUsd));
-  }
-
-  updateStopLossText();
-  updateTakeProfitText();
-  updatePositionSizeVisual(portfolioBase);
-  updateDailyLossText();
-
-  state.selectedRiskLevel = inferRiskLevelFromConfig(config);
-  state.selectedUniverse = inferUniverseFromConfig(config);
-  renderRiskLevelSelection();
-  renderUniverseSelection();
-  state.syncingForm = false;
+function renderUniverseSelection() {
+  document.querySelectorAll('#ai-trader-setting-universe .ai-trader-pill').forEach((node) => {
+    if (!(node instanceof HTMLButtonElement)) {
+      return;
+    }
+    const active = String(node.dataset.universe || '').toLowerCase() === state.selectedUniverse;
+    node.classList.toggle('is-active', active);
+    node.setAttribute('aria-pressed', active ? 'true' : 'false');
+  });
 }
 
 function updateStopLossText() {
@@ -878,7 +794,7 @@ function updateStopLossText() {
   if (!(input instanceof HTMLInputElement) || !text) {
     return;
   }
-  const value = clamp(num(input.value, 2.5), 0.5, 15);
+  const value = clamp(toNum(input.value, 2.5), 0.5, 15);
   text.textContent = `Sell if down ${value.toFixed(1)}%`;
 }
 
@@ -888,200 +804,782 @@ function updateTakeProfitText() {
   if (!(input instanceof HTMLInputElement) || !text) {
     return;
   }
-  const value = clamp(num(input.value, 5.5), 1, 30);
+  const value = clamp(toNum(input.value, 5.5), 1, 30);
   text.textContent = `Sell if up ${value.toFixed(1)}%`;
 }
 
-function updatePositionSizeVisual(portfolioBase = null) {
-  const input = byId('ai-trader-setting-max-position-size');
-  const text = byId('ai-trader-setting-position-size-text');
-  const fill = byId('ai-trader-setting-position-size-fill');
-  const snapshot = state.latest;
-  const base = Math.max(1, portfolioBase ?? num(snapshot?.portfolio?.equityUsd ?? snapshot?.cashUsd, 10000));
-  if (!(input instanceof HTMLInputElement) || !text || !fill) {
-    return;
-  }
-  const value = Math.max(100, num(input.value, 1000));
-  const pct = clamp((value / base) * 100, 0, 100);
-  fill.style.width = `${pct}%`;
-  text.textContent = `${pct.toFixed(1)}% of portfolio per position`;
+function currentAccountValue() {
+  const value = toNum(state.status?.bot?.cashUsd, 0);
+  const deposited = toNum(state.status?.bot?.totalDepositedUsd, 0);
+  return Math.max(100, value || deposited || 10_000);
 }
 
-function updateDailyLossText() {
-  const input = byId('ai-trader-setting-daily-max-loss');
-  const text = byId('ai-trader-setting-daily-max-loss-text');
+function updatePositionSizeText() {
+  const input = byId('ai-trader-setting-max-position-size');
+  const text = byId('ai-trader-setting-position-size-text');
   if (!(input instanceof HTMLInputElement) || !text) {
     return;
   }
-  const value = Math.max(50, num(input.value, 500));
-  text.textContent = `Bot stops for the day if portfolio drops $${Math.round(value).toLocaleString()}.`;
+  const accountValue = currentAccountValue();
+  const amount = Math.max(100, toNum(input.value, 1000));
+  const pct = clamp((amount / accountValue) * 100, 0, 100);
+  text.textContent = `= ${pct.toFixed(1)}% of your ${formatUsd(accountValue)} account`;
 }
 
-function renderRiskLevelSelection() {
-  document.querySelectorAll('.ai-trader-risk-card').forEach((node) => {
-    if (!(node instanceof HTMLButtonElement)) {
-      return;
-    }
-    const isActive = String(node.dataset.riskLevel || '') === state.selectedRiskLevel;
-    node.classList.toggle('is-active', isActive);
-    node.setAttribute('aria-pressed', isActive ? 'true' : 'false');
-  });
-}
-
-function renderUniverseSelection() {
-  document.querySelectorAll('#ai-trader-setting-universe .ai-trader-pill').forEach((node) => {
-    if (!(node instanceof HTMLButtonElement)) {
-      return;
-    }
-    const isActive = String(node.dataset.universe || '') === state.selectedUniverse;
-    node.classList.toggle('is-active', isActive);
-    node.setAttribute('aria-pressed', isActive ? 'true' : 'false');
-  });
-}
-
-function flashSavedState() {
-  const flash = byId('ai-trader-settings-save-flash');
-  if (!flash) {
-    return;
+function applySettingsFromStatus() {
+  const config = state.status?.bot?.config || {};
+  const stopLossInput = byId('ai-trader-setting-stop-loss');
+  const takeProfitInput = byId('ai-trader-setting-take-profit');
+  const maxPositionSizeInput = byId('ai-trader-setting-max-position-size');
+  const maxOpenValue = byId('ai-trader-setting-max-open-value');
+  const dailyLossInput = byId('ai-trader-setting-daily-max-loss');
+  const accountValue = currentAccountValue();
+  if (stopLossInput instanceof HTMLInputElement) {
+    stopLossInput.value = String(clamp(toNum(config.stopLossPct, 2.5), 0.5, 15));
   }
-  if (state.saveFlashTimer) {
-    window.clearTimeout(state.saveFlashTimer);
+  if (takeProfitInput instanceof HTMLInputElement) {
+    takeProfitInput.value = String(clamp(toNum(config.takeProfitPct, 5.5), 1, 30));
   }
-  flash.classList.remove('hidden');
-  state.saveFlashTimer = window.setTimeout(() => {
-    flash.classList.add('hidden');
-  }, 1500);
+  if (maxPositionSizeInput instanceof HTMLInputElement) {
+    const allocation = clamp(toNum(config.allocationPerTradePct, 20), 2, 80);
+    maxPositionSizeInput.value = String(Math.round((allocation / 100) * accountValue));
+  }
+  if (maxOpenValue) {
+    maxOpenValue.textContent = String(Math.max(1, Math.round(toNum(config.maxPositions, 4))));
+  }
+  if (dailyLossInput instanceof HTMLInputElement) {
+    const lossUsd = Math.round((clamp(toNum(config.maxDailyLossPct, 3), 0.5, 25) / 100) * accountValue);
+    dailyLossInput.value = String(Math.max(50, lossUsd));
+  }
+  state.selectedRiskLevel = inferRiskLevelFromStatus();
+  state.selectedUniverse = inferUniverseFromStatus();
+  renderRiskLevelSelection();
+  renderUniverseSelection();
+  updateStopLossText();
+  updateTakeProfitText();
+  updatePositionSizeText();
 }
 
-function collectSettingsPayload() {
-  const snapshot = state.latest || {};
-  const previousConfig = snapshot.config || {};
-  const currentCash = Math.max(100, num(snapshot.cashUsd ?? snapshot?.portfolio?.equityUsd, 10000));
-  const stopLossNode = byId('ai-trader-setting-stop-loss');
-  const takeProfitNode = byId('ai-trader-setting-take-profit');
-  const maxPositionSizeNode = byId('ai-trader-setting-max-position-size');
-  const maxOpenValueNode = byId('ai-trader-setting-max-open-value');
-  const dailyMaxLossNode = byId('ai-trader-setting-daily-max-loss');
-
-  const stopLossPct = clamp(num(stopLossNode?.value, previousConfig.stopLossPct || 2.5), 0.5, 15);
-  const takeProfitPct = clamp(num(takeProfitNode?.value, previousConfig.takeProfitPct || 5.5), 1, 30);
-  const maxPositionSizeUsd = Math.max(100, num(maxPositionSizeNode?.value, 1000));
-  const allocationPerTradePct = clamp((maxPositionSizeUsd / currentCash) * 100, 2, 80);
-  const maxPositions = Math.max(1, Math.round(num(maxOpenValueNode?.textContent, previousConfig.maxPositions || 4)));
-  const dailyMaxLossUsd = Math.max(50, num(dailyMaxLossNode?.value, 500));
-  const maxDailyLossPct = clamp((dailyMaxLossUsd / currentCash) * 100, 0.5, 25);
-  const selectedRiskProfile = riskProfiles[state.selectedRiskLevel] || riskProfiles.moderate;
-  const selectedSectors = state.selectedUniverse === 'nasdaq100'
-    ? ['Technology', 'Semiconductors', 'Communication Services', 'Consumer Discretionary']
-    : state.selectedUniverse === 'sp500'
-      ? ['Technology', 'Semiconductors', 'Financials', 'Healthcare', 'Industrials', 'Communication Services']
-      : (Array.isArray(previousConfig.sectors) && previousConfig.sectors.length
-        ? previousConfig.sectors
-        : ['Technology', 'Healthcare', 'Financials']);
-
+function getSettingsPayload() {
+  const stopLossInput = byId('ai-trader-setting-stop-loss');
+  const takeProfitInput = byId('ai-trader-setting-take-profit');
+  const maxPositionSizeInput = byId('ai-trader-setting-max-position-size');
+  const maxOpenValue = byId('ai-trader-setting-max-open-value');
+  const dailyLossInput = byId('ai-trader-setting-daily-max-loss');
   return {
-    prompt: String(previousConfig.prompt || 'Momentum setups with disciplined risk.'),
-    capitalUsd: Math.max(100, Math.round(currentCash)),
-    tradingMode: String(snapshot.tradingMode || previousConfig.tradingMode || 'paper').toLowerCase() === 'live' ? 'live' : 'paper',
-    timeframe: previousConfig.timeframe || 'intraday',
-    chasePct: num(previousConfig.chasePct, 0.8),
-    riskPerTradePct: selectedRiskProfile.riskPerTradePct,
-    maxRiskPerTradePct: selectedRiskProfile.maxRiskPerTradePct,
-    maxDailyLossPct,
-    maxTradesPerDay: selectedRiskProfile.maxTradesPerDay,
-    minRewardRiskRatio: num(previousConfig.minRewardRiskRatio, 1.8),
-    autoExecuteLive: Boolean(previousConfig.autoExecuteLive),
-    targetReturnPct: num(previousConfig.targetReturnPct, 12),
-    allocationPerTradePct,
-    maxSectorExposurePct: num(previousConfig.maxSectorExposurePct, 35),
-    maxGrossExposurePct: num(previousConfig.maxGrossExposurePct, 100),
-    maxPositions,
-    stopLossPct,
-    takeProfitPct,
-    sectors: selectedSectors,
-    testAreaCapitalUsd: Math.max(100, Math.round(currentCash)),
-    testAreaRiskPct: selectedRiskProfile.riskPerTradePct
+    risk_level: state.selectedRiskLevel,
+    stop_loss_pct: clamp(toNum(stopLossInput?.value, 2.5), 0.5, 15),
+    take_profit_pct: clamp(toNum(takeProfitInput?.value, 5.5), 1, 30),
+    max_position_size: Math.max(100, Math.round(toNum(maxPositionSizeInput?.value, 1000))),
+    max_open_positions: Math.max(1, Math.round(toNum(maxOpenValue?.textContent, 4))),
+    stock_universe: state.selectedUniverse,
+    daily_max_loss: Math.max(50, Math.round(toNum(dailyLossInput?.value, 500)))
   };
 }
 
-async function saveSettings() {
-  if (state.syncingForm || state.saveInFlight || state.authRequired) {
+function showSettingsFeedback(message, tone = 'success') {
+  const node = byId('ai-trader-settings-feedback');
+  if (!node) {
     return;
   }
-  state.saveInFlight = true;
-  const payload = collectSettingsPayload();
+  node.textContent = message;
+  node.classList.remove('is-success', 'is-error');
+  node.classList.add(tone === 'error' ? 'is-error' : 'is-success');
+  node.classList.add('is-visible');
+  window.setTimeout(() => {
+    node.classList.remove('is-visible');
+  }, 2000);
+}
+
+async function saveSettingsFlow() {
+  const button = byId('ai-trader-save-settings-btn');
+  if (!(button instanceof HTMLButtonElement)) {
+    return;
+  }
+  setButtonLoading(button, true);
+  button.disabled = true;
   try {
-    const saved = await fetchJsonWithAuthRetry('/api/market/auto-trader/bot', {
+    const payload = getSettingsPayload();
+    const saved = await fetchJsonWithAuthRetry('/api/bot/settings', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload)
     });
-    state.latest = saved;
-    flashSavedState();
-    renderFromSnapshot(saved);
-  } catch (error) {
-    if (error?.status === 401) {
-      state.authRequired = true;
-      renderAuthRequiredState();
-      return;
+    state.status = saved;
+    if (statusVisualWord() === 'RUNNING') {
+      await fetchJsonWithAuthRetry('/api/bot/update-settings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
     }
-    // Keep silent status-driven UX for instant save to avoid noisy errors on every slider move.
+    showSettingsFeedback('✓ Settings saved', 'success');
+    showToast('✓ Settings saved', 'success');
+    applyTopStatus();
+    renderStatsBar();
+    renderGettingStartedGuide();
+  } catch (error) {
+    showSettingsFeedback('✗ Failed to save — try again', 'error');
+    showToast(error?.message || '✗ Failed to save — try again', 'error', 3200);
   } finally {
-    state.saveInFlight = false;
+    setButtonLoading(button, false);
+    setControlsDisabledState();
   }
 }
 
-function bindSettingsControls() {
-  const stopLossNode = byId('ai-trader-setting-stop-loss');
-  const takeProfitNode = byId('ai-trader-setting-take-profit');
-  const maxPositionSizeNode = byId('ai-trader-setting-max-position-size');
-  const dailyMaxLossNode = byId('ai-trader-setting-daily-max-loss');
+function applyPerformancePeriodTabs() {
+  document.querySelectorAll('#ai-trader-performance-tabs .ai-trader-pill--tab').forEach((node) => {
+    if (!(node instanceof HTMLButtonElement)) {
+      return;
+    }
+    const active = String(node.dataset.performancePeriod || '') === state.selectedPerformancePeriod;
+    node.classList.toggle('is-active', active);
+    node.setAttribute('aria-pressed', active ? 'true' : 'false');
+  });
+}
+
+function renderPerformance() {
+  const perf = state.performance || {};
+  const period = state.selectedPerformancePeriod;
+  const periodData = perf?.periods?.[period] || {
+    totalPnl: 0,
+    tradeCount: 0,
+    winRate: 0,
+    bestTrade: null,
+    worstTrade: null,
+    avgHoldMinutes: 0
+  };
+  const pnlNode = byId('ai-trader-metric-pnl');
+  const tradesNode = byId('ai-trader-metric-trades');
+  const winNode = byId('ai-trader-metric-win-rate');
+  const bestNode = byId('ai-trader-metric-best');
+  const worstNode = byId('ai-trader-metric-worst');
+  const holdNode = byId('ai-trader-metric-hold-time');
+  const chart = byId('ai-trader-performance-chart');
+  if (pnlNode) {
+    pnlNode.textContent = formatSignedUsd(periodData.totalPnl);
+    pnlNode.classList.toggle('is-positive', toNum(periodData.totalPnl, 0) > 0);
+    pnlNode.classList.toggle('is-negative', toNum(periodData.totalPnl, 0) < 0);
+    pnlNode.classList.toggle('is-neutral', toNum(periodData.totalPnl, 0) === 0);
+  }
+  if (tradesNode) {
+    tradesNode.textContent = String(toNum(periodData.tradeCount, 0));
+  }
+  if (winNode) {
+    winNode.textContent = formatPct(periodData.winRate, 1);
+  }
+  if (bestNode) {
+    bestNode.textContent = periodData.bestTrade
+      ? `${periodData.bestTrade.ticker} ${formatSignedUsd(periodData.bestTrade.pnlUsd)}`
+      : 'None';
+  }
+  if (worstNode) {
+    worstNode.textContent = periodData.worstTrade
+      ? `${periodData.worstTrade.ticker} ${formatSignedUsd(periodData.worstTrade.pnlUsd)}`
+      : 'None';
+  }
+  if (holdNode) {
+    const minutes = Math.max(0, Math.round(toNum(periodData.avgHoldMinutes, 0)));
+    holdNode.textContent = `${Math.floor(minutes / 60)}h ${minutes % 60}m`;
+  }
+  if (chart) {
+    const bars = Array.isArray(perf.chart) ? perf.chart : [];
+    if (!bars.length) {
+      chart.innerHTML = `
+        <span class="ai-trader-chart-label">Daily P&amp;L</span>
+        <div class="ai-trader-chart-bars">
+          <span class="ai-trader-chart-empty">No trades yet — chart will appear as the bot trades</span>
+        </div>
+      `;
+    } else {
+      const maxAbs = Math.max(1, ...bars.map((row) => Math.abs(toNum(row.pnl, 0))));
+      chart.innerHTML = `
+        <span class="ai-trader-chart-label">Daily P&amp;L</span>
+        <div class="ai-trader-chart-bars">
+          ${bars.map((row) => {
+            const pnl = toNum(row.pnl, 0);
+            const height = clamp((Math.abs(pnl) / maxAbs) * 100, 8, 100);
+            const cls = pnl >= 0 ? 'is-positive' : 'is-negative';
+            return `
+              <span class="ai-trader-chart-col">
+                <span class="ai-trader-chart-bar ${cls}" style="height:${height}%"></span>
+                <span class="ai-trader-chart-day">${escapeHtml(String(row.day || '').slice(5))}</span>
+              </span>
+            `;
+          }).join('')}
+        </div>
+      `;
+    }
+  }
+}
+
+function setupGuideCompletion() {
+  const setup = state.status?.setup || {};
+  const completed = Boolean(setup.completed);
+  if (completed) {
+    state.setupCompleteLocally = true;
+    setStoredSetupCompleted(true);
+  }
+  return completed || state.setupCompleteLocally;
+}
+
+function renderGettingStartedGuide() {
+  const card = byId('ai-trader-getting-started');
+  if (!card) {
+    return;
+  }
+  if (setupGuideCompletion()) {
+    card.hidden = true;
+    return;
+  }
+  card.hidden = false;
+  const setup = state.status?.setup || {};
+  const steps = setup.steps || {};
+  const currentStepIndex = Math.max(0, toNum(setup.currentStepIndex, 0));
+  document.querySelectorAll('#ai-trader-getting-started .ai-trader-setup-step').forEach((stepNode, index) => {
+    if (!(stepNode instanceof HTMLElement)) {
+      return;
+    }
+    const key = String(stepNode.dataset.stepKey || '').trim();
+    const done = Boolean(steps[key]);
+    const isCurrent = !done && index === currentStepIndex;
+    stepNode.classList.toggle('is-complete', done);
+    stepNode.classList.toggle('is-current', isCurrent);
+    const dot = stepNode.querySelector('.ai-trader-setup-step-dot');
+    if (dot) {
+      dot.textContent = done ? '✓' : String(index + 1);
+    }
+  });
+  const accountBtn = byId('ai-trader-step-account-btn');
+  if (accountBtn instanceof HTMLAnchorElement) {
+    if (state.authRequired) {
+      accountBtn.textContent = 'Sign In';
+      accountBtn.href = '/ai-trade-access.html?mode=login&next=%2F';
+      accountBtn.classList.remove('is-disabled');
+    } else {
+      accountBtn.textContent = 'Account Ready ✓';
+      accountBtn.href = '#';
+      accountBtn.classList.add('is-disabled');
+    }
+  }
+}
+
+async function pollMarketStatus() {
+  try {
+    const payload = await fetchJsonWithAuthRetry('/api/market/status', { method: 'GET' });
+    if (payload?.market) {
+      state.localMarket = payload.market;
+      renderStatsBar();
+    }
+    registerConnectionSuccess();
+  } catch (error) {
+    if (error?.status !== 401) {
+      registerConnectionFailure();
+    }
+  }
+}
+
+function openStopModal() {
+  const modal = byId('ai-trader-stop-modal');
+  if (!modal) {
+    return;
+  }
+  modal.classList.remove('hidden');
+}
+
+function closeStopModal() {
+  const modal = byId('ai-trader-stop-modal');
+  if (!modal) {
+    return;
+  }
+  modal.classList.add('hidden');
+}
+
+function openBrokerModal(step = 1) {
+  const modal = byId('ai-trader-broker-modal');
+  if (!modal) {
+    return;
+  }
+  modal.classList.remove('hidden');
+  showBrokerModalStep(step);
+}
+
+function closeBrokerModal() {
+  const modal = byId('ai-trader-broker-modal');
+  if (!modal) {
+    return;
+  }
+  modal.classList.add('hidden');
+}
+
+function showBrokerModalStep(step) {
+  const step1 = byId('ai-trader-broker-step-1');
+  const step2 = byId('ai-trader-broker-step-2');
+  const step3 = byId('ai-trader-broker-step-3');
+  if (step1) {
+    step1.classList.toggle('hidden', step !== 1);
+  }
+  if (step2) {
+    step2.classList.toggle('hidden', step !== 2);
+  }
+  if (step3) {
+    step3.classList.toggle('hidden', step !== 3);
+  }
+}
+
+function applyBrokerChoice() {
+  document.querySelectorAll('.ai-trader-broker-modal-option').forEach((node) => {
+    if (!(node instanceof HTMLButtonElement)) {
+      return;
+    }
+    const active = String(node.dataset.brokerChoice || '') === state.selectedBroker;
+    node.classList.toggle('is-active', active);
+  });
+}
+
+function mapBrokerAlias(value) {
+  const raw = String(value || '').trim().toLowerCase();
+  if (raw === 'tradier') {
+    return 'tradier';
+  }
+  return raw;
+}
+
+async function runBrokerTestFlow() {
+  const testBtn = byId('ai-trader-broker-test-btn');
+  if (!(testBtn instanceof HTMLButtonElement)) {
+    return;
+  }
+  const keyInput = byId('ai-trader-broker-api-key');
+  const secretInput = byId('ai-trader-broker-secret-key');
+  const modeSelect = byId('ai-trader-broker-mode');
+  const apiKey = keyInput instanceof HTMLInputElement ? keyInput.value.trim() : '';
+  const secretKey = secretInput instanceof HTMLInputElement ? secretInput.value.trim() : '';
+  const mode = modeSelect instanceof HTMLSelectElement ? modeSelect.value : 'paper';
+  if (!apiKey || !secretKey) {
+    showToast('Enter both API key and secret key first.', 'error');
+    return;
+  }
+  setButtonLoading(testBtn, true);
+  testBtn.disabled = true;
+  const checklist = byId('ai-trader-broker-test-checklist');
+  const resultText = byId('ai-trader-broker-test-result');
+  const doneBtn = byId('ai-trader-broker-test-done');
+  if (doneBtn) {
+    doneBtn.classList.add('hidden');
+  }
+  if (resultText) {
+    resultText.textContent = '';
+  }
+  try {
+    showBrokerModalStep(3);
+    await fetchJsonWithAuthRetry('/api/broker/connect', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        broker: state.selectedBroker,
+        api_key: apiKey,
+        secret_key: secretKey,
+        mode
+      })
+    });
+    const tested = await fetchJsonWithAuthRetry('/api/broker/test', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        broker: state.selectedBroker
+      })
+    });
+    const checks = Array.isArray(tested?.checks) ? tested.checks : [];
+    if (checklist) {
+      checklist.innerHTML = '';
+      for (let i = 0; i < checks.length; i += 1) {
+        const check = checks[i];
+        const li = document.createElement('li');
+        li.className = 'ai-trader-broker-check-item is-pending';
+        li.textContent = `⏳ ${check.label}...`;
+        checklist.appendChild(li);
+        // eslint-disable-next-line no-await-in-loop
+        await new Promise((resolve) => window.setTimeout(resolve, 260));
+        li.classList.remove('is-pending');
+        li.classList.toggle('is-success', Boolean(check.ok));
+        li.classList.toggle('is-failed', !Boolean(check.ok));
+        li.textContent = `${check.ok ? '✓' : '✗'} ${check.label}${check.detail ? ` — ${check.detail}` : ''}`;
+      }
+    }
+    if (tested?.bridgeReady) {
+      if (resultText) {
+        resultText.textContent = '✅ Broker connected! You are ready to trade.';
+      }
+      if (doneBtn) {
+        doneBtn.classList.remove('hidden');
+      }
+      showToast('Broker connected successfully.', 'success');
+      await pollStatus();
+      await pollPositions();
+      await pollScanner();
+    } else {
+      const message = tested?.failure?.explanation || 'Connection test failed. Check API keys, permissions, and account mode.';
+      if (resultText) {
+        resultText.textContent = `✗ ${message}`;
+      }
+      showToast(message, 'error', 3600);
+    }
+  } catch (error) {
+    if (resultText) {
+      resultText.textContent = `✗ ${error?.message || 'Broker test failed.'}`;
+    }
+    showToast(error?.message || 'Broker test failed.', 'error', 3600);
+  } finally {
+    setButtonLoading(testBtn, false);
+    setControlsDisabledState();
+  }
+}
+
+function bindGuideFaqAccordion() {
+  const wrap = byId('ai-trader-setup-faq');
+  if (!wrap) {
+    return;
+  }
+  wrap.addEventListener('click', (event) => {
+    const target = event.target;
+    if (!(target instanceof Element)) {
+      return;
+    }
+    const button = target.closest('.ai-trader-setup-faq-trigger');
+    if (!(button instanceof HTMLButtonElement)) {
+      return;
+    }
+    const item = button.closest('.ai-trader-setup-faq-item');
+    const answer = item?.querySelector('.ai-trader-setup-faq-answer');
+    if (!answer) {
+      return;
+    }
+    const expanded = button.getAttribute('aria-expanded') === 'true';
+    button.setAttribute('aria-expanded', expanded ? 'false' : 'true');
+    answer.hidden = expanded;
+  });
+}
+
+function applyLoadingAuthState() {
+  const list = byId('ai-trader-activity-list');
+  const grid = byId('ai-trader-positions-grid');
+  const scanner = byId('ai-trader-signal-list');
+  const chart = byId('ai-trader-performance-chart');
+  const markup = `
+    <article class="ai-trader-empty-state ai-trader-empty-state--center">
+      <h4>Sign in required</h4>
+      <p>Log in to use the AI Trader control center.</p>
+      <a class="btn-secondary open-link" href="/ai-trade-access.html?mode=login&next=%2F">Sign In</a>
+    </article>
+  `;
+  [list, grid, scanner, chart].forEach((node) => {
+    if (node) {
+      node.innerHTML = markup;
+    }
+  });
+}
+
+function applyStatusPayload(payload) {
+  state.status = payload;
+  state.authRequired = false;
+  state.scanIntervalSeconds = Math.max(5, toNum(payload?.stats?.nextScanInSeconds, 300));
+  if (statusVisualWord() === 'RUNNING') {
+    state.nextScanSeconds = Math.max(1, state.scanIntervalSeconds);
+  } else {
+    state.nextScanSeconds = null;
+  }
+  applyTopStatus();
+  setControlsDisabledState();
+  renderStatsBar();
+  applySettingsFromStatus();
+  renderGettingStartedGuide();
+}
+
+async function pollStatus() {
+  try {
+    const payload = await fetchJsonWithAuthRetry('/api/bot/status', { method: 'GET' });
+    applyStatusPayload(payload);
+    state.localMarket = payload?.marketStatus || payload?.market || computeLocalMarketStatus();
+    registerConnectionSuccess();
+  } catch (error) {
+    if (error?.status === 401) {
+      state.authRequired = true;
+      applyLoadingAuthState();
+      return;
+    }
+    registerConnectionFailure();
+  }
+}
+
+async function pollPositions() {
+  try {
+    const payload = await fetchJsonWithAuthRetry('/api/bot/positions', { method: 'GET' });
+    state.positions = Array.isArray(payload?.positions) ? payload.positions : [];
+    renderPositions();
+    registerConnectionSuccess();
+  } catch (error) {
+    if (error?.status !== 401) {
+      registerConnectionFailure();
+    }
+  }
+}
+
+async function pollActivity() {
+  try {
+    const payload = await fetchJsonWithAuthRetry('/api/bot/activity', { method: 'GET' });
+    state.activity = Array.isArray(payload?.activity) ? payload.activity : [];
+    renderActivityFeed();
+    registerConnectionSuccess();
+  } catch (error) {
+    if (error?.status !== 401) {
+      registerConnectionFailure();
+    }
+  }
+}
+
+async function pollScanner() {
+  try {
+    const payload = await fetchJsonWithAuthRetry('/api/bot/scanner', { method: 'GET' });
+    state.scanner = {
+      isScanning: Boolean(payload?.isScanning),
+      rows: Array.isArray(payload?.rows) ? payload.rows : []
+    };
+    renderScanner();
+    registerConnectionSuccess();
+  } catch (error) {
+    if (error?.status !== 401) {
+      registerConnectionFailure();
+    }
+  }
+}
+
+async function pollPerformance() {
+  try {
+    const payload = await fetchJsonWithAuthRetry('/api/bot/performance', { method: 'GET' });
+    state.performance = payload || null;
+    renderPerformance();
+    registerConnectionSuccess();
+  } catch (error) {
+    if (error?.status !== 401) {
+      registerConnectionFailure();
+    }
+  }
+}
+
+async function closePosition(positionId) {
+  await fetchJsonWithAuthRetry(`/api/market/auto-trader/positions/${encodeURIComponent(positionId)}/close`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({})
+  });
+}
+
+async function startBotFlow() {
+  const startBtn = byId('ai-trader-start-btn');
+  if (!(startBtn instanceof HTMLButtonElement)) {
+    return;
+  }
+  setButtonLoading(startBtn, true);
+  startBtn.disabled = true;
+  try {
+    let status = state.status;
+    if (!status) {
+      status = await fetchJsonWithAuthRetry('/api/bot/status', { method: 'GET' });
+      applyStatusPayload(status);
+    }
+    const brokerConnected = Boolean(status?.brokerConnected)
+      && Boolean(status?.bot?.execution?.brokerConnection?.auth?.secretSaved || status?.bot?.execution?.brokerConnection?.auth?.loginSaved);
+    const settingsSavedStep = Boolean(status?.setup?.steps?.settingsSaved);
+    if (!brokerConnected) {
+      openBrokerModal(1);
+      showToast('Connect a broker first.', 'error');
+      return;
+    }
+    if (!Boolean(status?.configured) || !settingsSavedStep) {
+      showToast('Save your bot settings first', 'error');
+      const panel = byId('ai-trader-settings-panel');
+      panel?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      return;
+    }
+    const started = await fetchJsonWithAuthRetry('/api/bot/start', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({})
+    });
+    applyStatusPayload(started);
+    showToast('Bot started successfully.', 'success');
+    await Promise.all([pollActivity(), pollPositions(), pollScanner()]);
+  } catch (error) {
+    if (String(error?.body?.error || '').includes('broker')) {
+      openBrokerModal(1);
+    }
+    showToast(error?.message || 'Could not start bot.', 'error', 3400);
+  } finally {
+    setButtonLoading(startBtn, false);
+    setControlsDisabledState();
+  }
+}
+
+async function pauseBotFlow() {
+  const pauseBtn = byId('ai-trader-pause-btn');
+  if (!(pauseBtn instanceof HTMLButtonElement)) {
+    return;
+  }
+  setButtonLoading(pauseBtn, true);
+  pauseBtn.disabled = true;
+  try {
+    const payload = await fetchJsonWithAuthRetry('/api/bot/pause', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({})
+    });
+    applyStatusPayload(payload);
+    showToast('Bot paused.', 'success');
+  } catch (error) {
+    showToast(error?.message || 'Could not pause bot.', 'error');
+  } finally {
+    setButtonLoading(pauseBtn, false);
+    setControlsDisabledState();
+  }
+}
+
+async function stopBotFlow() {
+  const stopBtn = byId('ai-trader-stop-confirm-btn');
+  if (!(stopBtn instanceof HTMLButtonElement)) {
+    return;
+  }
+  setButtonLoading(stopBtn, true);
+  stopBtn.disabled = true;
+  try {
+    const payload = await fetchJsonWithAuthRetry('/api/bot/stop', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({})
+    });
+    applyStatusPayload(payload);
+    closeStopModal();
+    showToast('Bot stopped.', 'success');
+  } catch (error) {
+    showToast(error?.message || 'Could not stop bot.', 'error');
+  } finally {
+    setButtonLoading(stopBtn, false);
+    setControlsDisabledState();
+  }
+}
+
+function bindControls() {
+  const startBtn = byId('ai-trader-start-btn');
+  const pauseBtn = byId('ai-trader-pause-btn');
+  const stopBtn = byId('ai-trader-stop-btn');
+  const stopConfirmBtn = byId('ai-trader-stop-confirm-btn');
+  const stopCancelBtn = byId('ai-trader-stop-cancel-btn');
+  const settingsBtn = byId('ai-trader-save-settings-btn');
+  const tabs = byId('ai-trader-performance-tabs');
+  const positionsGrid = byId('ai-trader-positions-grid');
+  const connectStepBtn = byId('ai-trader-step-connect-btn');
+  const settingsStepBtn = byId('ai-trader-step-settings-btn');
+  const startStepBtn = byId('ai-trader-step-start-btn');
+  if (startBtn instanceof HTMLButtonElement) {
+    startBtn.addEventListener('click', () => {
+      startBotFlow().catch(() => {});
+    });
+  }
+  if (pauseBtn instanceof HTMLButtonElement) {
+    pauseBtn.addEventListener('click', () => {
+      pauseBotFlow().catch(() => {});
+    });
+  }
+  if (stopBtn instanceof HTMLButtonElement) {
+    stopBtn.addEventListener('click', openStopModal);
+  }
+  if (stopConfirmBtn instanceof HTMLButtonElement) {
+    stopConfirmBtn.addEventListener('click', () => {
+      stopBotFlow().catch(() => {});
+    });
+  }
+  if (stopCancelBtn instanceof HTMLButtonElement) {
+    stopCancelBtn.addEventListener('click', closeStopModal);
+  }
+  if (settingsBtn instanceof HTMLButtonElement) {
+    settingsBtn.addEventListener('click', () => {
+      saveSettingsFlow().catch(() => {});
+    });
+  }
+  if (tabs) {
+    tabs.addEventListener('click', (event) => {
+      const target = event.target;
+      if (!(target instanceof Element)) {
+        return;
+      }
+      const button = target.closest('.ai-trader-pill--tab');
+      if (!(button instanceof HTMLButtonElement)) {
+        return;
+      }
+      const period = String(button.dataset.performancePeriod || '').trim();
+      if (!period) {
+        return;
+      }
+      state.selectedPerformancePeriod = period;
+      applyPerformancePeriodTabs();
+      renderPerformance();
+    });
+  }
+  if (positionsGrid) {
+    positionsGrid.addEventListener('click', async (event) => {
+      const target = event.target;
+      if (!(target instanceof Element)) {
+        return;
+      }
+      const closeBtn = target.closest('.ai-trader-close-position-btn');
+      if (!(closeBtn instanceof HTMLButtonElement)) {
+        return;
+      }
+      const positionId = String(closeBtn.dataset.closePositionId || '').trim();
+      if (!positionId) {
+        return;
+      }
+      try {
+        closeBtn.disabled = true;
+        await closePosition(positionId);
+        showToast('Position closed.', 'success');
+        await Promise.all([pollStatus(), pollPositions(), pollActivity(), pollPerformance()]);
+      } catch (error) {
+        showToast(error?.message || 'Could not close position.', 'error');
+      } finally {
+        closeBtn.disabled = false;
+      }
+    });
+  }
+  if (connectStepBtn instanceof HTMLButtonElement) {
+    connectStepBtn.addEventListener('click', () => openBrokerModal(1));
+  }
+  if (settingsStepBtn instanceof HTMLButtonElement) {
+    settingsStepBtn.addEventListener('click', () => {
+      const panel = byId('ai-trader-settings-panel');
+      panel?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+  }
+  if (startStepBtn instanceof HTMLButtonElement) {
+    startStepBtn.addEventListener('click', () => {
+      const control = byId('ai-trader-control-title');
+      control?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      startBotFlow().catch(() => {});
+    });
+  }
+}
+
+function bindSettingsInteractions() {
+  const riskWrap = byId('ai-trader-risk-level-cards');
+  const universeWrap = byId('ai-trader-setting-universe');
+  const stopLoss = byId('ai-trader-setting-stop-loss');
+  const takeProfit = byId('ai-trader-setting-take-profit');
+  const maxPosition = byId('ai-trader-setting-max-position-size');
   const maxMinus = byId('ai-trader-setting-max-open-minus');
   const maxPlus = byId('ai-trader-setting-max-open-plus');
-  const maxOpenValue = byId('ai-trader-setting-max-open-value');
-  const riskCardsWrap = byId('ai-trader-risk-level-cards');
-  const universeWrap = byId('ai-trader-setting-universe');
-
-  if (stopLossNode instanceof HTMLInputElement) {
-    stopLossNode.addEventListener('input', () => {
-      updateStopLossText();
-      saveSettings();
-    });
-  }
-  if (takeProfitNode instanceof HTMLInputElement) {
-    takeProfitNode.addEventListener('input', () => {
-      updateTakeProfitText();
-      saveSettings();
-    });
-  }
-  if (maxPositionSizeNode instanceof HTMLInputElement) {
-    maxPositionSizeNode.addEventListener('input', () => {
-      updatePositionSizeVisual();
-      saveSettings();
-    });
-  }
-  if (dailyMaxLossNode instanceof HTMLInputElement) {
-    dailyMaxLossNode.addEventListener('input', () => {
-      updateDailyLossText();
-      saveSettings();
-    });
-  }
-  if (maxMinus instanceof HTMLButtonElement && maxOpenValue) {
-    maxMinus.addEventListener('click', () => {
-      const next = Math.max(1, num(maxOpenValue.textContent, 4) - 1);
-      maxOpenValue.textContent = String(next);
-      saveSettings();
-    });
-  }
-  if (maxPlus instanceof HTMLButtonElement && maxOpenValue) {
-    maxPlus.addEventListener('click', () => {
-      const next = Math.min(12, num(maxOpenValue.textContent, 4) + 1);
-      maxOpenValue.textContent = String(next);
-      saveSettings();
-    });
-  }
-  if (riskCardsWrap) {
-    riskCardsWrap.addEventListener('click', (event) => {
+  const maxOpen = byId('ai-trader-setting-max-open-value');
+  if (riskWrap) {
+    riskWrap.addEventListener('click', (event) => {
       const target = event.target;
       if (!(target instanceof Element)) {
         return;
@@ -1090,28 +1588,12 @@ function bindSettingsControls() {
       if (!(card instanceof HTMLButtonElement)) {
         return;
       }
-      const level = String(card.dataset.riskLevel || '').toLowerCase();
-      if (!riskProfiles[level]) {
+      const level = String(card.dataset.riskLevel || '').trim().toLowerCase();
+      if (!(level === 'conservative' || level === 'moderate' || level === 'aggressive')) {
         return;
       }
       state.selectedRiskLevel = level;
       renderRiskLevelSelection();
-      const profile = riskProfiles[level];
-      const stop = byId('ai-trader-setting-stop-loss');
-      const take = byId('ai-trader-setting-take-profit');
-      const maxOpen = byId('ai-trader-setting-max-open-value');
-      if (stop instanceof HTMLInputElement) {
-        stop.value = String(profile.stopLossPct);
-      }
-      if (take instanceof HTMLInputElement) {
-        take.value = String(profile.takeProfitPct);
-      }
-      if (maxOpen) {
-        maxOpen.textContent = String(profile.maxPositions);
-      }
-      updateStopLossText();
-      updateTakeProfitText();
-      saveSettings();
     });
   }
   if (universeWrap) {
@@ -1124,481 +1606,142 @@ function bindSettingsControls() {
       if (!(pill instanceof HTMLButtonElement)) {
         return;
       }
-      const value = String(pill.dataset.universe || '').toLowerCase();
-      if (!value) {
+      const universe = String(pill.dataset.universe || '').trim().toLowerCase();
+      if (!universe) {
         return;
       }
-      state.selectedUniverse = value;
+      state.selectedUniverse = universe;
       renderUniverseSelection();
-      saveSettings();
+    });
+  }
+  if (stopLoss instanceof HTMLInputElement) {
+    stopLoss.addEventListener('input', updateStopLossText);
+  }
+  if (takeProfit instanceof HTMLInputElement) {
+    takeProfit.addEventListener('input', updateTakeProfitText);
+  }
+  if (maxPosition instanceof HTMLInputElement) {
+    maxPosition.addEventListener('input', updatePositionSizeText);
+  }
+  if (maxMinus instanceof HTMLButtonElement && maxOpen) {
+    maxMinus.addEventListener('click', () => {
+      const next = Math.max(1, toNum(maxOpen.textContent, 4) - 1);
+      maxOpen.textContent = String(next);
+    });
+  }
+  if (maxPlus instanceof HTMLButtonElement && maxOpen) {
+    maxPlus.addEventListener('click', () => {
+      const next = Math.min(12, toNum(maxOpen.textContent, 4) + 1);
+      maxOpen.textContent = String(next);
     });
   }
 }
 
-function periodFilter(daysBack) {
-  const now = Date.now();
-  const msBack = daysBack * 86400000;
-  return (row) => {
-    const closedAt = new Date(String(row?.closedAt || row?.openedAt || ''));
-    if (Number.isNaN(closedAt.getTime())) {
-      return false;
-    }
-    return (now - closedAt.getTime()) <= msBack;
-  };
-}
-
-function filterTradesForPeriod(trades, period) {
-  const rows = Array.isArray(trades) ? trades : [];
-  if (period === 'today') {
-    return rows.filter((row) => isTodayIso(row.closedAt || row.openedAt));
+function bindBrokerModal() {
+  const closeBtn = byId('ai-trader-broker-modal-close');
+  const inlineOpen = byId('ai-trader-open-key-entry');
+  const testBtn = byId('ai-trader-broker-test-btn');
+  const doneBtn = byId('ai-trader-broker-test-done');
+  if (closeBtn instanceof HTMLButtonElement) {
+    closeBtn.addEventListener('click', closeBrokerModal);
   }
-  if (period === 'week') {
-    return rows.filter(periodFilter(7));
+  if (inlineOpen instanceof HTMLButtonElement) {
+    inlineOpen.addEventListener('click', () => showBrokerModalStep(2));
   }
-  if (period === 'month') {
-    return rows.filter(periodFilter(31));
+  if (testBtn instanceof HTMLButtonElement) {
+    testBtn.addEventListener('click', () => {
+      runBrokerTestFlow().catch(() => {});
+    });
   }
-  return rows;
-}
-
-function aggregateDailyBars(trades) {
-  const map = new Map();
-  trades.forEach((row) => {
-    const date = new Date(String(row?.closedAt || row?.openedAt || ''));
-    if (Number.isNaN(date.getTime())) {
-      return;
-    }
-    const key = `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, '0')}-${String(date.getUTCDate()).padStart(2, '0')}`;
-    map.set(key, num(map.get(key), 0) + num(row?.pnlUsd, 0));
-  });
-  return Array.from(map.entries())
-    .map(([day, pnl]) => ({ day, pnl }))
-    .sort((a, b) => a.day.localeCompare(b.day))
-    .slice(-14);
-}
-
-function renderPerformance(snapshot) {
-  const period = state.selectedPerformancePeriod;
-  const allClosed = Array.isArray(snapshot?.tradeHistory?.closed)
-    ? snapshot.tradeHistory.closed
-    : Array.isArray(snapshot?.tradeHistory)
-      ? snapshot.tradeHistory.filter((row) => String(row?.status || '').toLowerCase() === 'closed')
-      : [];
-  const trades = filterTradesForPeriod(allClosed, period);
-  const totalPnl = trades.reduce((sum, row) => sum + num(row.pnlUsd, 0), 0);
-  const wins = trades.filter((row) => num(row.pnlUsd, 0) > 0).length;
-  const losses = trades.filter((row) => num(row.pnlUsd, 0) < 0).length;
-  const tradeCount = trades.length;
-  const winRate = tradeCount > 0 ? (wins / tradeCount) * 100 : 0;
-  const best = trades.slice().sort((a, b) => num(b.pnlUsd, 0) - num(a.pnlUsd, 0))[0];
-  const worst = trades.slice().sort((a, b) => num(a.pnlUsd, 0) - num(b.pnlUsd, 0))[0];
-
-  const avgHoldMinutes = trades.length
-    ? trades.reduce((sum, row) => {
-      const opened = new Date(String(row.openedAt || ''));
-      const closed = new Date(String(row.closedAt || row.openedAt || ''));
-      if (Number.isNaN(opened.getTime()) || Number.isNaN(closed.getTime())) {
-        return sum;
-      }
-      return sum + Math.max(0, Math.round((closed.getTime() - opened.getTime()) / 60000));
-    }, 0) / trades.length
-    : 0;
-
-  const baseEquity = Math.max(1, num(snapshot?.portfolio?.equityUsd ?? snapshot?.totalDepositedUsd, 10000));
-  const pnlPct = (totalPnl / baseEquity) * 100;
-  const bars = aggregateDailyBars(trades);
-
-  const metricPnl = byId('ai-trader-metric-pnl');
-  const metricTrades = byId('ai-trader-metric-trades');
-  const metricWinRate = byId('ai-trader-metric-win-rate');
-  const metricBest = byId('ai-trader-metric-best');
-  const metricWorst = byId('ai-trader-metric-worst');
-  const metricHold = byId('ai-trader-metric-hold-time');
-  const chart = byId('ai-trader-performance-chart');
-
-  if (metricPnl) {
-    metricPnl.textContent = `${fmtSignedUsd(totalPnl)} (${fmtSignedPct(pnlPct, 2)})`;
-    metricPnl.classList.toggle('is-positive', totalPnl > 0);
-    metricPnl.classList.toggle('is-negative', totalPnl < 0);
+  if (doneBtn instanceof HTMLButtonElement) {
+    doneBtn.addEventListener('click', async () => {
+      closeBrokerModal();
+      await pollStatus();
+      showToast('Broker connection saved. You can start the bot now.', 'success');
+    });
   }
-  if (metricTrades) {
-    metricTrades.textContent = String(tradeCount);
-  }
-  if (metricWinRate) {
-    metricWinRate.textContent = fmtPct(winRate, 1);
-  }
-  if (metricBest) {
-    metricBest.textContent = best ? `${best.ticker || 'N/A'} ${fmtSignedUsd(best.pnlUsd)}` : 'None';
-  }
-  if (metricWorst) {
-    metricWorst.textContent = worst ? `${worst.ticker || 'N/A'} ${fmtSignedUsd(worst.pnlUsd)}` : 'None';
-  }
-  if (metricHold) {
-    const hours = Math.floor(avgHoldMinutes / 60);
-    const mins = Math.round(avgHoldMinutes % 60);
-    metricHold.textContent = `${hours > 0 ? `${hours}h ` : ''}${mins}m`;
-  }
-  if (chart) {
-    const maxAbs = Math.max(1, ...bars.map((row) => Math.abs(num(row.pnl, 0))));
-    const barsMarkup = bars.length
-      ? bars.map((row) => {
-        const pnl = num(row.pnl, 0);
-        const height = clamp((Math.abs(pnl) / maxAbs) * 100, 8, 100);
-        const cls = pnl >= 0 ? 'is-positive' : 'is-negative';
-        return `
-          <span class="ai-trader-chart-col">
-            <span class="ai-trader-chart-bar ${cls}" style="height:${height}%"></span>
-            <span class="ai-trader-chart-day">${escapeHtml(row.day.slice(5))}</span>
-          </span>
-        `;
-      }).join('')
-      : '<span class="ai-trader-chart-empty">No closed trades in this period.</span>';
-    chart.classList.remove('ai-trader-skeleton-wrap');
-    chart.innerHTML = `
-      <span class="ai-trader-chart-label">Daily P&amp;L</span>
-      <div class="ai-trader-chart-bars">${barsMarkup}</div>
-    `;
-  }
-}
-
-function renderPerformanceTabState() {
-  document.querySelectorAll('#ai-trader-performance-tabs .ai-trader-pill--tab').forEach((node) => {
+  document.querySelectorAll('.ai-trader-broker-modal-option').forEach((node) => {
     if (!(node instanceof HTMLButtonElement)) {
       return;
     }
-    const active = String(node.dataset.performancePeriod || '') === state.selectedPerformancePeriod;
-    node.classList.toggle('is-active', active);
-    node.setAttribute('aria-pressed', active ? 'true' : 'false');
+    node.addEventListener('click', () => {
+      state.selectedBroker = mapBrokerAlias(node.dataset.brokerChoice || 'alpaca');
+      applyBrokerChoice();
+      const openAccountUrl = String(node.dataset.brokerUrl || '').trim();
+      if (openAccountUrl) {
+        window.open(openAccountUrl, '_blank', 'noopener,noreferrer');
+      }
+      showBrokerModalStep(2);
+    });
   });
 }
 
-async function setBotActive(targetActive) {
-  const endpoint = targetActive
-    ? '/api/market/auto-trader/bot/resume'
-    : '/api/market/auto-trader/bot/pause';
-  await fetchJsonWithAuthRetry(endpoint, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({})
-  });
-  if (targetActive) {
-    // Best effort: when live + auto execute are enabled, also trigger autopilot loop.
-    try {
-      await fetchJsonWithAuthRetry('/api/market/auto-trader/autopilot/start', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ intervalMs: 30000 })
-      });
-    } catch (_error) {
-      // Some plans/modes won't allow autopilot start; bot resume still succeeded.
-    }
-  }
-  await refreshSnapshot();
-}
-
-async function stopBotCompletely() {
-  const stopAutopilotPromise = fetchJsonWithAuthRetry('/api/market/auto-trader/autopilot/stop', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' }
-  }).catch(() => null);
-  const pausePromise = setBotActive(false);
-  await Promise.all([stopAutopilotPromise, pausePromise]);
-}
-
-function setControlButtonsState(snapshot, visualStatus) {
-  const startBtn = byId('ai-trader-start-btn');
-  const pauseBtn = byId('ai-trader-pause-btn');
-  const stopBtn = byId('ai-trader-stop-btn');
-  const isRunning = visualStatus.word === 'RUNNING';
-  const isPaused = visualStatus.word === 'PAUSED';
-  const isStopped = visualStatus.word === 'STOPPED' || visualStatus.word === 'MARKET CLOSED';
-  if (startBtn instanceof HTMLButtonElement) {
-    startBtn.disabled = isRunning;
-  }
-  if (pauseBtn instanceof HTMLButtonElement) {
-    pauseBtn.disabled = isPaused || isStopped;
-  }
-  if (stopBtn instanceof HTMLButtonElement) {
-    stopBtn.disabled = isStopped;
-  }
-}
-
-function renderAuthRequiredState() {
-  const list = byId('ai-trader-activity-list');
-  const positions = byId('ai-trader-positions-grid');
-  const scanner = byId('ai-trader-signal-list');
-  const perf = byId('ai-trader-performance-chart');
-  const text = `
-    <article class="ai-trader-empty-state">
-      <h4>Sign in required</h4>
-      <p>Log in to view your AI Trader data and controls.</p>
-      <a class="open-link btn-secondary" href="/ai-trade-access.html?mode=login&next=%2F">Log in</a>
-    </article>
-  `;
-  [list, positions, scanner, perf].forEach((node) => {
-    if (node) {
-      node.classList.remove('ai-trader-skeleton-wrap');
-      node.innerHTML = text;
-    }
-  });
-}
-
-function renderLoadingSkeletonState() {
-  const targetIds = ['ai-trader-activity-list', 'ai-trader-positions-grid', 'ai-trader-signal-list', 'ai-trader-performance-chart'];
-  targetIds.forEach((id) => {
-    const node = byId(id);
-    if (!node) {
-      return;
-    }
-    node.classList.add('ai-trader-skeleton-wrap');
-  });
-}
-
-function renderLoadErrorState(message = 'Could not load AI Trader data.') {
-  const html = `
-    <article class="ai-trader-empty-state">
-      <h4>Data temporarily unavailable</h4>
-      <p>${escapeHtml(message)}</p>
-      <button id="ai-trader-retry-load" type="button" class="btn-secondary">Retry</button>
-    </article>
-  `;
-  ['ai-trader-activity-list', 'ai-trader-positions-grid', 'ai-trader-signal-list', 'ai-trader-performance-chart'].forEach((id) => {
-    const node = byId(id);
-    if (node) {
-      node.classList.remove('ai-trader-skeleton-wrap');
-      node.innerHTML = html;
-    }
-  });
-  const retryButton = byId('ai-trader-retry-load');
-  if (retryButton instanceof HTMLButtonElement) {
-    retryButton.addEventListener('click', () => {
-      renderLoadingSkeletonState();
-      refreshSnapshot().catch(() => {});
-    }, { once: true });
-  }
-}
-
-function renderFromSnapshot(snapshot) {
-  if (!snapshot) {
+function bindNavShortcut() {
+  const navLink = byId('ai-trader-nav-link');
+  if (!(navLink instanceof HTMLAnchorElement)) {
     return;
   }
-  const visual = inferBotVisualStatus(snapshot);
-  setTopStatusChip(visual.word, visual.chipClass);
-  setStatusOrb(visual.word, visual.orbClass, visual.subline);
-  setControlButtonsState(snapshot, visual);
-  renderStatsBar(snapshot);
-
-  const feedRows = makeActivityRows(snapshot);
-  const signalRows = makeSignalRows(snapshot);
-  state.feedRows = feedRows;
-  state.signalRows = signalRows;
-  renderActivityFeed(feedRows);
-  renderPositionCards(snapshot);
-  renderSignalScanner(signalRows);
-  applyVisualSettingsFromConfig(snapshot.config || {}, snapshot);
-  renderPerformanceTabState();
-  renderPerformance(snapshot);
-  applyVisualBotStatus(visual);
-}
-
-async function closePosition(positionId) {
-  if (!positionId) {
-    return;
-  }
-  await fetchJsonWithAuthRetry(`/api/market/auto-trader/positions/${encodeURIComponent(positionId)}/close`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({})
+  navLink.addEventListener('click', (event) => {
+    event.preventDefault();
+    const hub = byId('ai-trader-hub');
+    hub?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   });
-  await refreshSnapshot();
 }
 
-function bindMainInteractions() {
-  const startBtn = byId('ai-trader-start-btn');
-  const pauseBtn = byId('ai-trader-pause-btn');
-  const stopBtn = byId('ai-trader-stop-btn');
-  const positionsGrid = byId('ai-trader-positions-grid');
-  const tabs = byId('ai-trader-performance-tabs');
-  const aiTraderNav = byId('ai-trader-nav-link');
-
-  if (startBtn instanceof HTMLButtonElement) {
-    startBtn.addEventListener('click', async () => {
-      try {
-        startBtn.disabled = true;
-        await setBotActive(true);
-      } catch (_error) {
-        // silent
-      } finally {
-        startBtn.disabled = false;
+function oneSecondTick() {
+  state.localMarket = computeLocalMarketStatus();
+  if (statusVisualWord() === 'RUNNING') {
+    if (state.nextScanSeconds === null) {
+      state.nextScanSeconds = Math.max(1, state.scanIntervalSeconds);
+    } else {
+      state.nextScanSeconds -= 1;
+      if (state.nextScanSeconds <= 0) {
+        state.nextScanSeconds = Math.max(1, state.scanIntervalSeconds);
       }
-    });
+    }
+  } else {
+    state.nextScanSeconds = null;
   }
-  if (pauseBtn instanceof HTMLButtonElement) {
-    pauseBtn.addEventListener('click', async () => {
-      try {
-        pauseBtn.disabled = true;
-        await setBotActive(false);
-      } catch (_error) {
-        // silent
-      } finally {
-        pauseBtn.disabled = false;
-      }
-    });
-  }
-  if (stopBtn instanceof HTMLButtonElement) {
-    stopBtn.addEventListener('click', async () => {
-      try {
-        stopBtn.disabled = true;
-        await stopBotCompletely();
-      } catch (_error) {
-        // silent
-      } finally {
-        stopBtn.disabled = false;
-      }
-    });
-  }
-
-  if (positionsGrid) {
-    positionsGrid.addEventListener('click', async (event) => {
-      const target = event.target;
-      if (!(target instanceof Element)) {
-        return;
-      }
-      const closeButton = target.closest('.ai-trader-close-position-btn');
-      if (!(closeButton instanceof HTMLButtonElement)) {
-        return;
-      }
-      const positionId = String(closeButton.dataset.closePositionId || '').trim();
-      if (!positionId) {
-        return;
-      }
-      const card = closeButton.closest('.ai-trader-position-card');
-      const positive = card?.classList.contains('is-positive');
-      const negative = card?.classList.contains('is-negative');
-      try {
-        closeButton.disabled = true;
-        if (card) {
-          card.classList.add(positive ? 'ai-trader-card-exit-positive' : negative ? 'ai-trader-card-exit-negative' : 'ai-trader-card-exit-positive');
-        }
-        await new Promise((resolve) => window.setTimeout(resolve, 220));
-        await closePosition(positionId);
-      } finally {
-        closeButton.disabled = false;
-      }
-    });
-  }
-
-  if (tabs) {
-    tabs.addEventListener('click', (event) => {
-      const target = event.target;
-      if (!(target instanceof Element)) {
-        return;
-      }
-      const button = target.closest('.ai-trader-pill--tab');
-      if (!(button instanceof HTMLButtonElement)) {
-        return;
-      }
-      const next = String(button.dataset.performancePeriod || '').trim();
-      if (!next) {
-        return;
-      }
-      state.selectedPerformancePeriod = next;
-      renderPerformanceTabState();
-      if (state.latest) {
-        renderPerformance(state.latest);
-      }
-    });
-  }
-
-  if (aiTraderNav instanceof HTMLAnchorElement) {
-    aiTraderNav.addEventListener('click', (event) => {
-      event.preventDefault();
-      const hub = byId('ai-trader-hub');
-      if (hub) {
-        hub.scrollIntoView({ behavior: 'smooth', block: 'start' });
-      }
-    });
-  }
+  renderStatsBar();
 }
 
-async function fetchSnapshot() {
-  const [botPayload, accountPayload] = await Promise.all([
-    fetchJsonWithAuthRetry('/api/market/auto-trader/bot', { method: 'GET' }),
-    fetchJsonWithAuthRetry('/api/market/auto-trader/account-view', { method: 'GET' })
+async function initialLoad() {
+  await Promise.all([
+    pollStatus(),
+    pollPositions(),
+    pollActivity(),
+    pollScanner(),
+    pollPerformance()
   ]);
-  return {
-    ...botPayload,
-    account: accountPayload.account,
-    portfolio: accountPayload.portfolio,
-    tradeHistory: accountPayload.tradeHistory || botPayload.tradeHistory,
-    riskSettings: accountPayload.riskSettings || botPayload.riskSettings,
-    execution: {
-      ...(botPayload.execution || {}),
-      ...(accountPayload.execution || {})
-    },
-    openPositions: Array.isArray(accountPayload.openPositions) ? accountPayload.openPositions : (botPayload.openPositions || [])
-  };
-}
-
-function syncTimersFromSnapshot(snapshot) {
-  const intervalMs = num(snapshot?.execution?.autopilot?.intervalMs, 0);
-  state.scanIntervalMs = intervalMs > 0 ? intervalMs : 30000;
-  const shouldCountdown = Boolean(snapshot?.isActive);
-  state.nextScanSeconds = shouldCountdown
-    ? Math.max(1, Math.round(state.scanIntervalMs / 1000))
-    : null;
-}
-
-async function refreshSnapshot() {
-  try {
-    const snapshot = await fetchSnapshot();
-    state.authRequired = false;
-    state.latest = snapshot;
-    state.loading = false;
-    syncTimersFromSnapshot(snapshot);
-    renderFromSnapshot(snapshot);
-  } catch (error) {
-    if (error?.status === 401) {
-      state.authRequired = true;
-      renderAuthRequiredState();
-      applyVisualBotStatus({
-        word: 'STOPPED',
-        navDotClass: 'off'
-      });
-      return;
-    }
-    if (state.latest) {
-      // keep last successful UI data on transient errors
-      return;
-    }
-    renderLoadErrorState(error?.message || 'Could not load AI Trader data right now.');
-  }
+  applyPerformancePeriodTabs();
+  renderPerformance();
 }
 
 function startPolling() {
-  if (state.pollTimer) {
-    window.clearInterval(state.pollTimer);
-  }
-  if (state.countdownTimer) {
-    window.clearInterval(state.countdownTimer);
-  }
-  state.pollTimer = window.setInterval(() => {
-    refreshSnapshot().catch(() => {});
-  }, AI_TRADER_POLL_MS);
-  state.countdownTimer = window.setInterval(() => {
-    if (state.nextScanSeconds === null) {
-      return;
+  Object.values(state.timers).forEach((timerId) => {
+    if (timerId) {
+      window.clearInterval(timerId);
     }
-    const next = state.nextScanSeconds - 1;
-    if (next <= 0) {
-      state.nextScanSeconds = Math.max(1, Math.round(Math.max(1000, state.scanIntervalMs || 30000) / 1000));
-    } else {
-      state.nextScanSeconds = next;
-    }
-    if (state.latest) {
-      renderStatsBar(state.latest);
-    }
-  }, 1000);
+  });
+  state.timers.oneSecond = window.setInterval(oneSecondTick, 1000);
+  state.timers.activity = window.setInterval(() => {
+    pollActivity().catch(() => {});
+  }, 5000);
+  state.timers.status = window.setInterval(() => {
+    Promise.all([
+      pollStatus(),
+      pollMarketStatus()
+    ]).catch(() => {});
+  }, 10000);
+  state.timers.positions = window.setInterval(() => {
+    pollPositions().catch(() => {});
+  }, 10000);
+  state.timers.scanner = window.setInterval(() => {
+    pollScanner().catch(() => {});
+  }, 10000);
+  state.timers.performance = window.setInterval(() => {
+    pollPerformance().catch(() => {});
+  }, 30000);
 }
 
 function initAiTraderHub() {
@@ -1610,11 +1753,17 @@ function initAiTraderHub() {
     return;
   }
   state.mounted = true;
-  promoteHubToTop();
-  renderLoadingSkeletonState();
-  bindMainInteractions();
-  bindSettingsControls();
-  refreshSnapshot().catch(() => {});
+  state.setupCompleteLocally = getStoredSetupCompleted();
+  bindControls();
+  bindSettingsInteractions();
+  bindBrokerModal();
+  bindGuideFaqAccordion();
+  bindNavShortcut();
+  applyBrokerChoice();
+  oneSecondTick();
+  initialLoad().catch(() => {
+    registerConnectionFailure();
+  });
   startPolling();
 }
 
