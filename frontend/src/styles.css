@@ -7126,97 +7126,173 @@ button[aria-busy='true']::after {
 
 .ai-trader-getting-started-steps {
   display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
-  gap: 0.65rem;
+  gap: 0.75rem;
 }
 
-.ai-trader-setup-step {
-  border: 1px solid rgba(148, 163, 184, 0.35);
-  border-radius: 12px;
-  background: rgba(12, 12, 18, 0.78);
-  padding: 0.64rem;
+.ai-trader-setup-tracker {
   display: grid;
-  gap: 0.45rem;
-  align-content: start;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 0.55rem;
+  min-height: 80px;
+  align-items: stretch;
 }
 
-.ai-trader-setup-step-dot {
-  width: 34px;
-  height: 34px;
+.ai-trader-tracker-step {
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  border-radius: 10px;
+  background: rgba(12, 12, 18, 0.78);
+  padding: 0.45rem 0.5rem;
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  min-width: 0;
+}
+
+.ai-trader-tracker-dot {
+  width: 28px;
+  height: 28px;
   border-radius: 999px;
   border: 2px solid rgba(148, 163, 184, 0.72);
   display: grid;
   place-items: center;
   color: #a1a1aa;
   font-weight: 900;
+  flex: 0 0 auto;
 }
 
-.ai-trader-setup-step.is-current .ai-trader-setup-step-dot {
+.ai-trader-tracker-label {
+  font-size: 0.78rem;
+  color: #d4d4d8;
+  font-weight: 700;
+  line-height: 1.2;
+  min-width: 0;
+}
+
+.ai-trader-tracker-step.is-current .ai-trader-tracker-dot {
   border-color: #f0c040;
   color: #f0c040;
-  box-shadow: 0 0 0 5px rgba(240, 192, 64, 0.2);
+  box-shadow: 0 0 0 4px rgba(240, 192, 64, 0.2);
 }
 
-.ai-trader-setup-step.is-complete .ai-trader-setup-step-dot {
+.ai-trader-tracker-step.is-complete .ai-trader-tracker-dot {
   border-color: #f0c040;
   color: #111827;
   background: #f0c040;
 }
 
-.ai-trader-setup-step h4 {
+.ai-trader-tracker-step.is-current .ai-trader-tracker-label,
+.ai-trader-tracker-step.is-complete .ai-trader-tracker-label {
+  color: #f9fafb;
+}
+
+.ai-trader-setup-panels {
+  width: 100%;
+  min-width: 0;
+}
+
+.ai-trader-setup-panel {
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  border-radius: 12px;
+  background: rgba(12, 12, 18, 0.78);
+  padding: 0.8rem;
+  display: grid;
+  gap: 0.55rem;
+  min-width: 0;
+}
+
+.ai-trader-setup-panel h4 {
   margin: 0;
   color: #f9fafb;
 }
 
-.ai-trader-setup-step p {
+.ai-trader-setup-panel p {
   margin: 0;
   color: #d4d4d8;
   font-size: 0.82rem;
 }
 
 .ai-trader-broker-choice-grid {
+  margin-top: 0.5rem;
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 0.45rem;
+  gap: 16px;
+  align-items: stretch;
 }
 
 .ai-trader-broker-choice-card {
   border: 1px solid rgba(148, 163, 184, 0.35);
   border-radius: 10px;
-  padding: 0.55rem;
+  padding: 20px;
   background: rgba(10, 10, 15, 0.72);
-  display: grid;
-  gap: 0.3rem;
+  min-height: 360px;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  overflow: visible;
 }
 
 .ai-trader-broker-choice-card h5 {
-  margin: 0;
+  margin: 0.1rem 0 0;
   color: #fde68a;
+  line-height: 1.25;
 }
 
 .ai-trader-broker-choice-tag {
+  display: inline-flex;
+  align-self: flex-start;
   font-size: 0.68rem;
   font-weight: 800;
   color: #111827;
   background: #f0c040;
   border-radius: 999px;
-  width: fit-content;
-  padding: 0.14rem 0.4rem;
+  max-width: 100%;
+  white-space: normal;
+  line-height: 1.2;
+  padding: 0.18rem 0.5rem;
 }
 
 .ai-trader-broker-choice-card ul {
   margin: 0;
-  padding-left: 0.9rem;
+  padding-left: 1rem;
   color: #d1d5db;
   font-size: 0.74rem;
-  display: grid;
-  gap: 0.18rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
 }
 
 .ai-trader-broker-choice-card a {
+  margin-top: auto;
+  min-height: 42px;
+  width: 100%;
+  box-sizing: border-box;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
   color: #f0c040;
   font-weight: 800;
   text-decoration: none;
+  border: 1px solid rgba(240, 192, 64, 0.7);
+  border-radius: 9px;
+  background: rgba(31, 41, 55, 0.72);
+  padding: 0.42rem 0.7rem;
+}
+
+.ai-trader-broker-choice-card p {
+  overflow-wrap: anywhere;
+}
+
+.ai-trader-broker-choice-note {
+  margin-top: 0.7rem;
+  text-align: center;
+  color: #9ca3af;
+  font-size: 0.76rem;
+}
+
+.ai-trader-broker-choice-note em {
+  color: inherit;
 }
 
 .ai-trader-step-start-btn {
@@ -7798,9 +7874,8 @@ button[aria-busy='true']::after {
 }
 
 @media (max-width: 1080px) {
-  .ai-trader-getting-started-steps,
-  .ai-trader-broker-choice-grid {
-    grid-template-columns: 1fr;
+  .ai-trader-setup-tracker {
+    grid-template-columns: repeat(5, minmax(0, 1fr));
   }
 }
 
@@ -7837,5 +7912,25 @@ button[aria-busy='true']::after {
 
   .ai-trader-broker-modal-grid {
     grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 768px) {
+  .ai-trader-setup-tracker {
+    grid-template-columns: 1fr;
+    min-height: 0;
+  }
+
+  .ai-trader-tracker-step {
+    min-height: 58px;
+  }
+
+  .ai-trader-broker-choice-grid {
+    grid-template-columns: 1fr;
+    gap: 16px;
+  }
+
+  .ai-trader-broker-choice-card {
+    min-height: 0;
   }
 }

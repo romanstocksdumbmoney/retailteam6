@@ -633,29 +633,47 @@
                 <p>Complete these 5 steps once. After that the bot runs for you automatically.</p>
               </div>
               <div id="ai-trader-getting-started-steps" class="ai-trader-getting-started-steps">
-                <article class="ai-trader-setup-step" data-step-key="accountCreated">
-                  <div class="ai-trader-setup-step-dot">1</div>
-                  <div class="ai-trader-setup-step-copy">
+                <div class="ai-trader-setup-tracker">
+                  <article class="ai-trader-tracker-step" data-step-key="accountCreated">
+                    <span class="ai-trader-tracker-dot">1</span>
+                    <span class="ai-trader-tracker-label">Create Account</span>
+                  </article>
+                  <article class="ai-trader-tracker-step" data-step-key="settingsSaved">
+                    <span class="ai-trader-tracker-dot">2</span>
+                    <span class="ai-trader-tracker-label">Save Settings</span>
+                  </article>
+                  <article class="ai-trader-tracker-step" data-step-key="brokerageReady">
+                    <span class="ai-trader-tracker-dot">3</span>
+                    <span class="ai-trader-tracker-label">Open Account</span>
+                  </article>
+                  <article class="ai-trader-tracker-step" data-step-key="brokerConnected">
+                    <span class="ai-trader-tracker-dot">4</span>
+                    <span class="ai-trader-tracker-label">Connect Broker</span>
+                  </article>
+                  <article class="ai-trader-tracker-step" data-step-key="botStartedOnce">
+                    <span class="ai-trader-tracker-dot">5</span>
+                    <span class="ai-trader-tracker-label">Start Bot</span>
+                  </article>
+                </div>
+
+                <div class="ai-trader-setup-panels">
+                  <article class="ai-trader-setup-panel" data-step-key="accountCreated">
                     <h4>Create Your Account</h4>
                     <p>Sign in so your bot settings and trade history are saved to your account.</p>
-                  </div>
-                  <div class="ai-trader-setup-step-action">
-                    <a id="ai-trader-step-account-btn" class="btn-secondary" href="/ai-trade-access.html?mode=login&next=%2F">Sign In</a>
-                  </div>
-                </article>
-                <article class="ai-trader-setup-step" data-step-key="settingsSaved">
-                  <div class="ai-trader-setup-step-dot">2</div>
-                  <div class="ai-trader-setup-step-copy">
+                    <div class="ai-trader-setup-step-action">
+                      <a id="ai-trader-step-account-btn" class="btn-secondary" href="/ai-trade-access.html?mode=login&next=%2F">Sign In</a>
+                    </div>
+                  </article>
+
+                  <article class="ai-trader-setup-panel" data-step-key="settingsSaved">
                     <h4>Save Your Bot Settings</h4>
                     <p>Choose your risk level, stop loss, and take profit below, then save.</p>
-                  </div>
-                  <div class="ai-trader-setup-step-action">
-                    <button id="ai-trader-step-settings-btn" class="btn-secondary" type="button">Go to Settings ↓</button>
-                  </div>
-                </article>
-                <article class="ai-trader-setup-step" data-step-key="brokerageReady">
-                  <div class="ai-trader-setup-step-dot">3</div>
-                  <div class="ai-trader-setup-step-copy">
+                    <div class="ai-trader-setup-step-action">
+                      <button id="ai-trader-step-settings-btn" class="btn-secondary" type="button">Go to Settings ↓</button>
+                    </div>
+                  </article>
+
+                  <article class="ai-trader-setup-panel" data-step-key="brokerageReady">
                     <h4>Open a Brokerage Account</h4>
                     <p>The AI needs a brokerage account to hold your money and place trades. DumbDollars never holds your money.</p>
                     <div class="ai-trader-broker-choice-grid">
@@ -692,29 +710,25 @@
                         <a href="https://www.interactivebrokers.com" target="_blank" rel="noopener noreferrer">Open IBKR Account →</a>
                       </article>
                     </div>
-                    <p class="small-note"><em>Already have an account? Skip to Step 4 to connect it.</em></p>
-                  </div>
-                </article>
-                <article class="ai-trader-setup-step" data-step-key="brokerConnected">
-                  <div class="ai-trader-setup-step-dot">4</div>
-                  <div class="ai-trader-setup-step-copy">
+                    <p class="small-note ai-trader-broker-choice-note"><em>Already have an account? Skip to Step 4 to connect it.</em></p>
+                  </article>
+
+                  <article class="ai-trader-setup-panel" data-step-key="brokerConnected">
                     <h4>Connect Broker &amp; Run Test</h4>
                     <p>Paste your API keys from your broker and run the connection test. The bot cannot place trades until this test passes.</p>
-                  </div>
-                  <div class="ai-trader-setup-step-action">
-                    <button id="ai-trader-step-connect-btn" class="btn-secondary" type="button">Connect Broker &amp; Run Test →</button>
-                  </div>
-                </article>
-                <article class="ai-trader-setup-step" data-step-key="botStartedOnce">
-                  <div class="ai-trader-setup-step-dot">5</div>
-                  <div class="ai-trader-setup-step-copy">
+                    <div class="ai-trader-setup-step-action">
+                      <button id="ai-trader-step-connect-btn" class="btn-secondary" type="button">Connect Broker &amp; Run Test →</button>
+                    </div>
+                  </article>
+
+                  <article class="ai-trader-setup-panel" data-step-key="botStartedOnce">
                     <h4>Start the Bot</h4>
                     <p>You're all set. Hit START and the AI begins scanning the market and placing trades during market hours.</p>
-                  </div>
-                  <div class="ai-trader-setup-step-action">
-                    <button id="ai-trader-step-start-btn" class="ai-trader-step-start-btn" type="button">▶ Start Bot Now</button>
-                  </div>
-                </article>
+                    <div class="ai-trader-setup-step-action">
+                      <button id="ai-trader-step-start-btn" class="ai-trader-step-start-btn" type="button">▶ Start Bot Now</button>
+                    </div>
+                  </article>
+                </div>
               </div>
 
               <div class="ai-trader-setup-faq" id="ai-trader-setup-faq">

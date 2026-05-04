@@ -1036,7 +1036,7 @@ function renderGettingStartedGuide() {
   const setup = state.status?.setup || {};
   const steps = setup.steps || {};
   const currentStepIndex = Math.max(0, toNum(setup.currentStepIndex, 0));
-  document.querySelectorAll('#ai-trader-getting-started .ai-trader-setup-step').forEach((stepNode, index) => {
+  document.querySelectorAll('#ai-trader-getting-started .ai-trader-tracker-step').forEach((stepNode, index) => {
     if (!(stepNode instanceof HTMLElement)) {
       return;
     }
@@ -1045,10 +1045,21 @@ function renderGettingStartedGuide() {
     const isCurrent = !done && index === currentStepIndex;
     stepNode.classList.toggle('is-complete', done);
     stepNode.classList.toggle('is-current', isCurrent);
-    const dot = stepNode.querySelector('.ai-trader-setup-step-dot');
+    const dot = stepNode.querySelector('.ai-trader-tracker-dot');
     if (dot) {
       dot.textContent = done ? '✓' : String(index + 1);
     }
+  });
+  document.querySelectorAll('#ai-trader-getting-started .ai-trader-setup-panel').forEach((panelNode, index) => {
+    if (!(panelNode instanceof HTMLElement)) {
+      return;
+    }
+    const key = String(panelNode.dataset.stepKey || '').trim();
+    const done = Boolean(steps[key]);
+    const isCurrent = !done && index === currentStepIndex;
+    panelNode.classList.toggle('is-complete', done);
+    panelNode.classList.toggle('is-active', isCurrent);
+    panelNode.hidden = !isCurrent;
   });
   const accountBtn = byId('ai-trader-step-account-btn');
   if (accountBtn instanceof HTMLAnchorElement) {
