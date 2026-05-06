@@ -287,6 +287,27 @@ async function sendDailyLossAlertEmail(user, summary = {}) {
   return { skipped: false, delivery };
 }
 
+async function sendBrokerAttentionAlertEmail(user, context = {}) {
+  const preferences = getUserEmailPreferences(user.id);
+  if (preferences.unsubscribed_all || !preferences.bot_status_alerts) {
+    return { skipped: true, reason: 'preference_disabled' };
+  }
+  const reason = String(context.reason || 'Broker authentication failed repeatedly.').trim();
+  const html = `
+    <p>Your broker connection needs attention.</p>
+    <p>${reason}</p>
+    <p>The bot was paused automatically for safety.</p>
+    <p><a href="${appUrl('/settings/broker')}">Open Broker Settings</a> to reconnect or rotate keys.</p>
+  `;
+  const delivery = await sendTypedEmail({
+    user,
+    emailType: 'broker_attention_alert',
+    subject: 'Your broker connection needs attention',
+    html
+  });
+  return { skipped: false, delivery };
+}
+
 async function sendDailyReports() {
   const users = getAllUsersForReports();
   for (const user of users) {
@@ -411,6 +432,7 @@ module.exports = {
   sendTradeAlertEmail,
   sendStopLossAlertEmail,
   sendDailyLossAlertEmail,
+  sendBrokerAttentionAlertEmail,
   sendDailyReports,
   sendDailyReportsForTime,
   sendWeeklyReports,

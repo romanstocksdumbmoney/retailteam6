@@ -34,6 +34,12 @@ async function build() {
   await fs.copyFile(path.join(srcDir, 'stock-analysis.html'), path.join(buildDir, 'stock-analysis.html'));
   await fs.copyFile(path.join(srcDir, 'insider-trades.html'), path.join(buildDir, 'insider-trades.html'));
   await fs.copyFile(path.join(srcDir, 'portfolios.html'), path.join(buildDir, 'portfolios.html'));
+  await fs.copyFile(path.join(srcDir, 'settings.html'), path.join(buildDir, 'settings.html'));
+  await fs.copyFile(path.join(srcDir, 'settings-broker.html'), path.join(buildDir, 'settings-broker.html'));
+  await fs.copyFile(path.join(srcDir, 'forgot-password.html'), path.join(buildDir, 'forgot-password.html'));
+  await fs.copyFile(path.join(srcDir, 'reset-password.html'), path.join(buildDir, 'reset-password.html'));
+  await fs.copyFile(path.join(srcDir, 'verify-email.html'), path.join(buildDir, 'verify-email.html'));
+  await fs.copyFile(path.join(srcDir, 'unsubscribe.html'), path.join(buildDir, 'unsubscribe.html'));
   await fs.copyFile(path.join(srcDir, 'logo-mark.svg'), path.join(buildDir, 'logo-mark.svg'));
   await fs.copyFile(path.join(srcDir, 'diamond-hands.png'), path.join(buildDir, 'diamond-hands.png'));
   await fs.copyFile(path.join(srcDir, 'diamond-hands-wallstreet-bg.svg'), path.join(buildDir, 'diamond-hands-wallstreet-bg.svg'));
@@ -59,6 +65,13 @@ async function build() {
   await fs.copyFile(path.join(srcDir, 'stock-analysis.js'), path.join(buildDir, 'stock-analysis.js'));
   await fs.copyFile(path.join(srcDir, 'insider-trades.js'), path.join(buildDir, 'insider-trades.js'));
   await fs.copyFile(path.join(srcDir, 'portfolios.js'), path.join(buildDir, 'portfolios.js'));
+  await fs.copyFile(path.join(srcDir, 'settings.js'), path.join(buildDir, 'settings.js'));
+  await fs.copyFile(path.join(srcDir, 'settings-broker.js'), path.join(buildDir, 'settings-broker.js'));
+  await fs.copyFile(path.join(srcDir, 'broker-shared.js'), path.join(buildDir, 'broker-shared.js'));
+  await fs.copyFile(path.join(srcDir, 'forgot-password.js'), path.join(buildDir, 'forgot-password.js'));
+  await fs.copyFile(path.join(srcDir, 'reset-password.js'), path.join(buildDir, 'reset-password.js'));
+  await fs.copyFile(path.join(srcDir, 'verify-email.js'), path.join(buildDir, 'verify-email.js'));
+  await fs.copyFile(path.join(srcDir, 'unsubscribe.js'), path.join(buildDir, 'unsubscribe.js'));
   await fs.copyFile(path.join(srcDir, 'session-helper.js'), path.join(buildDir, 'session-helper.js'));
   await fs.copyFile(path.join(srcDir, 'ai-copilot-widget.js'), path.join(buildDir, 'ai-copilot-widget.js'));
   await fs.copyFile(path.join(srcDir, 'styles.css'), path.join(buildDir, 'styles.css'));

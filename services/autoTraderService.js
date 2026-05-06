@@ -4,6 +4,14 @@ const {
   getTrendTrades,
   getHighIvTracker
 } = require('./marketEngine');
+const {
+  getBrokerConnectionByUserId,
+  upsertBrokerConnection
+} = require('./authStore');
+const {
+  encryptValue,
+  decryptValue
+} = require('../utils/encryption');
 
 const SECTOR_UNIVERSE = {
   Technology: ['AAPL', 'MSFT', 'ORCL', 'CRM', 'ADBE', 'NOW'],
@@ -59,7 +67,6 @@ const BROKER_LOGIN_DOCS = Object.freeze({
 });
 
 const traderStore = new Map();
-const brokerSecretStore = new Map();
 const autopilotTimers = new Map();
 const AUTOPILOT_MIN_INTERVAL_MS = 15_000;
 const AUTOPILOT_DEFAULT_INTERVAL_MS = 45_000;
@@ -273,38 +280,95 @@ async function submitAlpacaBrokerOrder(input = {}) {
   };
 }
 
-function brokerSecretKey(userId, broker) {
-  return `${String(userId || '').trim()}::${String(broker || '').trim().toLowerCase()}`;
+function isAuthFailureFromBrokerSubmission(submission = {}) {
+  const haystack = [
+    submission?.reason,
+    submission?.message,
+    submission?.payload?.message,
+    submission?.payload?.error,
+    submission?.payload?.code
+  ].map((value) => String(value || '').toLowerCase()).join(' ');
+  if (!haystack) {
+    return false;
+  }
+  return (
+    haystack.includes('unauthorized')
+    || haystack.includes('forbidden')
+    || haystack.includes('authentication')
+    || haystack.includes('invalid key')
+    || haystack.includes('invalid api')
+    || haystack.includes('api key')
+    || haystack.includes('secret')
+    || haystack.includes('credential')
+    || haystack.includes('token')
+  );
 }
 
 function setBrokerSecrets(userId, broker, credentials = {}) {
-  const key = brokerSecretKey(userId, broker);
   const apiKey = trimSecret(credentials.apiKey, 160);
   const apiSecret = trimSecret(credentials.apiSecret, 220);
-  if (!apiKey || !apiSecret) {
-    brokerSecretStore.delete(key);
+  const normalizedUserId = String(userId || '').trim();
+  const normalizedBroker = String(broker || '').trim().toLowerCase();
+  if (!normalizedUserId || !normalizedBroker) {
     return;
   }
-  brokerSecretStore.set(key, {
-    apiKey,
-    apiSecret,
-    savedAt: nowIso()
+  if (!apiKey && !apiSecret) {
+    clearBrokerSecrets(normalizedUserId, normalizedBroker);
+    return;
+  }
+  const existing = getBrokerConnectionByUserId(normalizedUserId);
+  upsertBrokerConnection({
+    ...(existing || {}),
+    user_id: normalizedUserId,
+    broker_name: normalizedBroker,
+    trading_mode: existing?.trading_mode || 'paper',
+    api_key_encrypted: apiKey ? encryptValue(apiKey) : (existing?.api_key_encrypted || ''),
+    api_secret_encrypted: apiSecret ? encryptValue(apiSecret) : (existing?.api_secret_encrypted || null),
+    connection_status: existing?.connection_status || 'connected',
+    key_updated_at: nowIso(),
+    updated_at: nowIso()
   });
 }
 
 function getBrokerSecrets(userId, broker) {
-  return brokerSecretStore.get(brokerSecretKey(userId, broker)) || null;
+  const normalizedUserId = String(userId || '').trim();
+  const normalizedBroker = String(broker || '').trim().toLowerCase();
+  if (!normalizedUserId || !normalizedBroker) {
+    return null;
+  }
+  const row = getBrokerConnectionByUserId(normalizedUserId);
+  if (!row || String(row.broker_name || '').trim().toLowerCase() !== normalizedBroker) {
+    return null;
+  }
+  try {
+    return {
+      apiKey: row.api_key_encrypted ? decryptValue(row.api_key_encrypted) : '',
+      apiSecret: row.api_secret_encrypted ? decryptValue(row.api_secret_encrypted) : ''
+    };
+  } catch (_error) {
+    return null;
+  }
 }
 
 function clearBrokerSecrets(userId, broker) {
-  if (broker) {
-    brokerSecretStore.delete(brokerSecretKey(userId, broker));
+  const normalizedUserId = String(userId || '').trim();
+  if (!normalizedUserId) {
     return;
   }
-  const prefix = `${String(userId || '').trim()}::`;
-  Array.from(brokerSecretStore.keys())
-    .filter((key) => key.startsWith(prefix))
-    .forEach((key) => brokerSecretStore.delete(key));
+  const row = getBrokerConnectionByUserId(normalizedUserId);
+  if (!row) {
+    return;
+  }
+  const normalizedBroker = String(broker || '').trim().toLowerCase();
+  if (normalizedBroker && String(row.broker_name || '').trim().toLowerCase() !== normalizedBroker) {
+    return;
+  }
+  upsertBrokerConnection({
+    ...row,
+    api_key_encrypted: '',
+    api_secret_encrypted: null,
+    updated_at: nowIso()
+  });
 }
 
 function daySeed() {
@@ -1895,6 +1959,7 @@ async function executeAutoTraderBrokerOrders(user, input = {}) {
     && Boolean(auth.brokerApiMode === 'real')
     && Boolean(secrets?.apiKey && secrets?.apiSecret);
   const brokerOrders = [];
+  let sawBrokerAuthFailure = false;
   for (let index = 0; index < readyTickets.length; index += 1) {
     const ticket = readyTickets[index];
     if (useRealAlpacaApi) {
@@ -1920,6 +1985,9 @@ async function executeAutoTraderBrokerOrders(user, input = {}) {
         executionPath: 'real_api',
         responseMeta: submitted.payload || null
       });
+      if (!submitted.ok && isAuthFailureFromBrokerSubmission(submitted)) {
+        sawBrokerAuthFailure = true;
+      }
       continue;
     }
     const seed = hashString(`${userId}:${ticket.ticketId}:${submittedAt}:${index}`);
@@ -2034,6 +2102,33 @@ async function executeAutoTraderBrokerOrders(user, input = {}) {
     rejectedCount: brokerOrders.filter((row) => row.status === 'rejected').length,
     requestedTicketIds: requestedTicketIds.length ? requestedTicketIds : null
   };
+  if (liveExecution.lastBrokerExecution.submittedCount > 0) {
+    try {
+      const connectionRow = getBrokerConnectionByUserId(userId);
+      if (connectionRow) {
+        upsertBrokerConnection({
+          ...connectionRow,
+          last_successful_trade_at: nowIso(),
+          connection_status: 'connected',
+          failed_auth_attempts: 0,
+          updated_at: nowIso()
+        });
+      }
+    } catch (_error) {
+      // Non-fatal broker connection metadata update.
+    }
+  }
+  if (sawBrokerAuthFailure) {
+    try {
+      // Reuse broker refresh flow so auth failure tracking, pause, and alerts stay consistent.
+      const { refreshConnectionForUser } = require('./brokerConnectionService');
+      await refreshConnectionForUser(user, {
+        ipAddress: 'system:auto-trader-execution'
+      });
+    } catch (_error) {
+      // Non-fatal broker attention sync.
+    }
+  }
   state.updatedAt = nowIso();
 
   return {

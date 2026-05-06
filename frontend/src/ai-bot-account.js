@@ -64,6 +64,8 @@ async function requestWithAuthRetry(url, options = {}) {
   }
 }
 
+let brokerModalInstance = null;
+
 const SETUP_PROGRESS_AUTOPILOT_STARTED_KEY = 'dumbdollars_setup_autopilot_started_at';
 let activeAccountPayload = null;
 
@@ -129,6 +131,118 @@ function setButtonBusy(button, busy, busyLabel = 'Working...') {
     button.classList.remove('is-loading');
     button.textContent = button.dataset.idleLabel || '';
   }
+}
+
+function ensureBrokerModal() {
+  if (brokerModalInstance || typeof window.createBrokerConnectionModal !== 'function') {
+    return brokerModalInstance;
+  }
+  brokerModalInstance = window.createBrokerConnectionModal({
+    authFetch: requestWithAuthRetry,
+    onSaved: async () => {
+      await loadAccountView().catch(() => {});
+      await loadBrokerStatusWidget().catch(() => {});
+    }
+  });
+  brokerModalInstance.mount();
+  return brokerModalInstance;
+}
+
+function relativeTimeFromIso(isoValue) {
+  const parsed = Date.parse(String(isoValue || ''));
+  if (!Number.isFinite(parsed)) {
+    return 'Never';
+  }
+  const diffMs = Date.now() - parsed;
+  const minutes = Math.max(0, Math.floor(diffMs / (60 * 1000)));
+  if (minutes < 1) {
+    return 'just now';
+  }
+  if (minutes < 60) {
+    return `${minutes} minute${minutes === 1 ? '' : 's'} ago`;
+  }
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) {
+    return `${hours} hour${hours === 1 ? '' : 's'} ago`;
+  }
+  const days = Math.floor(hours / 24);
+  return `${days} day${days === 1 ? '' : 's'} ago`;
+}
+
+function setBrokerWarning(text = '', tone = 'warning') {
+  const node = document.getElementById('broker-widget-warning');
+  if (!node) {
+    return;
+  }
+  const hasText = Boolean(String(text || '').trim());
+  node.hidden = !hasText;
+  node.textContent = hasText ? String(text) : '';
+  node.className = tone === 'error' ? 'broker-warning-card broker-warning-card--error' : 'broker-warning-card';
+}
+
+async function loadBrokerStatusWidget() {
+  const payload = await requestWithAuthRetry('/api/broker/status', { method: 'GET' });
+  const refreshButton = document.getElementById('broker-widget-refresh');
+  const changeButton = document.getElementById('broker-widget-change-keys');
+  const switchButton = document.getElementById('broker-widget-switch-mode');
+  const pill = document.getElementById('broker-widget-pill');
+  const brokerName = document.getElementById('broker-widget-name');
+  const modeNode = document.getElementById('broker-widget-mode');
+  const accountNode = document.getElementById('broker-widget-account');
+  const buyingPowerNode = document.getElementById('broker-widget-buying-power');
+  const lastVerifiedNode = document.getElementById('broker-widget-last-verified');
+
+  const status = String(payload?.status || 'disconnected').toLowerCase();
+  const connected = Boolean(payload?.connected);
+  const mode = String(payload?.trading_mode || 'paper').toLowerCase();
+  const modeLabel = mode === 'live' ? 'Live Trading' : 'Paper Trading';
+  const nextMode = mode === 'live' ? 'paper' : 'live';
+
+  if (pill) {
+    const statusLabel = connected ? 'Connected' : status === 'needs_attention' ? 'Needs attention' : 'Disconnected';
+    pill.textContent = statusLabel;
+    pill.className = connected
+      ? 'broker-status-pill broker-status-pill--connected'
+      : status === 'needs_attention'
+        ? 'broker-status-pill broker-status-pill--attention'
+        : 'broker-status-pill broker-status-pill--disconnected';
+  }
+  if (brokerName) {
+    brokerName.textContent = payload?.broker ? String(payload.broker).toUpperCase() : 'Not connected';
+  }
+  if (modeNode) {
+    modeNode.textContent = modeLabel;
+  }
+  if (accountNode) {
+    accountNode.textContent = payload?.account_masked || '—';
+  }
+  if (buyingPowerNode) {
+    buyingPowerNode.textContent = fmtUsd(payload?.buying_power || 0);
+  }
+  if (lastVerifiedNode) {
+    lastVerifiedNode.textContent = relativeTimeFromIso(payload?.last_tested || '');
+  }
+  if (switchButton instanceof HTMLButtonElement) {
+    switchButton.textContent = nextMode === 'live' ? 'Switch to Live' : 'Switch to Paper';
+    switchButton.setAttribute('data-target-mode', nextMode);
+  }
+  if (refreshButton instanceof HTMLButtonElement) {
+    refreshButton.textContent = connected ? 'Refresh Connection' : (status === 'needs_attention' ? 'Reconnect →' : 'Refresh Connection');
+  }
+  if (changeButton instanceof HTMLButtonElement) {
+    changeButton.textContent = connected ? 'Change Keys' : 'Connect Broker Now →';
+  }
+
+  if (!connected && status === 'needs_attention') {
+    setBrokerWarning('❌ Broker connection lost. The bot has been paused automatically. Check your API keys.', 'error');
+  } else if (!connected) {
+    setBrokerWarning('⚠ No broker connected — the bot cannot trade. Connect your broker API keys to enable automated trading.', 'warning');
+  } else if (payload?.rotate_recommended) {
+    setBrokerWarning('Your API keys are 90 days old. Consider rotating them for security.', 'warning');
+  } else {
+    setBrokerWarning('');
+  }
+  return payload;
 }
 
 function renderAccountSnapshot(payload) {
@@ -539,6 +653,9 @@ function setupActions() {
   const openFundingButton = document.getElementById('ai-account-back-funding');
   const openBrokerOnboardingButton = document.getElementById('ai-account-open-brokerage');
   const tradeIdeasTarget = document.getElementById('ai-account-trade-ideas');
+  const brokerRefreshButton = document.getElementById('broker-widget-refresh');
+  const brokerChangeKeysButton = document.getElementById('broker-widget-change-keys');
+  const brokerSwitchModeButton = document.getElementById('broker-widget-switch-mode');
 
   if (openFundingButton) {
     openFundingButton.addEventListener('click', () => {
@@ -548,7 +665,90 @@ function setupActions() {
 
   if (openBrokerOnboardingButton) {
     openBrokerOnboardingButton.addEventListener('click', () => {
-      window.location.href = '/brokerage-onboarding.html';
+      if (typeof window.createBrokerConnectionModal !== 'function') {
+        window.location.href = '/settings/broker';
+        return;
+      }
+      if (!brokerModalInstance) {
+        brokerModalInstance = window.createBrokerConnectionModal({
+          authFetch: requestWithAuthRetry,
+          onSaved: async () => {
+            await loadAccountView().catch(() => {});
+          }
+        });
+        brokerModalInstance.mount();
+      }
+      brokerModalInstance.open();
+    });
+  }
+
+  if (brokerRefreshButton instanceof HTMLButtonElement) {
+    brokerRefreshButton.addEventListener('click', async () => {
+      try {
+        brokerRefreshButton.disabled = true;
+        await requestWithAuthRetry('/api/broker/refresh', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({})
+        });
+        await loadBrokerStatusWidget();
+        setStatus('Broker connection refreshed.');
+      } catch (error) {
+        setStatus(error.message || 'Could not refresh broker connection.', true);
+      } finally {
+        brokerRefreshButton.disabled = false;
+      }
+    });
+  }
+
+  if (brokerChangeKeysButton instanceof HTMLButtonElement) {
+    brokerChangeKeysButton.addEventListener('click', () => {
+      if (typeof window.createBrokerConnectionModal !== 'function') {
+        window.location.href = '/settings/broker';
+        return;
+      }
+      if (!brokerModalInstance) {
+        brokerModalInstance = window.createBrokerConnectionModal({
+          authFetch: requestWithAuthRetry,
+          onSaved: async () => {
+            await Promise.all([loadBrokerStatusWidget(), loadAccountView()]).catch(() => {});
+          }
+        });
+        brokerModalInstance.mount();
+      }
+      brokerModalInstance.open();
+    });
+  }
+
+  if (brokerSwitchModeButton instanceof HTMLButtonElement) {
+    brokerSwitchModeButton.addEventListener('click', async () => {
+      const targetMode = String(brokerSwitchModeButton.getAttribute('data-target-mode') || '').trim().toLowerCase();
+      if (!(targetMode === 'paper' || targetMode === 'live')) {
+        return;
+      }
+      const confirmMessage = targetMode === 'live'
+        ? 'Switch to Live Trading? This uses real money.'
+        : 'Switch to Paper Trading?';
+      if (!window.confirm(confirmMessage)) {
+        return;
+      }
+      try {
+        brokerSwitchModeButton.disabled = true;
+        const refreshed = await requestWithAuthRetry('/api/broker/refresh', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ trading_mode: targetMode })
+        });
+        if (!refreshed?.success) {
+          throw new Error(refreshed?.message || 'Could not switch broker trading mode.');
+        }
+        await loadBrokerStatusWidget();
+        setStatus(`Broker mode switched to ${targetMode === 'live' ? 'Live Trading' : 'Paper Trading'}.`);
+      } catch (error) {
+        setStatus(error.message || 'Could not switch broker mode.', true);
+      } finally {
+        brokerSwitchModeButton.disabled = false;
+      }
     });
   }
 
@@ -649,6 +849,7 @@ async function init() {
   setupActions();
   try {
     await loadAccountView();
+    await loadBrokerStatusWidget().catch(() => {});
     setStatus('AI brokerage account view ready.');
   } catch (error) {
     if (error?.status === 401) {

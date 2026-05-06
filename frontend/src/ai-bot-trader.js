@@ -1,3 +1,5 @@
+let connectBrokerModal = null;
+
 async function fetchJson(url, options = {}) {
   const response = await fetch(url, options);
   if (!response.ok) {
@@ -227,6 +229,20 @@ function showSignInNeeded(message = 'Please log in to use AI Bot Trader.') {
     return;
   }
   setStatus(message, true);
+}
+
+function ensureBrokerModal() {
+  if (connectBrokerModal || typeof window.createBrokerConnectionModal !== 'function') {
+    return connectBrokerModal;
+  }
+  connectBrokerModal = window.createBrokerConnectionModal({
+    authFetch: requestWithAuthRetry,
+    onSaved: async () => {
+      await loadBotState().catch(() => {});
+    }
+  });
+  connectBrokerModal.mount();
+  return connectBrokerModal;
 }
 
 function fmtUsd(value) {
@@ -1147,7 +1163,12 @@ function setupForm() {
       if (!requireSignedInForAction()) {
         return;
       }
-      window.location.href = '/brokerage-onboarding.html#broker-connect-form';
+      const modal = ensureBrokerModal();
+      if (modal) {
+        modal.open();
+      } else {
+        window.location.href = '/settings/broker';
+      }
     });
   }
   if (stepStartAction instanceof HTMLButtonElement) {

@@ -1,222 +1,239 @@
 const express = require('express');
-const { parseAuthToken } = require('../services/authService');
 const {
-  getUserById,
-  findUserByEmail,
-  setUserAiTraderSetupById
-} = require('../services/userStore');
+  getUserByEmailForAuth,
+  verifyPasswordAgainstUser
+} = require('../services/authDbService');
+const { requireApiAuthStrictSession } = require('../services/routeAuth');
 const {
-  connectAutoTraderBrokerBridge,
-  testAutoTraderBrokerBridge,
-  getAutoTraderAccountView
-} = require('../services/autoTraderService');
+  saveKeysForUser,
+  testConnectionForUser,
+  refreshConnectionForUser,
+  getStatusForUser,
+  disconnectForUser,
+  listSecurityLogForUser
+} = require('../services/brokerConnectionService');
 
 const router = express.Router();
 
-const SETUP_STEP_KEYS = Object.freeze([
-  'accountCreated',
-  'settingsSaved',
-  'brokerageReady',
-  'brokerConnected',
-  'botStartedOnce'
-]);
-
 function requireSignedIn(req, res, next) {
-  const parsed = parseAuthToken(req.header('authorization'));
-  if (!parsed.ok) {
-    return res.status(401).json({
-      error: 'unauthorized',
-      message: 'Sign in to connect a broker.'
-    });
-  }
-  let user = getUserById(parsed.userId);
-  if (!user && parsed.email) {
-    user = findUserByEmail(parsed.email);
-  }
-  if (!user) {
-    return res.status(401).json({
-      error: 'unauthorized',
-      message: 'Your account session expired. Please sign in again.'
-    });
-  }
-  req.user = user;
-  return next();
-}
-
-function normalizeBroker(rawBroker) {
-  const value = String(rawBroker || '')
-    .trim()
-    .toLowerCase()
-    .replace(/[_\s]+/g, '-');
-  if (!value) {
-    return 'alpaca';
-  }
-  if (value === 'tradier') {
-    return 'tradestation';
-  }
-  if (value === 'ibkr' || value === 'interactivebrokers' || value === 'interactive-broker') {
-    return 'interactive-brokers';
-  }
-  return value;
-}
-
-function getPersistedSteps(user) {
-  const rawSteps = user?.aiTraderSetup?.steps || {};
-  return SETUP_STEP_KEYS.reduce((acc, key) => {
-    acc[key] = Boolean(rawSteps[key]);
-    return acc;
-  }, {});
-}
-
-function persistBrokerSteps(req, patch = {}) {
-  const userId = req.user?.id;
-  if (!userId) {
-    return null;
-  }
-  const current = getPersistedSteps(req.user);
-  const merged = {
-    ...current,
-    accountCreated: true,
-    ...Object.entries(patch).reduce((acc, [key, value]) => {
-      if (SETUP_STEP_KEYS.includes(key)) {
-        acc[key] = Boolean(value);
-      }
-      return acc;
-    }, {})
-  };
-  const completed = SETUP_STEP_KEYS.every((key) => merged[key]);
-  const updated = setUserAiTraderSetupById(userId, {
-    steps: merged,
-    completed,
-    completedAt: completed ? new Date().toISOString() : null
+  return requireApiAuthStrictSession(req, res, () => {
+    if (!req.user?.emailVerified) {
+      return res.status(403).json({
+        error: 'email_not_verified',
+        message: 'Please verify your email before connecting a broker.'
+      });
+    }
+    return next();
   });
-  if (updated?.aiTraderSetup) {
-    req.user.aiTraderSetup = updated.aiTraderSetup;
-  }
-  return updated?.aiTraderSetup || null;
 }
 
-function mapConnectError(error) {
-  const code = String(error?.message || '');
-  if (code === 'invalid_broker' || code === 'invalid_broker_connection') {
-    return { status: 400, error: 'invalid_broker', message: 'Choose a supported broker first.' };
+function getRequestIp(req) {
+  const forwarded = String(req.get('x-forwarded-for') || '').split(',')[0].trim();
+  if (forwarded) {
+    return forwarded;
   }
-  if (code === 'invalid_api_credentials' || code === 'invalid_alpaca_api_credentials') {
-    return { status: 400, error: 'invalid_api_credentials', message: 'API key and secret key are required.' };
-  }
-  if (code === 'invalid_broker_permissions') {
-    return { status: 400, error: 'invalid_broker_permissions', message: 'Enable read, account, and trading API permissions on your broker.' };
-  }
-  if (code === 'validate_real_broker_connection_failed') {
-    return {
-      status: 400,
-      error: 'broker_connection_failed',
-      message: error?.details?.message || 'Broker API validation failed. Check your keys and account mode.'
-    };
-  }
+  return String(req.ip || req.socket?.remoteAddress || 'unknown').trim().slice(0, 120) || 'unknown';
+}
+
+function normalizeIncomingBody(body = {}) {
   return {
-    status: 400,
-    error: code || 'invalid_request',
-    message: 'Could not connect broker profile.'
+    broker: body.broker,
+    api_key: body.api_key ?? body.apiKey ?? body.access_token ?? body.accessToken,
+    api_secret: body.api_secret ?? body.apiSecret ?? body.secret_key ?? body.secretKey,
+    account_id: body.account_id ?? body.accountId,
+    trading_mode: body.trading_mode ?? body.tradingMode ?? body.mode,
+    extra_config: body.extra_config ?? body.extraConfig ?? {}
   };
 }
 
-function mapCheckLabel(rawLabel) {
-  const value = String(rawLabel || '').toLowerCase();
-  if (value.includes('credentials')) {
-    return 'Verifying API keys';
+router.post('/save-keys', requireSignedIn, async (req, res) => {
+  try {
+    const payload = await saveKeysForUser(req.user, normalizeIncomingBody(req.body || {}), {
+      ipAddress: getRequestIp(req),
+      rotate: Boolean(req.body?.rotate)
+    });
+    if (!payload.success) {
+      return res.status(400).json({
+        success: false,
+        error: payload.error || 'save_failed',
+        message: payload.message || 'Could not save broker keys.',
+        checks: payload.checks || []
+      });
+    }
+    return res.json({
+      success: true,
+      message: 'Broker keys saved and verified.',
+      checks: payload.checks || [],
+      account_info: payload.account_info || null,
+      status: payload.status || null
+    });
+  } catch (_error) {
+    return res.status(500).json({
+      success: false,
+      error: 'save_failed',
+      message: 'Could not save broker keys.'
+    });
   }
-  if (value.includes('method') || value.includes('2fa')) {
-    return 'Checking authentication method';
-  }
-  if (value.includes('permissions')) {
-    return 'Checking permissions';
-  }
-  if (value.includes('bridge')) {
-    return 'Verifying execution bridge';
-  }
-  if (value.includes('funding')) {
-    return 'Checking buying power';
-  }
-  if (value.includes('live mode')) {
-    return 'Checking trading mode';
-  }
-  if (value.includes('handshake')) {
-    return 'Accessing account';
-  }
-  return String(rawLabel || 'Running broker check');
-}
+});
 
+router.post('/test-connection', requireSignedIn, async (req, res) => {
+  try {
+    const payload = await testConnectionForUser(req.user, normalizeIncomingBody(req.body || {}), {
+      ipAddress: getRequestIp(req)
+    });
+    return res.json({
+      success: Boolean(payload.success),
+      checks: payload.checks || [],
+      account_info: payload.account_info || null,
+      message: payload.message || (payload.success ? 'Connection successful.' : 'Connection failed.')
+    });
+  } catch (_error) {
+    return res.status(500).json({
+      success: false,
+      error: 'test_failed',
+      message: 'Could not test broker connection.'
+    });
+  }
+});
+
+router.get('/status', requireSignedIn, (req, res) => {
+  try {
+    const status = getStatusForUser(req.user, { ipAddress: getRequestIp(req) });
+    return res.json(status);
+  } catch (_error) {
+    return res.status(500).json({
+      connected: false,
+      status: 'error',
+      message: 'Could not load broker status.'
+    });
+  }
+});
+
+router.post('/refresh', requireSignedIn, async (req, res) => {
+  try {
+    const requestedMode = req.body?.trading_mode || req.body?.tradingMode || req.body?.switch_mode;
+    const payload = await refreshConnectionForUser(req.user, {
+      ipAddress: getRequestIp(req),
+      tradingMode: requestedMode
+    });
+    if (!payload.success) {
+      return res.status(400).json(payload);
+    }
+    return res.json(payload);
+  } catch (_error) {
+    return res.status(500).json({
+      success: false,
+      error: 'refresh_failed',
+      message: 'Could not refresh broker connection.'
+    });
+  }
+});
+
+router.delete('/disconnect', requireSignedIn, express.json({ limit: '1mb' }), async (req, res) => {
+  const password = String(req.body?.password || '').trim();
+  if (!password) {
+    return res.status(400).json({
+      success: false,
+      error: 'password_required',
+      message: 'Password confirmation is required.'
+    });
+  }
+  const authUser = getUserByEmailForAuth(req.user?.email || '');
+  if (!authUser?.id) {
+    return res.status(401).json({
+      success: false,
+      error: 'unauthorized',
+      message: 'Login required.'
+    });
+  }
+  const validPassword = await verifyPasswordAgainstUser(authUser, password);
+  if (!validPassword) {
+    return res.status(401).json({
+      success: false,
+      error: 'incorrect_password',
+      message: 'Password is incorrect.'
+    });
+  }
+  try {
+    const payload = disconnectForUser(req.user, { ipAddress: getRequestIp(req) });
+    return res.json(payload);
+  } catch (_error) {
+    return res.status(500).json({
+      success: false,
+      error: 'disconnect_failed',
+      message: 'Could not disconnect broker.'
+    });
+  }
+});
+
+router.get('/security-log', requireSignedIn, (req, res) => {
+  const limitRaw = Number(req.query?.limit || 100);
+  const limit = Number.isFinite(limitRaw) ? limitRaw : 100;
+  const entries = listSecurityLogForUser(req.user.id, limit);
+  return res.json({ entries });
+});
+
+// Backward-compatible aliases for existing frontend surfaces.
 router.post('/connect', requireSignedIn, async (req, res) => {
   try {
-    const broker = normalizeBroker(req.body?.broker);
-    const accountId = String(
-      req.body?.account_id
-      || req.body?.accountId
-      || req.body?.account_label
-      || req.body?.accountLabel
-      || `${broker}-acct-${Date.now().toString(36)}`
-    ).trim().slice(0, 80);
-    const mode = String(req.body?.mode || req.body?.paper_live_mode || 'paper').trim().toLowerCase();
-    const payload = await connectAutoTraderBrokerBridge(req.user, {
-      broker,
-      accountId,
-      connectionMethod: 'api_keys',
-      apiKey: String(req.body?.api_key || req.body?.apiKey || '').trim(),
-      apiSecret: String(req.body?.secret_key || req.body?.secretKey || '').trim(),
-      bridgeMode: 'broker_linked',
-      canRead: true,
-      canTrade: true,
-      canViewAccount: true,
-      riskAcknowledged: true,
-      executionMode: 'broker_linked',
-      paymentRail: 'broker_api',
-      authMethod: 'api_keys',
-      tradingMode: mode
+    const payload = await saveKeysForUser(req.user, normalizeIncomingBody(req.body || {}), {
+      ipAddress: getRequestIp(req),
+      rotate: false
     });
+    if (!payload.success) {
+      return res.status(400).json({
+        error: payload.error || 'save_failed',
+        message: payload.message || 'Could not connect broker.',
+        checks: payload.checks || []
+      });
+    }
     return res.json({
       connected: true,
       message: 'Broker profile saved. Run connection test to finish setup.',
-      broker: payload?.broker || broker,
-      connection: payload?.current || null
+      broker: payload?.status?.broker || null,
+      connection: payload?.status || null
     });
-  } catch (error) {
-    const mapped = mapConnectError(error);
-    return res.status(mapped.status).json({
-      error: mapped.error,
-      message: mapped.message
+  } catch (_error) {
+    return res.status(500).json({
+      error: 'save_failed',
+      message: 'Could not connect broker.'
     });
   }
 });
 
 router.post('/test', requireSignedIn, async (req, res) => {
   try {
-    const broker = normalizeBroker(req.body?.broker);
-    const payload = await testAutoTraderBrokerBridge(req.user, { broker });
-    const accountView = getAutoTraderAccountView(req.user);
-    const buyingPower = Number(accountView?.portfolio?.cashUsd || 0);
-    const checks = (Array.isArray(payload?.checks) ? payload.checks : []).map((check) => ({
-      key: String(check?.key || ''),
-      label: mapCheckLabel(check?.label || ''),
-      ok: Boolean(check?.ok),
-      detail: String(check?.detail || '')
+    const hasInlineKeys = Boolean(
+      req.body?.api_key
+      || req.body?.apiKey
+      || req.body?.access_token
+      || req.body?.accessToken
+      || req.body?.api_secret
+      || req.body?.apiSecret
+      || req.body?.secret_key
+      || req.body?.secretKey
+    );
+    const payload = hasInlineKeys
+      ? await testConnectionForUser(req.user, normalizeIncomingBody(req.body || {}), {
+        ipAddress: getRequestIp(req)
+      })
+      : await refreshConnectionForUser(req.user, { ipAddress: getRequestIp(req) });
+    const checks = (payload.checks || []).map((check) => ({
+      key: check.key,
+      label: check.label,
+      ok: Boolean(check.ok),
+      detail: check.message || ''
     }));
-    if (payload?.bridgeReady) {
-      persistBrokerSteps(req, {
-        brokerageReady: true,
-        brokerConnected: true
-      });
-    }
     const firstFailure = checks.find((check) => !check.ok);
     return res.json({
-      broker: payload?.broker || broker,
-      testedAt: payload?.testedAt || new Date().toISOString(),
-      bridgeReady: Boolean(payload?.bridgeReady),
-      readyForTrading: Boolean(payload?.readyForTrading),
-      buyingPowerUsd: buyingPower,
+      broker: payload?.status?.broker || req.body?.broker || null,
+      testedAt: payload?.status?.last_tested || new Date().toISOString(),
+      bridgeReady: Boolean(payload.success),
+      readyForTrading: Boolean(payload.success),
+      buyingPowerUsd: Number(payload?.account_info?.buying_power || payload?.status?.buying_power || 0),
       checks,
-      successMessage: payload?.bridgeReady
-        ? `Broker connected. Buying power: $${Math.max(0, buyingPower).toLocaleString()}`
+      successMessage: payload.success
+        ? 'Broker connected and ready.'
         : null,
       failure: firstFailure
         ? {
@@ -225,11 +242,10 @@ router.post('/test', requireSignedIn, async (req, res) => {
         }
         : null
     });
-  } catch (error) {
-    const mapped = mapConnectError(error);
-    return res.status(mapped.status).json({
-      error: mapped.error,
-      message: mapped.message
+  } catch (_error) {
+    return res.status(500).json({
+      error: 'test_failed',
+      message: 'Could not run broker test.'
     });
   }
 });

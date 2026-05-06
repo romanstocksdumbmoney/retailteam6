@@ -1,6 +1,5 @@
 const AI_TRADER_STATUS_PILL_EVENT = 'dumbdollars:bot-status-update';
 const AUTH_TOKEN_STORAGE_KEY = 'dumbdollars_token';
-const REMEMBER_TOKEN_STORAGE_KEY = 'dumbdollars_remember_token';
 const SETUP_COMPLETE_STORAGE_KEY = 'dumbdollars_ai_trader_setup_complete';
 const NYSE_HOLIDAYS_2026 = new Set([
   '2026-01-01',
@@ -110,14 +109,6 @@ function getStoredToken() {
   }
 }
 
-function getStoredRememberToken() {
-  try {
-    return String(localStorage.getItem(REMEMBER_TOKEN_STORAGE_KEY) || '').trim();
-  } catch (_error) {
-    return '';
-  }
-}
-
 function getStoredSetupCompleted() {
   try {
     return localStorage.getItem(SETUP_COMPLETE_STORAGE_KEY) === '1';
@@ -147,15 +138,11 @@ function buildAuthHeaders() {
 }
 
 async function tryRestoreAuthSession() {
-  const rememberToken = getStoredRememberToken();
-  if (!rememberToken) {
-    return false;
-  }
   try {
     const response = await fetch('/api/auth/session/restore', {
       method: 'POST',
+      credentials: 'include',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ rememberToken })
     });
     if (!response.ok) {
       return false;

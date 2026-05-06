@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>DumbDollars Unsubscribe</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body class="payment-page-body">
+    <main class="ai-trade-page-shell">
+      <article class="ai-trade-page-card card" role="main" aria-labelledby="unsubscribe-title">
+        <a class="open-link" href="/">Back to dashboard</a>
+        <h1 id="unsubscribe-title">Email Subscription Preferences</h1>
+        <p class="small-note">Choose how you want to update your notifications.</p>
+
+        <section class="auth-bar">
+          <div class="auth-actions">
+            <button id="unsubscribe-type-btn" type="button">Unsubscribe from this email type</button>
+            <button id="unsubscribe-all-btn" class="btn-secondary" type="button">Unsubscribe from all DumbDollars emails</button>
+            <button id="unsubscribe-cancel-btn" class="btn-secondary" type="button">Do not unsubscribe</button>
+          </div>
+          <p id="unsubscribe-status" class="small-note" role="status" aria-live="polite"></p>
+        </section>
+      </article>
+    </main>
+    <script src="./unsubscribe.js"></script>
+  </body>
+</html>

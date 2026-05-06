@@ -23,7 +23,7 @@
           <button id="ai-account-start-autopilot" class="btn-secondary" type="button">Start Hands-Free AI Trading</button>
           <button id="ai-account-stop-autopilot" class="btn-secondary" type="button">Stop Hands-Free AI Trading</button>
           <button id="ai-account-back-funding" class="btn-secondary" type="button">Open Funding Page</button>
-          <button id="ai-account-open-brokerage" class="btn-secondary" type="button">Open Live Brokerage Account</button>
+          <button id="ai-account-open-brokerage" class="btn-secondary" type="button">Connect Broker</button>
         </section>
 
         <section class="ai-bot-layout">
@@ -45,6 +45,25 @@
         <section class="ai-bot-layout">
           <article class="ai-trade-consensus">
             <h3>Execution Center</h3>
+            <section class="broker-widget-shell">
+              <div class="broker-widget-head">
+                <h4>Broker Connection</h4>
+                <span id="broker-widget-pill" class="broker-status-pill">Disconnected</span>
+              </div>
+              <p id="broker-widget-warning" class="broker-warning-card" hidden></p>
+              <div id="broker-widget-metrics" class="broker-widget-grid">
+                <article class="broker-widget-item"><span>Broker</span><strong id="broker-widget-name">—</strong></article>
+                <article class="broker-widget-item"><span>Mode</span><strong id="broker-widget-mode">Paper Trading</strong></article>
+                <article class="broker-widget-item"><span>Account</span><strong id="broker-widget-account">—</strong></article>
+                <article class="broker-widget-item"><span>Buying Power</span><strong id="broker-widget-buying-power">$0.00</strong></article>
+                <article class="broker-widget-item"><span>Last Verified</span><strong id="broker-widget-last-verified">Never</strong></article>
+              </div>
+              <div class="broker-widget-actions">
+                <button id="broker-widget-refresh" type="button">Refresh Connection</button>
+                <button id="broker-widget-change-keys" class="btn-secondary" type="button">Change Keys</button>
+                <button id="broker-widget-switch-mode" class="btn-secondary" type="button">Switch to Live</button>
+              </div>
+            </section>
             <div id="ai-account-execution-summary" class="stack"></div>
             <h4>AI Trade Ideas</h4>
             <div id="ai-account-trade-ideas" class="stack"></div>
@@ -98,6 +117,7 @@
       </article>
     </main>
     <script src="./session-helper.js"></script>
+    <script src="./broker-shared.js"></script>
     <script src="./ai-copilot-widget.js"></script>
     <script src="./ai-bot-account.js"></script>
   </body>

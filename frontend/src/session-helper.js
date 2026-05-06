@@ -1,4 +1,3 @@
-const REMEMBER_TOKEN_STORAGE_KEY = 'dumbdollars_remember_token';
 const AUTH_TOKEN_STORAGE_KEY = 'dumbdollars_token';
 const CHECKOUT_RETURN_PATH_STORAGE_KEY = 'dumbdollars_return_after_checkout';
 
@@ -30,23 +29,6 @@ function setStoredAuthToken(token) {
     return;
   }
   localStorage.setItem(AUTH_TOKEN_STORAGE_KEY, value);
-}
-
-function getRememberToken() {
-  return String(localStorage.getItem(REMEMBER_TOKEN_STORAGE_KEY) || '').trim();
-}
-
-function clearRememberToken() {
-  localStorage.removeItem(REMEMBER_TOKEN_STORAGE_KEY);
-}
-
-function saveRememberToken(token) {
-  const value = String(token || '').trim();
-  if (!value) {
-    clearRememberToken();
-    return;
-  }
-  localStorage.setItem(REMEMBER_TOKEN_STORAGE_KEY, value);
 }
 
 function getAuthHeaders() {
@@ -156,40 +138,24 @@ async function restoreSessionIfNeeded() {
   if (token) {
     return { restored: false, token };
   }
-  const rememberToken = getRememberToken();
-  if (!rememberToken) {
-    return { restored: false, token: '' };
-  }
   try {
     const payload = await fetchJsonWithAuth('/api/auth/session/restore', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ rememberToken })
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' }
     });
     const nextToken = String(payload?.token || '').trim();
     if (nextToken) {
       setStoredAuthToken(nextToken);
     }
-    if (payload?.rememberToken) {
-      saveRememberToken(payload.rememberToken);
-    }
     return { restored: true, token: nextToken };
-  } catch (error) {
-    const status = Number(error?.status || 0);
-    const code = String(error?.body?.error || '').trim().toLowerCase();
-    // Avoid deleting valid remember tokens on transient network/API failures.
-    if (status === 401 || code === 'invalid_remember_token' || code === 'missing_remember_token') {
-      clearRememberToken();
-    }
+  } catch (_error) {
     return { restored: false, token: '' };
   }
 }
 
 window.getStoredAuthToken = getStoredAuthToken;
 window.setStoredAuthToken = setStoredAuthToken;
-window.getRememberToken = getRememberToken;
-window.clearRememberToken = clearRememberToken;
-window.saveRememberToken = saveRememberToken;
 window.getAuthHeaders = getAuthHeaders;
 window.restoreSessionIfNeeded = restoreSessionIfNeeded;
 window.getSignInUrl = getSignInUrl;

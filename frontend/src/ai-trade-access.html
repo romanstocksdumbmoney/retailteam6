@@ -53,43 +53,74 @@
 
           <div class="auth-grid">
             <form id="ai-access-signup-form" class="auth-form">
-              <label>
-                Create account
-                <input id="ai-access-signup-email" type="email" placeholder="email@domain.com" required />
+              <label class="auth-input-label">
+                <span>Create account</span>
+                <span class="auth-input-wrap">
+                  <span class="auth-input-icon" aria-hidden="true">✉</span>
+                  <input id="ai-access-signup-email" type="email" placeholder="email@domain.com" required />
+                </span>
               </label>
-              <label>
-                Password
-                <input
-                  id="ai-access-signup-password"
-                  type="password"
-                  placeholder="Strong password (12+ chars, upper/lower/number/symbol)"
-                  minlength="12"
-                  autocomplete="new-password"
-                  required
-                />
+              <label class="auth-input-label">
+                <span>Password</span>
+                <span class="auth-input-wrap">
+                  <span class="auth-input-icon" aria-hidden="true">🔒</span>
+                  <input
+                    id="ai-access-signup-password"
+                    type="password"
+                    placeholder="Strong password (8+ chars, upper/number/symbol)"
+                    minlength="8"
+                    autocomplete="new-password"
+                    required
+                  />
+                  <button id="ai-access-signup-toggle" class="auth-eye-toggle" type="button" aria-label="Show password">👁</button>
+                </span>
               </label>
-              <p id="ai-access-signup-password-hint" class="small-note auth-hint">Use 12+ chars with upper/lowercase, number, and symbol.</p>
+              <label class="auth-input-label">
+                <span>Confirm password</span>
+                <span class="auth-input-wrap">
+                  <span class="auth-input-icon" aria-hidden="true">🔒</span>
+                  <input
+                    id="ai-access-signup-confirm-password"
+                    type="password"
+                    placeholder="Re-enter password"
+                    minlength="8"
+                    autocomplete="new-password"
+                    required
+                  />
+                  <button id="ai-access-signup-confirm-toggle" class="auth-eye-toggle" type="button" aria-label="Show confirm password">👁</button>
+                </span>
+              </label>
+              <p id="ai-access-signup-password-hint" class="password-strength password-strength--weak">Weak</p>
               <label class="auth-remember">
                 <input id="ai-access-signup-remember" type="checkbox" checked />
-                Keep me signed in on this device
+                Remember Me
               </label>
-              <button type="submit">Sign up and continue</button>
+              <button class="auth-primary-btn" type="submit">SIGN UP</button>
             </form>
 
             <form id="ai-access-login-form" class="auth-form">
-              <label>
-                Login email
-                <input id="ai-access-login-email" type="email" placeholder="email@domain.com" required />
+              <label class="auth-input-label">
+                <span>Login email</span>
+                <span class="auth-input-wrap">
+                  <span class="auth-input-icon" aria-hidden="true">✉</span>
+                  <input id="ai-access-login-email" type="email" placeholder="email@domain.com" required />
+                </span>
               </label>
-              <label>
-                Password
-                <input id="ai-access-login-password" type="password" placeholder="password" required />
+              <label class="auth-input-label">
+                <span>Password</span>
+                <span class="auth-input-wrap">
+                  <span class="auth-input-icon" aria-hidden="true">🔒</span>
+                  <input id="ai-access-login-password" type="password" placeholder="password" required />
+                  <button id="ai-access-login-toggle" class="auth-eye-toggle" type="button" aria-label="Show password">👁</button>
+                </span>
               </label>
+              <a id="ai-access-forgot-password-link" class="open-link" href="/forgot-password">Forgot Password?</a>
               <label class="auth-remember">
                 <input id="ai-access-login-remember" type="checkbox" checked />
-                Keep me signed in on this device
+                Remember Me
               </label>
-              <button type="submit">Log in and continue</button>
+              <button class="auth-primary-btn" type="submit">SIGN IN</button>
+              <p class="small-note">Don't have an account? <a id="ai-access-switch-signup" class="open-link" href="/ai-trade-access.html?mode=signup">Sign Up</a></p>
             </form>
           </div>
 
@@ -105,27 +136,8 @@
           </div>
         </section>
 
-        <section class="pro-plan-box">
-          <h3>Lost account or Pro access?</h3>
-          <p class="small-note">Request your account code by email, then enter it to restore Pro access on your account.</p>
-          <form id="ai-access-code-request-form" class="row-form" novalidate>
-            <label>
-              Account email
-              <input id="ai-access-code-email" type="email" placeholder="email@domain.com" />
-            </label>
-            <button type="submit">Send my account code</button>
-          </form>
-          <form id="ai-access-code-verify-form" class="row-form" novalidate>
-            <label>
-              Account code
-              <input id="ai-access-code-input" type="text" maxlength="12" placeholder="AB12CD34" />
-            </label>
-            <button type="submit">Verify code + restore Pro</button>
-          </form>
-          <p class="small-note">Use the same email you signed up with.</p>
-        </section>
-
         <p id="ai-access-status" class="small-note"></p>
+        <div id="ai-access-status-actions" class="auth-actions"></div>
       </article>
     </main>
     <script src="./ai-trade-access.js"></script>

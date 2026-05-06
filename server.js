@@ -11,9 +11,44 @@ const earningsRoutes = require('./routes/earnings');
 const marketRoutes = require('./routes/market');
 const botRoutes = require('./routes/bot');
 const brokerRoutes = require('./routes/broker');
-const authRoutes = require('./routes/auth');
+const { authV2Router, bootstrapAuthV2 } = require('./routes/auth-v2');
+const { maybeProtectPageRoute } = require('./services/routeAuth');
+const { startScheduler } = require('./services/schedulerService');
+const userStoreService = require('./services/userStore');
 const { runAutoTraderAutopilotSweep } = require('./services/autoTraderService');
 const { warmTickerUniverseCache } = require('./services/stockAnalyzerService');
+const { assertEncryptionReady } = require('./utils/encryption');
+
+function readRequiredEnv(name, options = {}) {
+    const value = String(process.env[name] || '').trim();
+    if (!value) {
+        if (options.allowEmpty) {
+            return value;
+        }
+        throw new Error(`Missing required environment variable: ${name}`);
+    }
+    return value;
+}
+
+function validateAuthEmailEnv() {
+    readRequiredEnv('APP_URL');
+    readRequiredEnv('SECRET_KEY');
+    readRequiredEnv('BCRYPT_ROUNDS');
+    readRequiredEnv('SENDER_EMAIL');
+    const hasSendGrid = String(process.env.SENDGRID_API_KEY || '').trim().length > 0;
+    const hasSmtp = (
+        String(process.env.SMTP_HOST || '').trim().length > 0
+        && String(process.env.SMTP_USER || '').trim().length > 0
+        && String(process.env.SMTP_PASSWORD || process.env.SMTP_PASS || '').trim().length > 0
+    );
+    if (!hasSendGrid && !hasSmtp) {
+        throw new Error('Email delivery not configured. Set SENDGRID_API_KEY or SMTP_HOST/SMTP_USER/SMTP_PASSWORD.');
+    }
+}
+
+function validateEncryptionEnv() {
+    assertEncryptionReady();
+}
 
 const app = express();
 console.log('Restart the dev server for .env changes to load.');
@@ -68,6 +103,9 @@ try {
     console.error('Frontend build refresh failed. Falling back to API-only mode.');
     console.error(error?.message || error);
 }
+
+validateAuthEmailEnv();
+validateEncryptionEnv();
 
 const hasFrontendBuild = fs.existsSync(path.join(buildDir, 'index.html'));
 
@@ -154,6 +192,8 @@ app.use((req, res, next) => {
     return express.json({ limit: '8mb' })(req, res, next);
 });
 
+app.use(maybeProtectPageRoute);
+
 app.get('/', (_req, res) => {
     if (hasFrontendBuild) {
         return res.sendFile(path.join(buildDir, 'index.html'));
@@ -178,7 +218,7 @@ app.use('/api/earnings', earningsRoutes);
 app.use('/api/market', marketRoutes);
 app.use('/api/bot', botRoutes);
 app.use('/api/broker', brokerRoutes);
-app.use('/api/auth', authRoutes);
+app.use('/api/auth', authV2Router);
 
 void warmTickerUniverseCache();
 
@@ -217,6 +257,36 @@ if (hasFrontendBuild) {
     app.get('/stock/:ticker', (_req, res) => {
         return res.sendFile(path.join(buildDir, 'stock-analysis.html'));
     });
+    app.get('/dashboard', (_req, res) => {
+        return res.sendFile(path.join(buildDir, 'index.html'));
+    });
+    app.get('/ai-trader', (_req, res) => {
+        return res.sendFile(path.join(buildDir, 'ai-bot-trader.html'));
+    });
+    app.get('/settings', (_req, res) => {
+        return res.sendFile(path.join(buildDir, 'settings.html'));
+    });
+    app.get('/settings/broker', (_req, res) => {
+        return res.sendFile(path.join(buildDir, 'settings-broker.html'));
+    });
+    app.get('/login', (_req, res) => {
+        return res.redirect('/ai-trade-access.html?mode=login');
+    });
+    app.get('/register', (_req, res) => {
+        return res.redirect('/ai-trade-access.html?mode=signup');
+    });
+    app.get('/forgot-password', (_req, res) => {
+        return res.sendFile(path.join(buildDir, 'forgot-password.html'));
+    });
+    app.get('/reset-password', (_req, res) => {
+        return res.sendFile(path.join(buildDir, 'reset-password.html'));
+    });
+    app.get('/verify-email', (_req, res) => {
+        return res.sendFile(path.join(buildDir, 'verify-email.html'));
+    });
+    app.get('/unsubscribe.html', (_req, res) => {
+        return res.sendFile(path.join(buildDir, 'unsubscribe.html'));
+    });
     app.get('*', (req, res, next) => {
         if (req.path.startsWith('/api') || req.path === '/health') {
             return next();
@@ -230,6 +300,8 @@ const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => {
     console.log(`Server running on port ${PORT}`);
     console.log(`AI autopilot sweep interval: ${autopilotEveryMs}ms`);
+    void bootstrapAuthV2({ userStoreService });
+    startScheduler();
     void warmTickerUniverseCache();
     setInterval(() => {
         runAutopilotSweepSafe();
