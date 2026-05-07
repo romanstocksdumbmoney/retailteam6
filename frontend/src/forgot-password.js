@@ -53,7 +53,7 @@ function setupForm() {
   form.addEventListener('submit', async (event) => {
     event.preventDefault();
     const emailInput = document.getElementById('forgot-password-email');
-    const submitButton = form.querySelector('button[type="submit"]');
+    const submitButton = document.getElementById('forgot-password-submit') || form.querySelector('button[type="submit"]');
     const idleText = submitButton?.textContent || 'Send Reset Link';
     const email = normalizeEmail(emailInput?.value || '');
     if (!isValidEmail(email)) {

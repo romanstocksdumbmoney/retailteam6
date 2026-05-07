@@ -101,7 +101,7 @@ function setupForm() {
       setStatus('Passwords do not match.', true);
       return;
     }
-    const submit = form.querySelector('button[type="submit"]');
+    const submit = document.getElementById('reset-password-submit') || form.querySelector('button[type="submit"]');
     const idleText = submit?.textContent || 'Reset Password';
     try {
       if (submit instanceof HTMLButtonElement) {
