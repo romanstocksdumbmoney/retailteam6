@@ -25,7 +25,20 @@ function fmtPct(value) {
 }
 
 function fmtWholePct(value) {
-  return `${Math.max(0, Math.round(Number(value || 0)))}%`;
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) {
+    return '--';
+  }
+  return `${Math.max(0, Math.round(numeric))}%`;
+}
+
+function escapeHtml(value) {
+  return String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
 }
 
 function setStatus(text, isError = false) {
@@ -68,13 +81,7 @@ function readDirectionalBias(item) {
   // Backward-compat for legacy payloads that exposed directionalBias as a plain label string.
   const label = String(raw || item?.directionalBiasLabel || 'neutral').toLowerCase();
   const confidencePct = Number(item?.directionalBiasConfidencePct || 0);
-  if (label === 'bullish') {
-    return { label, confidencePct, bullishPct: 62, bearishPct: 28, neutralPct: 10 };
-  }
-  if (label === 'bearish') {
-    return { label, confidencePct, bullishPct: 28, bearishPct: 62, neutralPct: 10 };
-  }
-  return { label: 'neutral', confidencePct, bullishPct: 35, bearishPct: 35, neutralPct: 30 };
+  return { label: label || 'neutral', confidencePct, bullishPct: null, bearishPct: null, neutralPct: null };
 }
 
 function buildLeaderboard(rows) {
@@ -128,6 +135,7 @@ function renderPage(payload) {
       <h3>Insider Trade List</h3>
       <p><strong>Total trades:</strong> ${rows.length.toLocaleString()} • <strong>Unusual:</strong> ${unusualCount.toLocaleString()}</p>
       <p class="small-note">Auto-loaded. Updated ${payload.generatedAt ? new Date(payload.generatedAt).toLocaleString() : 'N/A'}</p>
+      <p class="small-note"><strong>Data:</strong> ${payload?.dataNature ? escapeHtml(String(payload.dataNature).replaceAll('_', ' ')) : 'Unavailable'}${payload?.sourceDisclosure ? ` • ${escapeHtml(payload.sourceDisclosure)}` : ''}</p>
     </article>
   `;
 
@@ -169,7 +177,7 @@ function renderPage(payload) {
       </div>
       <p><strong>${item.insiderName || 'N/A'}</strong> (${item.role || 'N/A'})</p>
       <p><strong>Trade size:</strong> ${fmtUsd(item.valueUsd)} • <strong>Volume:</strong> ${Number(item.unusualVolumeMultiple || 0).toFixed(2)}x • <strong>Shares:</strong> ${Number(item.shares || 0).toLocaleString()}</p>
-      <p><strong>Bias %:</strong> Bullish ${fmtWholePct(bias.bullishPct)} • Bearish ${fmtWholePct(bias.bearishPct)} • Neutral ${fmtWholePct(bias.neutralPct)}</p>
+      <p><strong>Bias %:</strong> ${Number.isFinite(Number(bias.bullishPct)) ? `Bullish ${fmtWholePct(bias.bullishPct)} • Bearish ${fmtWholePct(bias.bearishPct)} • Neutral ${fmtWholePct(bias.neutralPct)}` : 'Unavailable for this filing.'}</p>
       <p class="small-note">Reaction ${fmtPct(reactionPct)} • ${filedAtLabel}</p>
     `;
     listTarget.appendChild(card);

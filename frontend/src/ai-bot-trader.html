@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>DumbDollars AI Bot Trader</title>
+    <title>DumbDollars — AI Trader</title>
     <link rel="stylesheet" href="./styles.css" />
   </head>
   <body class="payment-page-body ai-bot-trader-page">
@@ -81,7 +81,7 @@
             <button id="ai-bot-quick-live" class="btn-secondary" type="button">🚀 Save &amp; Go Live</button>
             <button type="button" class="btn-secondary" id="ai-bot-toggle-advanced">Show Advanced Settings</button>
           </div>
-          <p class="small-note ai-paper-note">Paper trading uses fake money so you can test the bot risk-free before going live.</p>
+          <p class="small-note ai-paper-note">Paper trading uses simulated funds so you can test workflows before deciding whether to trade live.</p>
         </section>
 
         <section class="ai-bot-quick-setup card ai-section" aria-labelledby="ai-bot-link-steps-title">
@@ -132,6 +132,7 @@
               <div class="ai-setup-step-copy">
                 <h4>Start Hands-Free AI Trading</h4>
                 <p>Once all steps are complete, flip the switch and the AI takes over.</p>
+                <p class="small-note legal-disclaimer-inline">Automated trading involves risk. Only trade what you can afford to lose.</p>
               </div>
               <div class="ai-setup-step-action">
                 <button id="ai-step-start-action" type="button" disabled>Start Trading →</button>
@@ -196,7 +197,7 @@
             </article>
             <article class="ai-broker-faq-item">
               <h4>Can I use paper trading first?</h4>
-              <p>Yes. Alpaca offers free paper trading with $100,000 in simulated funds. We strongly recommend testing there before going live.</p>
+              <p>Yes. Alpaca offers paper trading with simulated funds. We strongly recommend testing there before going live.</p>
             </article>
             <article class="ai-broker-faq-item">
               <h4>How does the AI get access to trade?</h4>
@@ -480,6 +481,9 @@
         <p class="small-note ai-section">
           Hands-free mode is designed for autonomous execution. Keep broker bridge, permissions, and live funding active so AI can continue placing trades.
         </p>
+        <footer class="legal-disclaimer-footer ai-section">
+          DumbDollars is not a registered investment advisor. Automated trading involves significant risk. Past performance does not guarantee future results. Only trade with money you can afford to lose.
+        </footer>
       </article>
     </main>
     <div id="broker-shared-modal-root" class="broker-shared-modal-root hidden" aria-hidden="true"></div>

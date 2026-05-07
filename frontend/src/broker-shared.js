@@ -347,7 +347,7 @@ function brokerSharedTradingModeHtml(mode) {
     <div class="broker-trading-mode-row">
       <span class="broker-field-label">Trading Mode</span>
       <div class="broker-trading-mode-buttons">
-        <button type="button" class="broker-mode-btn ${normalized === 'paper' ? 'is-active' : ''}" data-trading-mode="paper">📄 Paper Trading <small>Fake money, real execution. Test risk-free.</small></button>
+        <button type="button" class="broker-mode-btn ${normalized === 'paper' ? 'is-active' : ''}" data-trading-mode="paper">📄 Paper Trading <small>Simulated funds, real workflow testing.</small></button>
         <button type="button" class="broker-mode-btn ${normalized === 'live' ? 'is-active' : ''}" data-trading-mode="live">💵 Live Trading <small>Real money. Only switch when ready.</small></button>
       </div>
     </div>
@@ -774,6 +774,14 @@ function createBrokerConnectionModal(options = {}) {
   }
   modal.addEventListener('click', (event) => {
     if (event.target === modal) {
+      instance.close();
+    }
+  });
+  document.addEventListener('keydown', (event) => {
+    if (event.key !== 'Escape') {
+      return;
+    }
+    if (!modal.classList.contains('hidden')) {
       instance.close();
     }
   });

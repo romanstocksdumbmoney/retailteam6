@@ -84,10 +84,7 @@ function getAuthStateSnapshot() {
 }
 
 function logAuthDebugState() {
-  const snapshot = getAuthStateSnapshot();
-  console.log('AUTH USER:', snapshot.user);
-  console.log('AUTH SESSION:', snapshot.session);
-  console.log('IS AUTHENTICATED:', snapshot.isAuthenticated);
+  getAuthStateSnapshot();
 }
 
 function applyAuthStatePatch(patch = {}, options = {}) {
@@ -1333,7 +1330,6 @@ function setupQuickAccessHub() {
 
   if (orderSetupButton instanceof HTMLButtonElement) {
     orderSetupButton.addEventListener('click', () => {
-      console.log('Build Trade Plan clicked');
       openAiOrderSetupAssistantPage();
     });
   }
@@ -1414,7 +1410,6 @@ function setupQuickAccessHub() {
 
   if (openCopilotInlineButton instanceof HTMLButtonElement) {
     openCopilotInlineButton.addEventListener('click', () => {
-      console.log('Open Copilot clicked');
       if (!guardAuthenticatedToolAccess('AI Copilot', `${window.location.pathname || '/'}${window.location.search || ''}${window.location.hash || ''}`)) {
         return;
       }
@@ -2375,7 +2370,6 @@ function setupBrowseToolsMenu() {
 
   menuToggle.addEventListener('click', (event) => {
     event.preventDefault();
-    console.log('Browse Tools clicked');
     setBrowseToolsMenuState(!browseToolsMenuOpen);
     if (!browseToolsMenuOpen) {
       return;
@@ -2477,6 +2471,8 @@ function setAuthMessage(text, isError = false) {
   applyStatusClass(node, 'small-note', text, isError);
 }
 
+let authLockoutTimer = null;
+
 function renderResendVerificationAction(email) {
   const actions = document.getElementById('auth-message-actions');
   if (!(actions instanceof HTMLElement)) {
@@ -2507,6 +2503,10 @@ function renderResendVerificationAction(email) {
 }
 
 function clearAuthMessageActions() {
+  if (authLockoutTimer) {
+    window.clearInterval(authLockoutTimer);
+    authLockoutTimer = null;
+  }
   const actions = document.getElementById('auth-message-actions');
   if (!(actions instanceof HTMLElement)) {
     return;
@@ -2514,21 +2514,57 @@ function clearAuthMessageActions() {
   actions.innerHTML = '';
 }
 
+function renderAuthActionLink(label, href) {
+  const actions = document.getElementById('auth-message-actions');
+  if (!(actions instanceof HTMLElement)) {
+    return;
+  }
+  const link = document.createElement('a');
+  link.className = 'link-button';
+  link.href = href;
+  link.textContent = label;
+  actions.appendChild(link);
+}
+
+function startAuthLockoutCountdown(lockoutUntilIso) {
+  const lockoutTs = Date.parse(String(lockoutUntilIso || ''));
+  if (!Number.isFinite(lockoutTs)) {
+    return;
+  }
+  const tick = () => {
+    const remainingMinutes = Math.max(1, Math.ceil((lockoutTs - Date.now()) / (60 * 1000)));
+    setAuthMessage(`Account temporarily locked. Try again in ${remainingMinutes} minute${remainingMinutes === 1 ? '' : 's'}.`, true);
+    if (Date.now() >= lockoutTs) {
+      if (authLockoutTimer) {
+        window.clearInterval(authLockoutTimer);
+        authLockoutTimer = null;
+      }
+      setAuthMessage('Lockout ended. You can try signing in again.');
+      clearAuthMessageActions();
+    }
+  };
+  tick();
+  authLockoutTimer = window.setInterval(tick, 1000);
+}
+
 function mapLoginErrorMessage(error, email) {
   const code = String(error?.body?.error || '').trim().toLowerCase();
   const message = String(error?.message || '').trim();
   if (code === 'unknown_email' || error?.status === 404) {
-    return 'No account found with that email';
+    return 'No account found with that email address.';
   }
   if (code === 'incorrect_password' || error?.status === 401) {
-    return 'Incorrect password';
+    return message || 'Incorrect password.';
   }
   if (code === 'email_not_verified' || message.toLowerCase().includes('verify your email')) {
     renderResendVerificationAction(email);
-    return 'Please verify your email before signing in';
+    return 'Please verify your email before signing in.';
+  }
+  if (code === 'account_suspended') {
+    return 'This account has been suspended. Contact support.';
   }
   if (code === 'too_many_attempts' || error?.status === 429) {
-    return 'Too many failed attempts — try again in 15 minutes';
+    return message || 'Account temporarily locked. Try again in 15 minutes.';
   }
   return message || 'Login failed.';
 }
@@ -3069,6 +3105,23 @@ function escapeHtml(value) {
     .replace(/'/g, '&#39;');
 }
 
+function renderDataDisclosure(payload = {}) {
+  const dataNatureRaw = String(payload?.dataNature || payload?.result?.dataNature || '').trim().toLowerCase();
+  const sourceDisclosure = String(payload?.sourceDisclosure || payload?.result?.sourceDisclosure || '').trim();
+  const dataNatureLabel = dataNatureRaw
+    ? dataNatureRaw.replaceAll('_', ' ')
+    : '';
+  if (!dataNatureLabel && !sourceDisclosure) {
+    return '';
+  }
+  return `
+    <p class="small-note market-disclosure">
+      ${dataNatureLabel ? `<strong>Data nature:</strong> ${escapeHtml(dataNatureLabel)}.` : ''}
+      ${sourceDisclosure ? ` ${escapeHtml(sourceDisclosure)}` : ''}
+    </p>
+  `;
+}
+
 function renderOutlookLoading() {
   const target = document.getElementById('stock-results');
   if (!target) {
@@ -3078,9 +3131,9 @@ function renderOutlookLoading() {
     <article class="prob-card outlook-loading-card">
       <div class="outlook-loading-row">
         <span class="status-loading" aria-hidden="true"></span>
-        <strong>Analyzing real market data…</strong>
+        <strong>Analyzing market data…</strong>
       </div>
-      <p class="small-note">Fetching live quote, technicals, news, and earnings context.</p>
+      <p class="small-note">Fetching quote, technicals, news, and earnings context.</p>
     </article>
   `;
 }
@@ -3152,6 +3205,7 @@ function renderOutlook(payload) {
         </div>
       </div>
       <p class="small-note">Data from ${sourceLabel}. Last updated: ${escapeHtml(updatedLabel)}.${payload?.marketDataMayBeDelayed ? ' Market data may be delayed.' : ''}</p>
+      ${renderDataDisclosure(payload)}
 
       <div class="outlook-grid">
         <div>
@@ -3232,6 +3286,7 @@ function renderScanner(payload) {
       <p>${result.summary}</p>
       <p class="small-note">Source: ${result.source}</p>
       <p class="small-note">Last run: ${result.lastRunUtc}</p>
+      ${renderDataDisclosure(result)}
       ${metrics}
       ${result.isLimited ? '<p class="pro-lock">Free preview. Upgrade to Pro for full market flow detail.</p>' : ''}
     </article>
@@ -3260,6 +3315,7 @@ function renderOptions(payload) {
       <p><strong>Call premium:</strong> ${fmtUsd(payload.premium.callPremiumUsd)}</p>
       <p><strong>Put premium:</strong> ${fmtUsd(payload.premium.putPremiumUsd)}</p>
       <p><strong>Net gamma exposure:</strong> ${fmtUsd(payload.gammaExposure.net)} (${payload.gammaExposure.signedDirection})</p>
+      ${renderDataDisclosure(payload)}
     </article>
   `;
 }
@@ -3298,6 +3354,9 @@ function renderUnusual(payload) {
     `;
     target.appendChild(row);
   });
+  if (rows.length) {
+    target.insertAdjacentHTML('beforeend', renderDataDisclosure(payload));
+  }
   if (!rows.length) {
     target.innerHTML = '<div class="pro-lock">No unusual moves are available right now.</div>';
   }
@@ -3335,6 +3394,9 @@ function renderHighIv(payload) {
     `;
     target.appendChild(card);
   });
+  if (Array.isArray(payload.items) && payload.items.length) {
+    target.insertAdjacentHTML('beforeend', renderDataDisclosure(payload));
+  }
 
   if (!payload.items || payload.items.length === 0) {
     target.innerHTML = '<div class="pro-lock">No elevated IV names are available right now.</div>';
@@ -3400,6 +3462,9 @@ function renderPremiumSpikes(payload) {
     target.appendChild(card);
     bindPremiumSpikeProofControls(card, item);
   });
+  if (rows.length) {
+    target.insertAdjacentHTML('beforeend', renderDataDisclosure(payload));
+  }
 
   if (!rows.length) {
     target.innerHTML = '<div class="pro-lock">No premium spikes detected right now.</div>';
@@ -3667,6 +3732,9 @@ function renderTrendTrades(payload) {
     `;
     target.appendChild(card);
   });
+  if (Array.isArray(payload?.items) && payload.items.length) {
+    target.insertAdjacentHTML('beforeend', renderDataDisclosure(payload));
+  }
   if (!Array.isArray(payload?.items) || payload.items.length === 0) {
     target.innerHTML = '<div class="pro-lock">No trend trades are available right now.</div>';
   }
@@ -4294,7 +4362,7 @@ function setupAuthForms() {
     event.preventDefault();
     const email = document.getElementById('login-email').value.trim().toLowerCase();
     const password = document.getElementById('login-password').value;
-    const remember = true;
+    const remember = false;
     const submitButton = loginForm.querySelector('button[type="submit"]');
     const idleLabel = submitButton?.textContent || 'Log in';
     try {
@@ -4309,7 +4377,15 @@ function setupAuthForms() {
       setAuthMessage(`Logged in successfully as ${payload?.user?.email || email}.`);
       await refreshAfterAuth();
     } catch (error) {
-      setAuthMessage(mapLoginErrorMessage(error, email), true);
+      const code = String(error?.body?.error || '').trim().toLowerCase();
+      const mappedMessage = mapLoginErrorMessage(error, email);
+      setAuthMessage(mappedMessage, true);
+      if (code === 'unknown_email') {
+        renderAuthActionLink('Create Account', '/register');
+      } else if (code === 'too_many_attempts') {
+        renderAuthActionLink('Reset Password Instead', '/forgot-password');
+        startAuthLockoutCountdown(error?.body?.lockoutUntil || '');
+      }
     } finally {
       setButtonBusy(submitButton, false, idleLabel, 'Signing in...');
     }
@@ -4319,7 +4395,7 @@ function setupAuthForms() {
     event.preventDefault();
     const email = document.getElementById('signup-email').value.trim().toLowerCase();
     const password = document.getElementById('signup-password').value;
-    const remember = true;
+    const remember = false;
     const submitButton = signupForm.querySelector('button[type="submit"]');
     const idleLabel = submitButton?.textContent || 'Sign up';
     if (!isLikelyRealEmail(email)) {
@@ -4562,7 +4638,6 @@ function setupAiSidebar() {
 
   if (aiTradeButton) {
     aiTradeButton.addEventListener('click', () => {
-      console.log('Open AI Trade clicked');
       openAiTradeEntryPage();
       renderStatus('Opening AI Trade...');
     });
@@ -4605,7 +4680,6 @@ function setupAiSidebar() {
 
   if (aiAnalyzerButton) {
     aiAnalyzerButton.addEventListener('click', () => {
-      console.log('Open AI Analyzer clicked');
       openAiAnalyzerPage();
       renderStatus('Opening AI Analyzer...');
     });
@@ -4681,7 +4755,6 @@ function setupAiSidebar() {
 
   trendForm.addEventListener('submit', async (event) => {
     event.preventDefault();
-    console.log('Analyze Trends clicked');
     if (!guardAuthenticatedToolAccess('Trend Trades', '/#trend-trades-section')) {
       return;
     }
@@ -4716,7 +4789,6 @@ function setupAiSidebar() {
 
   patternForm.addEventListener('submit', async (event) => {
     event.preventDefault();
-    console.log('Analyze Patterns clicked');
     if (!guardAuthenticatedToolAccess('Pattern Analyzer', '/#realized-patterns-section')) {
       return;
     }
@@ -4904,7 +4976,6 @@ function setupSidebarMenu() {
 
   if (copilotToolButton instanceof HTMLButtonElement) {
     copilotToolButton.addEventListener('click', () => {
-      console.log('Open AI Copilot clicked');
       if (!guardAuthenticatedToolAccess('AI Copilot', `${window.location.pathname || '/'}${window.location.search || ''}${window.location.hash || ''}`)) {
         return;
       }
@@ -5121,7 +5192,6 @@ function setupStockForm() {
     });
 
     const destination = `/stock/${encodeURIComponent(activeTicker)}`;
-    console.log('ROUTE TRACE analyze ->', destination);
     window.location.href = destination;
   };
 

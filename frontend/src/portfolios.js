@@ -44,7 +44,11 @@ function setStatus(text, isError = false) {
 }
 
 function fmtUsd(value) {
-  return `$${Number(value || 0).toLocaleString(undefined, { maximumFractionDigits: 2 })}`;
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) {
+    return '--';
+  }
+  return `$${numeric.toLocaleString(undefined, { maximumFractionDigits: 2 })}`;
 }
 
 function fmtPct(value) {
@@ -62,6 +66,15 @@ function formatSortLabel(sortBy) {
     activity_desc: 'Most Active'
   };
   return map[key] || key.replaceAll('_', ' ');
+}
+
+function escapeHtml(value) {
+  return String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
 }
 
 function mapSortForApi(rawSort) {
@@ -114,6 +127,7 @@ function renderPortfolios(payload, appliedFilters) {
       <p><strong>Matches:</strong> ${rows.length} / ${allRows.length} • <strong>Sort:</strong> ${formatSortLabel(payload?.filters?.sortBy || appliedFilters.sortBy)}</p>
       <p><strong>Min YTD:</strong> ${minPerformance.toFixed(0)}% • <strong>Min AUM:</strong> ${appliedFilters.minAumBillions.toFixed(0)}B • <strong>Manager query:</strong> ${appliedFilters.manager || 'All'}</p>
       <p class="small-note">Generated: ${payload?.generatedAt ? new Date(payload.generatedAt).toLocaleString() : 'N/A'} • Auto-refresh every ${Number(payload?.refreshCadenceSeconds || 60)}s</p>
+      <p class="small-note"><strong>Data:</strong> ${payload?.dataNature ? escapeHtml(String(payload.dataNature).replaceAll('_', ' ')) : 'Unavailable'}${payload?.sourceDisclosure ? ` • ${escapeHtml(payload.sourceDisclosure)}` : ''}</p>
     </article>
   `;
 

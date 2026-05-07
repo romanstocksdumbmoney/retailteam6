@@ -892,7 +892,7 @@ function ensureAiTraderFloatingStatusPill() {
   const pill = document.createElement('a');
   pill.id = 'ai-trader-floating-pill';
   pill.className = 'ai-trader-float-pill is-off';
-  pill.href = '/#ai-trader-hub';
+  pill.href = '/ai-trader';
   pill.setAttribute('aria-label', 'Open AI Trader dashboard');
   pill.innerHTML = '<span class="ai-trader-float-pill-dot" aria-hidden="true"></span><span id="ai-trader-floating-pill-text">Bot Off</span>';
   document.body.appendChild(pill);
@@ -900,7 +900,7 @@ function ensureAiTraderFloatingStatusPill() {
   const label = pill.querySelector('#ai-trader-floating-pill-text');
   const applyState = (detail = {}) => {
     const stateClass = String(detail.stateClass || '').trim().toLowerCase();
-    const href = String(detail.href || '/#ai-trader-hub').trim() || '/#ai-trader-hub';
+    const href = String(detail.href || '/ai-trader').trim() || '/ai-trader';
     let labelText = 'Bot Off';
     let cssClass = 'is-off';
     if (stateClass === 'running') {
@@ -932,18 +932,18 @@ function ensureAiTraderFloatingStatusPill() {
     if (isActive && brokerConnected) {
       return {
         stateClass: 'running',
-        href: '/#ai-trader-hub'
+        href: '/ai-trader'
       };
     }
     if (isActive && !brokerConnected) {
       return {
         stateClass: 'paused',
-        href: '/#ai-trader-hub'
+        href: '/ai-trader'
       };
     }
     return {
       stateClass: 'off',
-      href: '/#ai-trader-hub'
+      href: '/ai-trader'
     };
   };
 

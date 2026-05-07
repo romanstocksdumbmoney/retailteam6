@@ -1110,6 +1110,37 @@ function closeBrokerModal() {
   modal.classList.add('hidden');
 }
 
+function bindModalDismissShortcuts() {
+  const stopModal = byId('ai-trader-stop-modal');
+  const brokerModal = byId('ai-trader-broker-modal');
+  if (stopModal) {
+    stopModal.addEventListener('click', (event) => {
+      if (event.target === stopModal) {
+        closeStopModal();
+      }
+    });
+  }
+  if (brokerModal) {
+    brokerModal.addEventListener('click', (event) => {
+      if (event.target === brokerModal) {
+        closeBrokerModal();
+      }
+    });
+  }
+  document.addEventListener('keydown', (event) => {
+    if (event.key !== 'Escape') {
+      return;
+    }
+    if (stopModal && !stopModal.classList.contains('hidden')) {
+      closeStopModal();
+      return;
+    }
+    if (brokerModal && !brokerModal.classList.contains('hidden')) {
+      closeBrokerModal();
+    }
+  });
+}
+
 function showBrokerModalStep(step) {
   const step1 = byId('ai-trader-broker-step-1');
   const step2 = byId('ai-trader-broker-step-2');
@@ -1755,6 +1786,7 @@ function initAiTraderHub() {
   bindControls();
   bindSettingsInteractions();
   bindBrokerModal();
+  bindModalDismissShortcuts();
   bindGuideFaqAccordion();
   bindNavShortcut();
   applyBrokerChoice();

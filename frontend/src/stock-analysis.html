@@ -3,8 +3,8 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>DumbDollars • Stock Analysis</title>
-    <link rel="stylesheet" href="/styles.css" />
+    <title>DumbDollars — Stock Analysis</title>
+    <link rel="stylesheet" href="./styles.css" />
   </head>
   <body>
     <div class="diamond-bg" aria-hidden="true"></div>
@@ -17,7 +17,7 @@
             <div>
               <p class="analysis-kicker">Stock Research</p>
               <h1 id="stock-name">Analyzing...</h1>
-              <p class="small-note">Loading real market data.</p>
+              <p class="small-note">Loading market data from connected providers.</p>
             </div>
             <div class="analysis-price-block">
               <p id="stock-price" class="analysis-price-line">$--</p>
@@ -92,15 +92,14 @@
               </table>
             </section>
 
-            <p class="small-note">
-              This analysis is for informational purposes only and does not constitute financial advice.
-              Always do your own research before investing.
+            <p class="small-note legal-disclaimer-inline">
+              DumbDollars is not a registered investment advisor. Automated trading involves significant risk. Past performance does not guarantee future results. Only trade with money you can afford to lose.
             </p>
             <div id="data-footer"></div>
           </div>
         </section>
       </div>
     </main>
-    <script src="/stock-analysis.js"></script>
+    <script src="./stock-analysis.js"></script>
   </body>
 </html>

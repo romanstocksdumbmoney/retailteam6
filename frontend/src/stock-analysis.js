@@ -1,10 +1,20 @@
-const AV_KEY = 'XK10T6I58YPTGMWE';
-const FINNHUB_TOKEN = 'cqnbm59r01qhse25tlu0cqnbm59r01qhse25tlug';
-const POLYGON_KEY = 'demo';
+// Market-data requests are served through backend endpoints only.
+const AV_KEY = '';
+const FINNHUB_TOKEN = '';
+const POLYGON_KEY = '';
 
 function toNumber(value) {
   const n = Number(value);
   return Number.isFinite(n) ? n : null;
+}
+
+function escapeHtml(value) {
+  return String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
 }
 
 async function fetchWithTimeout(url, options = {}, timeoutMs = 15000) {
@@ -40,7 +50,6 @@ function calculateRSI(closes, period = 14) {
 
 async function fetchFromAllSources(ticker) {
   ticker = ticker.toUpperCase().trim();
-  console.log('Fetching', ticker, 'from all sources...');
 
   const results = await Promise.allSettled([
     fetchYahooFinance(ticker),
@@ -49,15 +58,6 @@ async function fetchFromAllSources(ticker) {
     fetchPolygon(ticker),
     fetchStockAnalysis(ticker)
   ]);
-
-  results.forEach((result, index) => {
-    const names = ['Yahoo', 'AlphaVantage', 'Finnhub', 'Polygon', 'StockAnalysis'];
-    if (result.status === 'fulfilled') {
-      console.log(`✅ ${names[index]}:`, result.value);
-      return;
-    }
-    console.warn(`❌ ${names[index]} failed:`, result.reason?.message || result.reason);
-  });
 
   const [yahoo, av, finnhub, polygon, stockanalysis] = results.map((result) => (
     result.status === 'fulfilled' ? result.value : null
@@ -131,7 +131,7 @@ async function fetchYahooFinance(ticker) {
         rawLows: lows
       };
     } catch (error) {
-      console.warn('Yahoo URL failed:', url, error?.message || error);
+      // Try the next mirror endpoint.
     }
   }
   throw new Error('Yahoo Finance unavailable');
@@ -918,7 +918,7 @@ function renderDataFooter(data) {
     : (data.dataSource || 'Unknown source');
   footer.innerHTML = `
     <div style="color:#555;font-size:11px;padding:16px 0;border-top:1px solid #2a2a4a;margin-top:16px;">
-      📡 Data from <strong style="color:#888;">${sourceText}</strong> ·
+      📡 Data from <strong style="color:#888;">${escapeHtml(sourceText)}</strong> ·
       Analyzed at ${new Date().toLocaleTimeString()} ·
       Prices may be delayed 15-20 minutes ·
       <em>Not financial advice — always do your own research</em>
@@ -945,7 +945,7 @@ function renderSourceBadges(sources) {
           background:#1a2a1a; border:1px solid #2a4a2a;
           color:#4caf50; font-size:10px; font-weight:700;
           padding:3px 8px; border-radius:4px;
-        ">✓ ${source}</span>
+        ">✓ ${escapeHtml(source)}</span>
       `).join('')}
     </div>
   `;
@@ -1117,11 +1117,11 @@ function renderIndicators(data) {
 
   tbody.innerHTML = rows.map((row) => `
     <tr>
-      <td style="padding:10px 12px;font-weight:600;color:#e8eef4;">${row.label}</td>
-      <td style="padding:10px 12px;font-family:monospace;color:#f4f7fb;">${row.value}</td>
+      <td style="padding:10px 12px;font-weight:600;color:#e8eef4;">${escapeHtml(row.label)}</td>
+      <td style="padding:10px 12px;font-family:monospace;color:#f4f7fb;">${escapeHtml(row.value)}</td>
       <td style="padding:10px 12px;color:#c7d1de;">
-        <div>${row.signal}</div>
-        ${row.explanation ? `<div style="margin-top:4px;font-size:11px;color:#9aa7bb;line-height:1.4;">${row.explanation}</div>` : ''}
+        <div>${escapeHtml(row.signal)}</div>
+        ${row.explanation ? `<div style="margin-top:4px;font-size:11px;color:#9aa7bb;line-height:1.4;">${escapeHtml(row.explanation)}</div>` : ''}
       </td>
     </tr>
   `).join('');
@@ -1313,7 +1313,6 @@ async function loadAndDisplayStock(ticker) {
     }
     renderAnalysisPage(data);
   } catch (err) {
-    console.error('Final error:', err);
     showErrorUI(ticker, err?.message || `Could not load ${ticker}. Try again in a moment.`, err);
   }
 }
@@ -1385,8 +1384,6 @@ wireBackButton();
 window.addEventListener('DOMContentLoaded', () => {
   const pathParts = window.location.pathname.split('/');
   const ticker = String(pathParts[pathParts.length - 1] || '').toUpperCase().trim();
-
-  console.log('Page loaded, ticker from URL:', ticker);
 
   if (ticker && ticker.length > 0 && ticker !== 'STOCK') {
     loadAndDisplayStock(ticker);

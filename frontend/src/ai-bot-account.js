@@ -104,7 +104,11 @@ function showSignInNeeded(message = 'Please log in to view the AI brokerage acco
 }
 
 function fmtUsd(value) {
-  return `$${Number(value || 0).toLocaleString(undefined, { maximumFractionDigits: 2 })}`;
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) {
+    return '--';
+  }
+  return `$${numeric.toLocaleString(undefined, { maximumFractionDigits: 2 })}`;
 }
 
 function fmtRatio(value) {

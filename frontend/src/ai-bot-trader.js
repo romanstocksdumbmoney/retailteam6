@@ -246,7 +246,11 @@ function ensureBrokerModal() {
 }
 
 function fmtUsd(value) {
-  return `$${Number(value || 0).toLocaleString(undefined, { maximumFractionDigits: 2 })}`;
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) {
+    return '--';
+  }
+  return `$${numeric.toLocaleString(undefined, { maximumFractionDigits: 2 })}`;
 }
 
 function bindAuthBannerLinks() {
@@ -889,7 +893,7 @@ function renderLogs(cycle) {
     return;
   }
   const closedRows = (cycle.closedPositions || [])
-    .map((row) => `<li>${row.ticker} ${row.direction.toUpperCase()} • ${row.result} • PnL ${fmtUsd(row.pnlUsd)}</li>`)
+    .map((row) => `<li>${row.ticker || 'N/A'} ${String(row?.direction || 'n/a').toUpperCase()} • ${row.result || 'Result unavailable'} • PnL ${fmtUsd(row.pnlUsd)}</li>`)
     .join('');
   const adherence = cycle.promptAdherence || {};
   target.innerHTML = `
