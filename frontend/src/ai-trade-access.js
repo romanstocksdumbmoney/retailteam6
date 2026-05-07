@@ -15,11 +15,12 @@ async function fetchJson(url, options = {}) {
   return response.json();
 }
 
-const DEFAULT_NEXT_PATH = '/ai-trade.html';
+const DEFAULT_NEXT_PATH = '/dashboard';
 const AUTH_PAGE_MODE_LOGIN = 'login';
 const AUTH_PAGE_MODE_SIGNUP = 'signup';
 const TRADER_MODE_STORAGE_KEY = 'dumbdollars_trader_mode';
 const DEFAULT_TRADER_MODE = 'day';
+let lockoutCountdownTimer = null;
 const TRADER_MODE_DETAILS = Object.freeze({
   scalper: {
     label: 'Scalper',
@@ -58,11 +59,46 @@ function setStatus(text, isError = false) {
 }
 
 function clearStatusActions() {
+  if (lockoutCountdownTimer) {
+    window.clearInterval(lockoutCountdownTimer);
+    lockoutCountdownTimer = null;
+  }
   const actions = document.getElementById('ai-access-status-actions');
   if (!(actions instanceof HTMLElement)) {
     return;
   }
   actions.innerHTML = '';
+}
+
+function renderStatusActionLink(label, href) {
+  const actions = document.getElementById('ai-access-status-actions');
+  if (!(actions instanceof HTMLElement)) {
+    return;
+  }
+  const link = document.createElement('a');
+  link.className = 'link-button';
+  link.href = href;
+  link.textContent = label;
+  actions.appendChild(link);
+}
+
+function startLockoutCountdown(lockoutUntilIso) {
+  const lockoutUntilTs = Date.parse(String(lockoutUntilIso || ''));
+  if (!Number.isFinite(lockoutUntilTs)) {
+    return;
+  }
+  const tick = () => {
+    const minutes = Math.max(1, Math.ceil((lockoutUntilTs - Date.now()) / (60 * 1000)));
+    setStatus(`Account temporarily locked. Try again in ${minutes} minute${minutes === 1 ? '' : 's'}.`, true);
+    if (Date.now() >= lockoutUntilTs) {
+      window.clearInterval(lockoutCountdownTimer);
+      lockoutCountdownTimer = null;
+      setStatus('Lockout ended. You can try signing in again.', false);
+      clearStatusActions();
+    }
+  };
+  tick();
+  lockoutCountdownTimer = window.setInterval(tick, 1000);
 }
 
 function renderResendVerificationAction(email) {
@@ -99,16 +135,19 @@ function mapLoginErrorMessage(error) {
   const code = String(error?.body?.error || '').trim().toLowerCase();
   const message = String(error?.message || '').trim();
   if (status === 404 || code === 'unknown_email') {
-    return 'No account found with that email';
+    return 'No account found with that email address.';
   }
   if (status === 401 || code === 'incorrect_password') {
-    return 'Incorrect password';
+    return message || 'Incorrect password.';
   }
   if (status === 403 || code === 'email_not_verified') {
-    return 'Please verify your email before signing in';
+    return 'Please verify your email before signing in.';
+  }
+  if (status === 403 || code === 'account_suspended') {
+    return 'This account has been suspended. Contact support.';
   }
   if (status === 429 || code === 'too_many_attempts') {
-    return 'Too many failed attempts — try again in 15 minutes';
+    return message || 'Account temporarily locked. Try again in 15 minutes.';
   }
   return message || 'Could not log in.';
 }
@@ -626,10 +665,22 @@ function setupForms() {
       setStatus('Login successful. Redirecting...');
       goToNextPath();
     } catch (error) {
+      const code = String(error?.body?.error || '').trim().toLowerCase();
       const mappedMessage = mapLoginErrorMessage(error);
-      if (mappedMessage === 'Please verify your email before signing in') {
+      if (code === 'email_not_verified' || mappedMessage === 'Please verify your email before signing in.') {
         setStatus('Please verify your email before signing in.', true);
         renderResendVerificationAction(email);
+        return;
+      }
+      if (code === 'unknown_email') {
+        setStatus(mappedMessage, true);
+        renderStatusActionLink('Create Account', '/register');
+        return;
+      }
+      if (code === 'too_many_attempts') {
+        setStatus(mappedMessage, true);
+        renderStatusActionLink('Reset Password Instead', '/forgot-password');
+        startLockoutCountdown(error?.body?.lockoutUntil || '');
         return;
       }
       clearStatusActions();
@@ -669,7 +720,7 @@ function setupForms() {
         }
         setButtonBusy(requestCodeButton, true, idleLabel, 'Sending code...');
         await requestAccessCode(email, 'password_reset');
-        setStatus('If this email exists, a reset link was sent. Check inbox and spam.');
+        setStatus('If an account exists with that email, a reset link has been sent. Check inbox and spam.');
       } catch (error) {
         setStatus(error.message || 'Could not send account code.', true);
       } finally {

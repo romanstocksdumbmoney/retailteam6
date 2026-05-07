@@ -169,6 +169,13 @@ function setupButtons() {
         setStatus('Sign in complete. Redirecting...');
         window.location.href = next;
       } catch (error) {
+        if (error?.status === 501) {
+          setStatus('Social sign-in is temporarily unavailable. Use email and password for now.', true);
+          window.setTimeout(() => {
+            window.location.href = '/ai-trade-access.html?mode=login';
+          }, 1200);
+          return;
+        }
         setStatus(error.message || 'Social sign in failed.', true);
       } finally {
         button.disabled = false;

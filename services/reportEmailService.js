@@ -333,7 +333,7 @@ async function sendTypedEmail({ user, emailType, subject, html }) {
     sent_at: new Date().toISOString(),
     status: delivery.status === 'sent' ? 'delivered' : 'failed',
     error_message: delivery.detail || null,
-    html_preview: html
+    html_preview: htmlToText(html).slice(0, 1200)
   });
   return delivery;
 }

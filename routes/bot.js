@@ -1,6 +1,6 @@
 const express = require('express');
 const { setUserAiTraderSetupById } = require('../services/userStore');
-const { requireApiAuth } = require('../services/routeAuth');
+const { requireApiAuthStrictSession } = require('../services/routeAuth');
 const { getUserByEmailForAuth } = require('../services/authDbService');
 const {
   sendTradeAlertEmail,
@@ -55,7 +55,7 @@ const ET_TIME_FORMATTER = new Intl.DateTimeFormat('en-US', {
 });
 
 function requireSignedIn(req, res, next) {
-  return requireApiAuth(req, res, () => {
+  return requireApiAuthStrictSession(req, res, () => {
     const authUser = getUserByEmailForAuth(req.user?.email || '');
     if (!authUser?.email_verified) {
       return res.status(403).json({

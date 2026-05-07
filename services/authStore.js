@@ -83,6 +83,7 @@ function normalizeUserRow(row) {
     email_verified: normalizeBoolean(row?.email_verified, false),
     email_verified_at: normalizeTimestamp(row?.email_verified_at, null),
     created_at: normalizeTimestamp(row?.created_at, nowIso()),
+    account_suspended: normalizeBoolean(row?.account_suspended, false),
     failed_login_attempts: Math.max(0, Math.trunc(Number(row?.failed_login_attempts || 0))),
     lockout_until: normalizeTimestamp(row?.lockout_until, null)
   };
@@ -474,6 +475,30 @@ function createPasswordResetToken(row) {
   return { ...normalized };
 }
 
+function invalidatePasswordResetTokensForUser(userId) {
+  ensureStoreLoaded();
+  pruneExpiredRows();
+  const normalizedUserId = String(userId || '').trim();
+  if (!normalizedUserId) {
+    return 0;
+  }
+  let changed = 0;
+  store.password_reset_tokens = store.password_reset_tokens.map((row) => {
+    if (row.user_id !== normalizedUserId || row.used === true) {
+      return row;
+    }
+    changed += 1;
+    return {
+      ...row,
+      used: true
+    };
+  });
+  if (changed > 0) {
+    persistStore();
+  }
+  return changed;
+}
+
 function createEmailVerificationToken(row) {
   ensureStoreLoaded();
   pruneExpiredRows();
@@ -492,6 +517,30 @@ function createEmailVerificationToken(row) {
   store.email_verification_tokens = store.email_verification_tokens.slice(0, 5000);
   persistStore();
   return { ...normalized };
+}
+
+function invalidateEmailVerificationTokensForUser(userId) {
+  ensureStoreLoaded();
+  pruneExpiredRows();
+  const normalizedUserId = String(userId || '').trim();
+  if (!normalizedUserId) {
+    return 0;
+  }
+  let changed = 0;
+  store.email_verification_tokens = store.email_verification_tokens.map((row) => {
+    if (row.user_id !== normalizedUserId || row.used === true) {
+      return row;
+    }
+    changed += 1;
+    return {
+      ...row,
+      used: true
+    };
+  });
+  if (changed > 0) {
+    persistStore();
+  }
+  return changed;
 }
 
 function consumePasswordResetToken(tokenHash) {
@@ -825,7 +874,9 @@ module.exports = {
   deleteSessionsForUser,
   listSessionsForUser,
   createPasswordResetToken,
+  invalidatePasswordResetTokensForUser,
   createEmailVerificationToken,
+  invalidateEmailVerificationTokensForUser,
   consumePasswordResetToken,
   getValidPasswordResetToken,
   consumeEmailVerificationToken,

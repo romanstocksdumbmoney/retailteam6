@@ -2,6 +2,7 @@ const crypto = require('crypto');
 const bcrypt = require('bcryptjs');
 const fs = require('fs');
 const path = require('path');
+const { BCRYPT_ROUNDS } = require('./authSecurityService');
 
 const usersById = new Map();
 const usersByEmail = new Map();
@@ -420,7 +421,7 @@ function createUser({ email, password, passwordHash, authProvider = 'password', 
   const user = {
     id: crypto.randomUUID(),
     email: normalizedEmail,
-    passwordHash: chosenHash || bcrypt.hashSync(chosenPassword || crypto.randomUUID(), 10),
+    passwordHash: chosenHash || bcrypt.hashSync(chosenPassword || crypto.randomUUID(), BCRYPT_ROUNDS),
     authProviders: [provider],
     lastAuthProvider: provider,
     plan: 'free',
@@ -491,7 +492,7 @@ async function verifyPasswordWithMigration(user, rawPassword) {
     return false;
   }
 
-  user.passwordHash = await bcrypt.hash(matchedCandidate, 10);
+  user.passwordHash = await bcrypt.hash(matchedCandidate, BCRYPT_ROUNDS);
   user.authProviders = mergeAuthProviders(user.authProviders, 'password');
   user.lastAuthProvider = 'password';
   user.updatedAt = nowIso();

@@ -118,7 +118,7 @@ function setupForm() {
           confirmPassword
         })
       });
-      setStatus('Password reset successful. Redirecting to sign in...');
+      setStatus('Password reset successfully. Please sign in.');
       window.setTimeout(() => {
         window.location.href = '/ai-trade-access.html?mode=login&reset=success';
       }, 900);

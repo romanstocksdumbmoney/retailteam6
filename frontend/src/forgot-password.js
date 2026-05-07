@@ -68,7 +68,7 @@ function setupForm() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email })
       });
-      setStatus('If this email exists, a reset link was sent.', 'success');
+      setStatus('If an account exists with that email, a reset link has been sent.', 'success');
     } catch (error) {
       setStatus(error.message || 'Could not send reset link right now.', 'error');
     } finally {

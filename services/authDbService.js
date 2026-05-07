@@ -14,7 +14,9 @@ const {
   deleteSessionsForUser,
   listSessionsForUser,
   createPasswordResetToken,
+  invalidatePasswordResetTokensForUser,
   createEmailVerificationToken,
+  invalidateEmailVerificationTokensForUser,
   consumePasswordResetToken,
   getValidPasswordResetToken,
   consumeEmailVerificationToken,
@@ -62,6 +64,7 @@ function sanitizeUserForClient(row) {
     emailVerified: Boolean(row.email_verified),
     emailVerifiedAt: row.email_verified_at || null,
     createdAt: row.created_at,
+    accountSuspended: Boolean(row.account_suspended),
     failedLoginAttempts: Number(row.failed_login_attempts || 0),
     lockoutUntil: row.lockout_until || null,
     plan: 'free',
@@ -309,6 +312,11 @@ function validateSessionFromToken(rawToken) {
   if (!session) {
     return null;
   }
+  const expiresAt = Date.parse(String(session.expires_at || ''));
+  if (!Number.isFinite(expiresAt) || expiresAt <= Date.now()) {
+    deleteSessionById(session.id);
+    return null;
+  }
   const user = getUserById(session.user_id);
   if (!user) {
     deleteSessionById(session.id);
@@ -397,6 +405,7 @@ async function setPasswordForUser(userId, nextPassword) {
 }
 
 function issuePasswordResetToken(userId) {
+  invalidatePasswordResetTokensForUser(userId);
   const rawToken = createSecureToken(32);
   createPasswordResetToken({
     user_id: userId,
@@ -425,6 +434,7 @@ function validatePasswordResetTokenRaw(rawToken) {
 }
 
 function issueEmailVerificationToken(userId) {
+  invalidateEmailVerificationTokensForUser(userId);
   const rawToken = createSecureToken(32);
   createEmailVerificationToken({
     user_id: userId,

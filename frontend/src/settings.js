@@ -55,6 +55,15 @@ function formatRelativeDate(iso) {
   return date.toLocaleString();
 }
 
+function escapeHtml(value) {
+  return String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
 function renderSecurityHeader(payload) {
   const emailLine = document.getElementById('security-email-line');
   const verifiedLine = document.getElementById('email-verified-line');
@@ -273,20 +282,30 @@ async function revokeSessionById(sessionId) {
 }
 
 async function revokeAllOtherSessions() {
+  const currentPassword = window.prompt('Enter your current password to sign out other devices:');
+  if (!currentPassword) {
+    return;
+  }
   await fetchJson('/api/auth/security/sessions/revoke-all-others', {
     method: 'POST',
     headers: authHeaders(),
-    credentials: 'include'
+    credentials: 'include',
+    body: JSON.stringify({ currentPassword })
   });
   setStatus('Signed out of all other devices.');
   await loadSessions();
 }
 
 async function signOutAllDevices() {
+  const currentPassword = window.prompt('Enter your current password to sign out all devices:');
+  if (!currentPassword) {
+    return;
+  }
   await fetchJson('/api/auth/logout-all', {
     method: 'POST',
     headers: authHeaders(),
-    credentials: 'include'
+    credentials: 'include',
+    body: JSON.stringify({ currentPassword })
   });
   if (window.setStoredAuthToken) {
     window.setStoredAuthToken('');
@@ -306,9 +325,9 @@ async function viewEmailLog(logId) {
   const item = payload?.item || {};
   box.classList.remove('hidden');
   box.innerHTML = `
-    <h4>${item.subject || 'Email preview'}</h4>
-    <p class="small-note">${formatRelativeDate(item.sent_at)} • ${item.status || '-'}</p>
-    <div class="table-wrap">${item.html_preview || '<p>No preview available.</p>'}</div>
+    <h4>${escapeHtml(item.subject || 'Email preview')}</h4>
+    <p class="small-note">${escapeHtml(formatRelativeDate(item.sent_at))} • ${escapeHtml(item.status || '-')}</p>
+    <div class="table-wrap"><pre>${escapeHtml(item.html_preview || 'No preview available.')}</pre></div>
   `;
 }
 
@@ -375,8 +394,11 @@ function bindEvents() {
       }
     });
   }
-  if (rotateBrokerKeysButton instanceof HTMLButtonElement) {
-    rotateBrokerKeysButton.addEventListener('click', handleRotateBrokerKeys);
+  if (rotateBrokerKeysButton instanceof HTMLElement) {
+    rotateBrokerKeysButton.addEventListener('click', (event) => {
+      event.preventDefault();
+      handleRotateBrokerKeys();
+    });
   }
 
   document.addEventListener('click', (event) => {

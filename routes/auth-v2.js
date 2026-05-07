@@ -59,6 +59,13 @@ const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/i;
 const REPORT_TIME_OPTIONS = new Set(['16:00', '16:30', '17:00', '18:00']);
 const OAUTH_PROVIDERS = new Set(['google', 'apple', 'github', 'discord', 'x']);
 const TRADER_MODES = new Set(['scalper', 'day', 'swing', 'long']);
+const MAX_FAILED_LOGIN_ATTEMPTS = 5;
+const AUTH_LOCKOUT_MINUTES = 15;
+const EMAIL_ACTION_LIMITS = Object.freeze({
+  forgot_password: { max: 3, windowMs: 60 * 60 * 1000 },
+  resend_verification: { max: 3, windowMs: 60 * 60 * 1000 }
+});
+const emailActionWindows = new Map();
 
 function normalizeEmail(email) {
   return String(email || '').trim().toLowerCase();
@@ -114,8 +121,56 @@ function issueCompatibilityToken(user) {
   }
 }
 
-function resolveLockoutMessage() {
-  return 'Too many failed attempts — try again in 15 minutes';
+function getRemainingLockoutMinutes(lockoutUntilIso) {
+  const lockoutTs = Date.parse(String(lockoutUntilIso || ''));
+  if (!Number.isFinite(lockoutTs)) {
+    return AUTH_LOCKOUT_MINUTES;
+  }
+  return Math.max(1, Math.ceil((lockoutTs - Date.now()) / (60 * 1000)));
+}
+
+function resolveLockoutMessage(lockoutUntilIso) {
+  const minutes = getRemainingLockoutMinutes(lockoutUntilIso);
+  return `Account temporarily locked. Try again in ${minutes} minute${minutes === 1 ? '' : 's'}.`;
+}
+
+function enforceEmailActionLimit(action, email) {
+  const policy = EMAIL_ACTION_LIMITS[action];
+  if (!policy) {
+    return { ok: true, retryAfterSeconds: 0 };
+  }
+  const normalizedEmail = normalizeEmail(email);
+  if (!normalizedEmail) {
+    return { ok: true, retryAfterSeconds: 0 };
+  }
+  const key = `${action}:${normalizedEmail}`;
+  const now = Date.now();
+  const existing = emailActionWindows.get(key);
+  if (!existing || existing.expiresAt <= now) {
+    emailActionWindows.set(key, {
+      count: 1,
+      expiresAt: now + policy.windowMs
+    });
+    return { ok: true, retryAfterSeconds: 0 };
+  }
+  if (existing.count >= policy.max) {
+    return {
+      ok: false,
+      retryAfterSeconds: Math.max(1, Math.ceil((existing.expiresAt - now) / 1000))
+    };
+  }
+  existing.count += 1;
+  emailActionWindows.set(key, existing);
+  return { ok: true, retryAfterSeconds: 0 };
+}
+
+function hasValidMaintenanceToken(req) {
+  const required = String(process.env.AUTH_MAINTENANCE_TOKEN || '').trim();
+  if (!required) {
+    return false;
+  }
+  const provided = String(req.get('x-auth-maintenance-token') || '').trim();
+  return provided && provided === required;
 }
 
 function buildAppUrl(pathname) {
@@ -222,12 +277,18 @@ function ensureLegacyUserRecord(authUser, options = {}) {
   return created;
 }
 
-router.get('/schema/snapshot', (_req, res) => {
+router.get('/schema/snapshot', (req, res) => {
+  if (!hasValidMaintenanceToken(req)) {
+    return res.status(404).json({ error: 'not_found' });
+  }
   const snapshot = ensureSchema();
   return res.json({ ok: true, snapshot });
 });
 
-router.post('/migrate/password-hashes', async (_req, res) => {
+router.post('/migrate/password-hashes', async (req, res) => {
+  if (!hasValidMaintenanceToken(req)) {
+    return res.status(404).json({ error: 'not_found' });
+  }
   const summary = await runPlaintextPasswordMigration();
   return res.json({ ok: true, migrated: summary.migrated });
 });
@@ -252,7 +313,7 @@ async function handleSignup(req, res) {
         strength
       });
     }
-    if (confirmPassword && password !== confirmPassword) {
+    if (password !== confirmPassword) {
       return res.status(400).json({
         error: 'password_mismatch',
         message: 'Passwords do not match.'
@@ -305,6 +366,13 @@ router.post('/resend-verification', async (req, res) => {
     });
   }
   const user = getUserByEmailForAuth(email);
+  const emailLimiter = enforceEmailActionLimit('resend_verification', email);
+  if (!emailLimiter.ok) {
+    return res.status(429).json({
+      error: 'rate_limited',
+      message: `Too many verification email requests. Try again in ${Math.ceil(emailLimiter.retryAfterSeconds / 60)} minute(s).`
+    });
+  }
   if (!user) {
     return res.json({
       ok: true,
@@ -372,7 +440,7 @@ router.post('/login', async (req, res) => {
   const email = normalizeEmail(req.body?.email || '');
   const password = String(req.body?.password || '');
   const rememberRaw = parseOptionalBoolean(req.body?.remember);
-  const remember = typeof rememberRaw === 'boolean' ? rememberRaw : true;
+  const remember = rememberRaw === true;
   if (!isValidEmail(email)) {
     return res.status(400).json({
       error: 'invalid_email',
@@ -383,14 +451,22 @@ router.post('/login', async (req, res) => {
   if (!user) {
     return res.status(404).json({
       error: 'unknown_email',
-      message: 'No account found with that email'
+      message: 'No account found with that email address.',
+      createAccountPath: '/register'
+    });
+  }
+  if (Boolean(user.account_suspended)) {
+    return res.status(403).json({
+      error: 'account_suspended',
+      message: 'This account has been suspended. Contact support.'
     });
   }
   if (isLockedOut(user)) {
     return res.status(429).json({
       error: 'too_many_attempts',
-      message: resolveLockoutMessage(),
-      lockoutUntil: user.lockout_until
+      message: resolveLockoutMessage(user.lockout_until),
+      lockoutUntil: user.lockout_until,
+      lockoutMinutesRemaining: getRemainingLockoutMinutes(user.lockout_until)
     });
   }
   const validPassword = await verifyPasswordAgainstUser(user, password);
@@ -399,19 +475,25 @@ router.post('/login', async (req, res) => {
     if (updated && isLockedOut(updated)) {
       return res.status(429).json({
         error: 'too_many_attempts',
-        message: resolveLockoutMessage(),
-        lockoutUntil: updated.lockout_until
+        message: resolveLockoutMessage(updated.lockout_until),
+        lockoutUntil: updated.lockout_until,
+        lockoutMinutesRemaining: getRemainingLockoutMinutes(updated.lockout_until)
       });
     }
+    const attemptsRemaining = Math.max(
+      0,
+      MAX_FAILED_LOGIN_ATTEMPTS - Number(updated?.failed_login_attempts || 0)
+    );
     return res.status(401).json({
       error: 'incorrect_password',
-      message: 'Incorrect password'
+      message: `Incorrect password. (${attemptsRemaining} attempts remaining before lockout)`,
+      attemptsRemaining
     });
   }
   if (!verifyEmailState(user)) {
     return res.status(403).json({
       error: 'email_not_verified',
-      message: 'Please verify your email before signing in',
+      message: 'Please verify your email before signing in.',
       resendPath: '/api/auth/resend-verification'
     });
   }
@@ -435,6 +517,12 @@ router.post('/login', async (req, res) => {
 });
 
 router.post('/oauth/signin', async (req, res) => {
+  if (String(process.env.ENABLE_INSECURE_OAUTH_SIGNIN || '').trim() !== '1') {
+    return res.status(501).json({
+      error: 'oauth_not_configured',
+      message: 'Social sign-in is temporarily unavailable. Please use email and password.'
+    });
+  }
   const rememberRaw = parseOptionalBoolean(req.body?.remember);
   const remember = typeof rememberRaw === 'boolean' ? rememberRaw : true;
   const provider = String(req.body?.provider || '').trim().toLowerCase();
@@ -503,11 +591,31 @@ router.post('/session/revoke', requireApiAuth, (req, res) => {
 
 router.post('/logout-all', requireApiAuth, (req, res) => {
   const authUser = getUserByEmailForAuth(req.user?.email || '');
-  if (authUser?.id) {
-    revokeAllSessionsForUser(authUser.id);
+  const currentPassword = String(req.body?.currentPassword || '');
+  if (!currentPassword) {
+    return res.status(400).json({
+      error: 'password_required',
+      message: 'Current password is required to sign out of all devices.'
+    });
   }
-  clearSessionCookie(res);
-  return res.json({ ok: true });
+  return verifyPasswordAgainstUser(authUser, currentPassword)
+    .then((validPassword) => {
+      if (!validPassword) {
+        return res.status(401).json({
+          error: 'incorrect_password',
+          message: 'Incorrect current password.'
+        });
+      }
+      if (authUser?.id) {
+        revokeAllSessionsForUser(authUser.id);
+      }
+      clearSessionCookie(res);
+      return res.json({ ok: true });
+    })
+    .catch(() => res.status(400).json({
+      error: 'invalid_request',
+      message: 'Could not sign out all devices.'
+    }));
 });
 
 router.post('/session/restore', (req, res) => {
@@ -561,11 +669,18 @@ router.post('/forgot-password', async (req, res) => {
       message: 'Enter a valid email address.'
     });
   }
+  const emailLimiter = enforceEmailActionLimit('forgot_password', email);
+  if (!emailLimiter.ok) {
+    return res.status(429).json({
+      error: 'rate_limited',
+      message: `Too many reset requests. Try again in ${Math.ceil(emailLimiter.retryAfterSeconds / 60)} minute(s).`
+    });
+  }
   const user = getUserByEmailForAuth(email);
   if (!user) {
     return res.json({
       ok: true,
-      message: 'If this email exists, a reset link was sent.'
+      message: 'If an account exists with that email, a reset link has been sent.'
     });
   }
   const token = issuePasswordResetToken(user.id);
@@ -585,7 +700,7 @@ router.post('/forgot-password', async (req, res) => {
   }
   return res.json({
     ok: true,
-    message: 'If this email exists, a reset link was sent.'
+    message: 'If an account exists with that email, a reset link has been sent.'
   });
 });
 
@@ -630,7 +745,7 @@ router.post('/reset-password', async (req, res) => {
   }
   return res.json({
     ok: true,
-    message: 'Password reset successful. Please sign in.'
+    message: 'Password reset successfully. Please sign in.'
   });
 });
 
@@ -697,8 +812,22 @@ router.post('/security/sessions/revoke', requireApiAuth, (req, res) => {
   return res.json({ ok: true });
 });
 
-router.post('/security/sessions/revoke-all-others', requireApiAuth, (req, res) => {
+router.post('/security/sessions/revoke-all-others', requireApiAuth, async (req, res) => {
   const authUser = getUserByEmailForAuth(req.user?.email || '');
+  const currentPassword = String(req.body?.currentPassword || '');
+  if (!currentPassword) {
+    return res.status(400).json({
+      error: 'password_required',
+      message: 'Current password is required to sign out of other devices.'
+    });
+  }
+  const validPassword = await verifyPasswordAgainstUser(authUser, currentPassword);
+  if (!validPassword) {
+    return res.status(401).json({
+      error: 'incorrect_password',
+      message: 'Incorrect current password.'
+    });
+  }
   const token = readSessionToken(req);
   const resolved = validateSessionFromToken(token);
   revokeAllSessionsForUser(authUser.id, {

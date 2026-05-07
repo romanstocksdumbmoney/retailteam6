@@ -51,7 +51,7 @@ function validateEncryptionEnv() {
 }
 
 const app = express();
-console.log('Restart the dev server for .env changes to load.');
+app.set('trust proxy', 1);
 const buildDir = path.join(__dirname, 'frontend', 'build');
 const frontendSrcDir = path.join(__dirname, 'frontend', 'src');
 const frontendBuildScript = path.join(__dirname, 'frontend', 'scripts', 'build.js');
@@ -139,12 +139,27 @@ app.use(cors({
 }));
 app.disable('x-powered-by');
 app.use(helmet({
-    contentSecurityPolicy: false,
+    contentSecurityPolicy: {
+        directives: {
+            defaultSrc: ["'self'"],
+            scriptSrc: ["'self'", "'unsafe-inline'"],
+            styleSrc: ["'self'", "'unsafe-inline'"],
+            imgSrc: ["'self'", 'data:', 'https:'],
+            connectSrc: ["'self'", 'https:'],
+            fontSrc: ["'self'", 'data:'],
+            objectSrc: ["'none'"],
+            frameAncestors: ["'none'"],
+            baseUri: ["'self'"],
+            formAction: ["'self'"]
+        }
+    },
     crossOriginEmbedderPolicy: false
 }));
 app.use((req, res, next) => {
-    res.setHeader('Referrer-Policy', 'no-referrer');
+    res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
     res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('X-Frame-Options', 'DENY');
+    res.setHeader('X-XSS-Protection', '1; mode=block');
     res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
     next();
 });
@@ -155,6 +170,34 @@ const authLimiter = rateLimit({
     standardHeaders: true,
     legacyHeaders: false,
     message: { error: 'rate_limited', message: 'Too many auth requests. Try again later.' }
+});
+const loginLimiter = rateLimit({
+    windowMs: 60 * 1000,
+    max: 10,
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: { error: 'rate_limited', message: 'Too many login attempts. Try again later.' }
+});
+const registerLimiter = rateLimit({
+    windowMs: 60 * 60 * 1000,
+    max: 5,
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: { error: 'rate_limited', message: 'Too many registration attempts. Try again later.' }
+});
+const forgotPasswordLimiter = rateLimit({
+    windowMs: 60 * 60 * 1000,
+    max: 3,
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: { error: 'rate_limited', message: 'Too many password reset requests. Try again later.' }
+});
+const resendVerificationLimiter = rateLimit({
+    windowMs: 60 * 60 * 1000,
+    max: 3,
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: { error: 'rate_limited', message: 'Too many verification email requests. Try again later.' }
 });
 const checkoutLimiter = rateLimit({
     windowMs: 10 * 60 * 1000,
@@ -172,10 +215,16 @@ const complaintLimiter = rateLimit({
 });
 
 app.use('/api/auth/signup', authLimiter);
-app.use('/api/auth/login', authLimiter);
+app.use('/api/auth/register', registerLimiter);
+app.use('/api/auth/signup', registerLimiter);
+app.use('/api/auth/login', loginLimiter);
 app.use('/api/auth/oauth/signin', authLimiter);
 app.use('/api/auth/session/restore', authLimiter);
 app.use('/api/auth/session/revoke', authLimiter);
+app.use('/api/auth/forgot-password', forgotPasswordLimiter);
+app.use('/api/auth/reset-password', forgotPasswordLimiter);
+app.use('/api/auth/resend-verification', resendVerificationLimiter);
+app.use('/api/auth/verify-email', resendVerificationLimiter);
 app.use('/api/auth/access-code/request', authLimiter);
 app.use('/api/auth/access-code/verify', authLimiter);
 app.use('/api/auth/email-automation/settings', authLimiter);

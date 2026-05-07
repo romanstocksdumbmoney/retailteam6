@@ -5,7 +5,8 @@ const {
   clearSessionCookie,
   validateSessionFromToken,
   touchAndExtendSession,
-  sanitizeUserForClient
+  sanitizeUserForClient,
+  getClientIp
 } = require('./authDbService');
 
 const PROTECTED_PAGE_PATHS = new Set([
@@ -15,9 +16,12 @@ const PROTECTED_PAGE_PATHS = new Set([
   '/portfolio.html',
   '/portfolios.html',
   '/reports',
+  '/reports.html',
   '/settings',
   '/settings/',
   '/settings.html',
+  '/settings/broker',
+  '/settings/broker.html',
   '/ai-bot-trader',
   '/ai-bot-trader.html',
   '/ai-bot-account',
@@ -90,7 +94,7 @@ function attachAuthFromSession(req, res) {
   }
   const touched = touchAndExtendSession(resolved.session, {
     userAgent: req.get('user-agent'),
-    ipAddress: req.ip || req.socket?.remoteAddress || ''
+    ipAddress: getClientIp(req)
   });
   if (!touched) {
     clearSessionCookie(res);
