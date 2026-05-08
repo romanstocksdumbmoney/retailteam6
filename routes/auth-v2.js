@@ -439,6 +439,7 @@ router.post('/verify-email', (req, res) => {
 router.post('/login', async (req, res) => {
   const email = normalizeEmail(req.body?.email || '');
   const password = String(req.body?.password || '');
+  const traderMode = normalizeTraderMode(req.body?.traderMode || '');
   const rememberRaw = parseOptionalBoolean(req.body?.remember);
   const remember = rememberRaw === true;
   if (!isValidEmail(email)) {
@@ -503,6 +504,10 @@ router.post('/login', async (req, res) => {
     passwordHash: refreshed.password_hash,
     authProvider: 'password'
   });
+  const legacy = findUserByEmail(refreshed.email);
+  if (legacy && traderMode) {
+    setUserTraderModeById(legacy.id, traderMode);
+  }
   const { rawToken } = createSessionForUser(refreshed, {
     persistent: remember,
     userAgent: req.get('user-agent'),
@@ -511,6 +516,8 @@ router.post('/login', async (req, res) => {
   setSessionCookie(res, rawToken, remember);
   return res.json({
     ok: true,
+    success: true,
+    redirect: '/dashboard',
     token: issueCompatibilityToken(refreshed),
     user: sanitizeUser(refreshed)
   });

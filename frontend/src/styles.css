@@ -8476,3 +8476,32 @@ textarea:focus {
   word-break: break-word;
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', monospace;
 }
+
+.auth-toast-stack {
+  position: fixed;
+  right: 16px;
+  bottom: 16px;
+  z-index: 1500;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  pointer-events: none;
+}
+
+.auth-toast {
+  min-width: 240px;
+  max-width: min(420px, calc(100vw - 32px));
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid #2a2a3a;
+  background: #13131f;
+  color: #ffffff;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+  font-size: 13px;
+  line-height: 1.35;
+}
+
+.auth-toast--info {
+  border-color: #f0c040;
+  color: #f0c040;
+}

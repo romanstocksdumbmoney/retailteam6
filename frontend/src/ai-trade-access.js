@@ -16,6 +16,7 @@ async function fetchJson(url, options = {}) {
 }
 
 const DEFAULT_NEXT_PATH = '/dashboard';
+const DASHBOARD_PATH = '/dashboard';
 const AUTH_PAGE_MODE_LOGIN = 'login';
 const AUTH_PAGE_MODE_SIGNUP = 'signup';
 const TRADER_MODE_STORAGE_KEY = 'dumbdollars_trader_mode';
@@ -56,6 +57,29 @@ function setStatus(text, isError = false) {
   }
   node.textContent = text;
   node.className = isError ? 'small-note auth-error' : 'small-note';
+}
+
+function ensureToastStack() {
+  let stack = document.getElementById('auth-toast-stack');
+  if (stack instanceof HTMLElement) {
+    return stack;
+  }
+  stack = document.createElement('div');
+  stack.id = 'auth-toast-stack';
+  stack.className = 'auth-toast-stack';
+  document.body.appendChild(stack);
+  return stack;
+}
+
+function showToast(message, tone = 'info', timeoutMs = 3600) {
+  const stack = ensureToastStack();
+  const toast = document.createElement('div');
+  toast.className = `auth-toast auth-toast--${tone}`;
+  toast.textContent = String(message || '');
+  stack.appendChild(toast);
+  window.setTimeout(() => {
+    toast.remove();
+  }, Math.max(1200, timeoutMs));
 }
 
 function clearStatusActions() {
@@ -305,6 +329,7 @@ async function signUp(email, password, options = {}) {
 
 async function logIn(email, password, options = {}) {
   const remember = options.remember !== false;
+  const traderMode = normalizeTraderMode(options.traderMode || getSelectedTraderModeFromUi());
   const payload = await fetchJson('/api/auth/login', {
     method: 'POST',
     credentials: 'include',
@@ -312,10 +337,12 @@ async function logIn(email, password, options = {}) {
     body: JSON.stringify({
       email,
       password,
-      remember
+      remember,
+      traderMode
     })
   });
   applyAuthPayload(payload, email);
+  saveTraderMode(payload?.user?.traderMode || traderMode);
 }
 
 async function socialSignIn(provider, email, options = {}) {
@@ -376,7 +403,7 @@ function goToSocialAuthPage(provider, email) {
   const emailSegment = isLikelyValidEmail(normalizedEmail)
     ? `&email=${encodeURIComponent(normalizedEmail)}`
     : '';
-  window.location.href = `/social-auth.html?provider=${providerParam}${emailSegment}&traderMode=${traderModeParam}&next=${next}`;
+  window.location.assign(`/social-auth.html?provider=${providerParam}${emailSegment}&traderMode=${traderModeParam}&next=${next}`);
 }
 
 function getSafeNextPath() {
@@ -433,8 +460,39 @@ function applyRequestedAuthMode() {
   }
 }
 
-function goToNextPath() {
-  window.location.href = getSafeNextPath();
+function goToPath(pathname, options = {}) {
+  const target = String(pathname || DASHBOARD_PATH).trim();
+  if (!target.startsWith('/') || target.startsWith('//')) {
+    window.location.assign(DASHBOARD_PATH);
+    return;
+  }
+  if (window.appRouter && typeof window.appRouter.push === 'function') {
+    window.appRouter.push(target);
+    return;
+  }
+  if (window.router && typeof window.router.push === 'function') {
+    window.router.push(target);
+    return;
+  }
+  if (options.replace) {
+    window.location.replace(target);
+    return;
+  }
+  window.location.assign(target);
+}
+
+function goToDashboard(options = {}) {
+  goToPath(DASHBOARD_PATH, options);
+}
+
+async function ensureSessionReadyAfterLogin() {
+  const restored = await fetchJson('/api/auth/session/restore', {
+    method: 'POST',
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json' }
+  });
+  applyAuthPayload(restored, restored?.user?.email || '');
+  return restored;
 }
 
 async function hydrateSessionUser(token) {
@@ -472,7 +530,7 @@ async function verifySessionAndRedirectIfSignedIn() {
   }
   try {
     await hydrateSessionUser(token);
-    goToNextPath();
+    goToDashboard({ replace: true });
     return;
   } catch (_error) {
     clearAuthToken();
@@ -484,7 +542,7 @@ async function verifySessionAndRedirectIfSignedIn() {
   }
   try {
     await hydrateSessionUser(token);
-    goToNextPath();
+    goToDashboard({ replace: true });
   } catch (_retryError) {
     clearAuthToken();
   }
@@ -660,10 +718,12 @@ function setupForms() {
         throw new Error('Please enter a valid email address.');
       }
       setButtonBusy(submitButton, true, idleLabel, 'Signing in...');
-      await logIn(email, password, { remember });
-      await hydrateSessionUser(String(localStorage.getItem('dumbdollars_token') || '').trim());
+      const traderMode = getSelectedTraderModeFromUi();
+      const loginPayload = await logIn(email, password, { remember, traderMode });
+      await ensureSessionReadyAfterLogin();
       setStatus('Login successful. Redirecting...');
-      goToNextPath();
+      const redirectPath = String(loginPayload?.redirect || DASHBOARD_PATH).trim() || DASHBOARD_PATH;
+      goToPath(redirectPath);
     } catch (error) {
       const code = String(error?.body?.error || '').trim().toLowerCase();
       const mappedMessage = mapLoginErrorMessage(error);
@@ -691,20 +751,12 @@ function setupForms() {
   });
 
   socialButtons.forEach((button) => {
-    button.addEventListener('click', async () => {
+    button.addEventListener('click', (event) => {
+      event.preventDefault();
       const provider = String(button.getAttribute('data-provider') || '').trim().toLowerCase();
-      const loginEmail = normalizeEmailInput(document.getElementById('ai-access-login-email')?.value || '');
-      const signupEmail = normalizeEmailInput(document.getElementById('ai-access-signup-email')?.value || '');
-      const savedEmail = normalizeEmailInput(localStorage.getItem('dumbdollars_saved_email') || '');
-      const email = loginEmail || signupEmail || savedEmail;
-      const traderMode = getSelectedTraderModeFromUi();
-      button.disabled = true;
-      setStatus('Opening social sign-in...');
-      saveTraderMode(traderMode);
-      goToSocialAuthPage(provider, email);
-      window.setTimeout(() => {
-        button.disabled = false;
-      }, 1000);
+      const providerLabel = provider ? provider.charAt(0).toUpperCase() + provider.slice(1) : 'Social';
+      setStatus(`Coming soon — ${providerLabel} login is in development`);
+      showToast(`Coming soon — ${providerLabel} login is in development`, 'info', 4200);
     });
   });
 

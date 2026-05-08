@@ -38,6 +38,29 @@ function setStatus(text, isError = false) {
       : 'small-note';
 }
 
+function ensureToastStack() {
+  let stack = document.getElementById('social-auth-toast-stack');
+  if (stack instanceof HTMLElement) {
+    return stack;
+  }
+  stack = document.createElement('div');
+  stack.id = 'social-auth-toast-stack';
+  stack.className = 'auth-toast-stack';
+  document.body.appendChild(stack);
+  return stack;
+}
+
+function showToast(message, tone = 'info', timeoutMs = 3600) {
+  const stack = ensureToastStack();
+  const toast = document.createElement('div');
+  toast.className = `auth-toast auth-toast--${tone}`;
+  toast.textContent = String(message || '');
+  stack.appendChild(toast);
+  window.setTimeout(() => {
+    toast.remove();
+  }, Math.max(1200, timeoutMs));
+}
+
 function normalizeEmail(value) {
   return String(value || '').trim().toLowerCase();
 }
@@ -149,40 +172,12 @@ function setupButtons() {
   }
 
   buttons.forEach((button) => {
-    button.addEventListener('click', async () => {
+    button.addEventListener('click', (event) => {
+      event.preventDefault();
       const provider = String(button.getAttribute('data-provider') || '').trim().toLowerCase();
-      const email = normalizeEmail(emailInput.value);
-      if (!isLikelyValidEmail(email)) {
-        setStatus('Enter a valid email to continue.', true);
-        return;
-      }
-      const idle = button.textContent || 'Continue';
-      try {
-        button.disabled = true;
-        button.classList.add('is-loading');
-        button.setAttribute('aria-busy', 'true');
-        button.textContent = 'Connecting...';
-        setStatus(`Connecting ${providerLabel(provider)} sign in...`);
-        const payload = await doSocialSignIn(provider, email, wantsRememberSessionFromQuery());
-        saveAuthSession(payload.token, payload?.user?.email || email);
-        const next = getSafeNextPath();
-        setStatus('Sign in complete. Redirecting...');
-        window.location.href = next;
-      } catch (error) {
-        if (error?.status === 501) {
-          setStatus('Social sign-in is temporarily unavailable. Use email and password for now.', true);
-          window.setTimeout(() => {
-            window.location.href = '/ai-trade-access.html?mode=login';
-          }, 1200);
-          return;
-        }
-        setStatus(error.message || 'Social sign in failed.', true);
-      } finally {
-        button.disabled = false;
-        button.classList.remove('is-loading');
-        button.removeAttribute('aria-busy');
-        button.textContent = idle;
-      }
+      const label = providerLabel(provider);
+      setStatus(`Coming soon — ${label} login is in development.`);
+      showToast(`Coming soon — ${label} login is in development.`, 'info', 4200);
     });
   });
 }
