@@ -490,14 +490,13 @@ async function runPostAuthFlow(authPayload = {}, fallbackEmail = '') {
   try {
     restored = await ensureSessionReadyAfterLogin();
   } catch (_error) {
-    restored = null;
+    throw new Error('Could not verify your session yet. Please try again.');
+  }
+  if (!String(restored?.token || '').trim()) {
+    throw new Error('Could not verify your session yet. Please try again.');
   }
   const effectiveUser = restored?.user || authPayload?.user || getStoredAuthUserSnapshot() || null;
-  if (restored?.token || restored?.user) {
-    applyAuthPayload(restored, effectiveUser?.email || fallbackEmail);
-  } else if (authPayload?.user || authPayload?.token) {
-    applyAuthPayload(authPayload, effectiveUser?.email || fallbackEmail);
-  }
+  applyAuthPayload(restored, effectiveUser?.email || fallbackEmail);
   const shouldCollectName = needsDisplayNameCollection(effectiveUser);
   if (shouldCollectName) {
     const initialName = normalizeDisplayNameInput(effectiveUser?.displayName || effectiveUser?.display_name || '');
