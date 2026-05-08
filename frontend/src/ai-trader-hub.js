@@ -47,6 +47,7 @@ const state = {
   seenActivityIds: new Set(),
   setupCompleteLocally: false,
   selectedBroker: 'alpaca',
+  controlsDropdownOpen: false,
   timers: {
     oneSecond: null,
     marketStatus: null,
@@ -419,6 +420,62 @@ function statusVisualWord() {
   return 'STOPPED';
 }
 
+function isBrokerConnectedFromStatus(status = state.status) {
+  return Boolean(status?.brokerConnected)
+    && Boolean(status?.bot?.execution?.brokerConnection?.auth?.secretSaved || status?.bot?.execution?.brokerConnection?.auth?.loginSaved);
+}
+
+function resolveDropdownStatusWord() {
+  const market = state.localMarket || computeLocalMarketStatus();
+  if (!market.isOpen) {
+    return 'MARKET CLOSED';
+  }
+  return statusVisualWord();
+}
+
+function setControlsDropdownOpen(open) {
+  const dropdown = byId('ai-trader-controls-dropdown');
+  const toggle = byId('ai-trader-controls-toggle');
+  if (!dropdown || !(toggle instanceof HTMLButtonElement)) {
+    return;
+  }
+  state.controlsDropdownOpen = Boolean(open);
+  dropdown.classList.toggle('hidden', !state.controlsDropdownOpen);
+  toggle.setAttribute('aria-expanded', state.controlsDropdownOpen ? 'true' : 'false');
+}
+
+function closeControlsDropdown() {
+  setControlsDropdownOpen(false);
+}
+
+function toggleControlsDropdown() {
+  setControlsDropdownOpen(!state.controlsDropdownOpen);
+}
+
+function updateControlsDropdownStatus() {
+  const statusLabel = resolveDropdownStatusWord();
+  const statusDot = byId('ai-trader-dropdown-status-dot');
+  const statusText = byId('ai-trader-dropdown-status-text');
+  const toggleDot = byId('ai-trader-controls-toggle-dot');
+  const tone = statusLabel === 'RUNNING'
+    ? 'running'
+    : statusLabel === 'PAUSED'
+      ? 'paused'
+      : statusLabel === 'MARKET CLOSED'
+        ? 'closed'
+        : 'stopped';
+  [statusDot, toggleDot].forEach((node) => {
+    if (!(node instanceof HTMLElement)) {
+      return;
+    }
+    node.classList.remove('status-running', 'status-paused', 'status-stopped', 'status-closed');
+    node.classList.add(`status-${tone}`);
+  });
+  if (statusText) {
+    statusText.textContent = statusLabel;
+  }
+}
+
 function applyTopStatus() {
   const chip = byId('ai-trader-hub-top-status');
   const orb = byId('ai-trader-status-orb');
@@ -454,10 +511,15 @@ function applyTopStatus() {
       subline.textContent = 'Bot is stopped. Press START when ready.';
     }
   }
+  updateControlsDropdownStatus();
+  const market = state.localMarket || computeLocalMarketStatus();
+  const brokerConnected = isBrokerConnectedFromStatus();
   emitBotStatusPill({
     statusWord,
     stateClass: statusWord === 'RUNNING' ? 'running' : statusWord === 'PAUSED' ? 'paused' : 'off',
     isRunning: statusWord === 'RUNNING',
+    brokerConnected,
+    marketOpen: Boolean(market?.isOpen),
     href: '/#ai-trader-hub'
   });
   const navDot = byId('ai-trader-nav-dot');
@@ -479,11 +541,12 @@ function setControlsDisabledState() {
     startBtn.disabled = startBusy || statusWord === 'RUNNING';
   }
   if (pauseBtn instanceof HTMLButtonElement) {
-    pauseBtn.disabled = pauseBusy || statusWord === 'STOPPED';
+    pauseBtn.disabled = pauseBusy || statusWord === 'PAUSED' || statusWord === 'STOPPED';
   }
   if (stopBtn instanceof HTMLButtonElement) {
     stopBtn.disabled = stopBusy || statusWord === 'STOPPED';
   }
+  updateControlsDropdownStatus();
 }
 
 function renderStatsBar() {
@@ -1131,6 +1194,10 @@ function bindModalDismissShortcuts() {
     if (event.key !== 'Escape') {
       return;
     }
+    if (state.controlsDropdownOpen) {
+      closeControlsDropdown();
+      return;
+    }
     if (stopModal && !stopModal.classList.contains('hidden')) {
       closeStopModal();
       return;
@@ -1328,8 +1395,8 @@ function applyStatusPayload(payload) {
 async function pollStatus() {
   try {
     const payload = await fetchJsonWithAuthRetry('/api/bot/status', { method: 'GET' });
-    applyStatusPayload(payload);
     state.localMarket = payload?.marketStatus || payload?.market || computeLocalMarketStatus();
+    applyStatusPayload(payload);
     registerConnectionSuccess();
   } catch (error) {
     if (error?.status === 401) {
@@ -1417,8 +1484,7 @@ async function startBotFlow() {
       status = await fetchJsonWithAuthRetry('/api/bot/status', { method: 'GET' });
       applyStatusPayload(status);
     }
-    const brokerConnected = Boolean(status?.brokerConnected)
-      && Boolean(status?.bot?.execution?.brokerConnection?.auth?.secretSaved || status?.bot?.execution?.brokerConnection?.auth?.loginSaved);
+    const brokerConnected = isBrokerConnectedFromStatus(status);
     const settingsSavedStep = Boolean(status?.setup?.steps?.settingsSaved);
     if (!brokerConnected) {
       openBrokerModal(1);
@@ -1497,6 +1563,71 @@ async function stopBotFlow() {
   }
 }
 
+function scrollToSection(sectionId) {
+  const node = byId(sectionId);
+  node?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+function bindControlsDropdown() {
+  const toggleBtn = byId('ai-trader-controls-toggle');
+  const closeBtn = byId('ai-trader-controls-close');
+  const dropdown = byId('ai-trader-controls-dropdown');
+  const settingsLink = byId('ai-trader-quick-settings-link');
+  const brokerLink = byId('ai-trader-quick-broker-link');
+  const performanceLink = byId('ai-trader-quick-performance-link');
+  const emailLink = byId('ai-trader-quick-email-link');
+
+  if (toggleBtn instanceof HTMLButtonElement) {
+    toggleBtn.addEventListener('click', (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      toggleControlsDropdown();
+    });
+  }
+  if (closeBtn instanceof HTMLButtonElement) {
+    closeBtn.addEventListener('click', () => {
+      closeControlsDropdown();
+    });
+  }
+  if (settingsLink instanceof HTMLButtonElement) {
+    settingsLink.addEventListener('click', () => {
+      closeControlsDropdown();
+      scrollToSection('ai-trader-settings-panel');
+    });
+  }
+  if (brokerLink instanceof HTMLButtonElement) {
+    brokerLink.addEventListener('click', () => {
+      closeControlsDropdown();
+      scrollToSection('ai-trader-getting-started');
+    });
+  }
+  if (performanceLink instanceof HTMLButtonElement) {
+    performanceLink.addEventListener('click', () => {
+      closeControlsDropdown();
+      scrollToSection('ai-trader-performance-title');
+    });
+  }
+  if (emailLink instanceof HTMLAnchorElement) {
+    emailLink.addEventListener('click', () => {
+      closeControlsDropdown();
+    });
+  }
+  document.addEventListener('click', (event) => {
+    if (!state.controlsDropdownOpen) {
+      return;
+    }
+    const target = event.target;
+    if (!(target instanceof Element)) {
+      return;
+    }
+    if ((dropdown instanceof HTMLElement && dropdown.contains(target))
+      || (toggleBtn instanceof HTMLElement && toggleBtn.contains(target))) {
+      return;
+    }
+    closeControlsDropdown();
+  });
+}
+
 function bindControls() {
   const startBtn = byId('ai-trader-start-btn');
   const pauseBtn = byId('ai-trader-pause-btn');
@@ -1511,16 +1642,21 @@ function bindControls() {
   const startStepBtn = byId('ai-trader-step-start-btn');
   if (startBtn instanceof HTMLButtonElement) {
     startBtn.addEventListener('click', () => {
+      closeControlsDropdown();
       startBotFlow().catch(() => {});
     });
   }
   if (pauseBtn instanceof HTMLButtonElement) {
     pauseBtn.addEventListener('click', () => {
+      closeControlsDropdown();
       pauseBotFlow().catch(() => {});
     });
   }
   if (stopBtn instanceof HTMLButtonElement) {
-    stopBtn.addEventListener('click', openStopModal);
+    stopBtn.addEventListener('click', () => {
+      closeControlsDropdown();
+      openStopModal();
+    });
   }
   if (stopConfirmBtn instanceof HTMLButtonElement) {
     stopConfirmBtn.addEventListener('click', () => {
@@ -1732,6 +1868,7 @@ function oneSecondTick() {
     state.nextScanSeconds = null;
   }
   renderStatsBar();
+  updateControlsDropdownStatus();
 }
 
 async function initialLoad() {
@@ -1784,6 +1921,7 @@ function initAiTraderHub() {
   state.mounted = true;
   state.setupCompleteLocally = getStoredSetupCompleted();
   bindControls();
+  bindControlsDropdown();
   bindSettingsInteractions();
   bindBrokerModal();
   bindModalDismissShortcuts();

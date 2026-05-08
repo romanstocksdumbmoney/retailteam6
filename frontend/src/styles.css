@@ -1222,19 +1222,19 @@ h1 {
 }
 
 .dashboard-greeting {
-  margin: 0.15rem 0 0;
-  padding: 0.68rem 0.78rem;
-  border: 1px solid rgba(96, 165, 250, 0.36);
+  margin: 0.35rem 0 0;
+  padding: 18px 20px;
+  border: 1px solid #2a2a3a;
+  border-left: 4px solid transparent;
+  border-image: linear-gradient(180deg, #f0c040, rgba(240, 192, 64, 0.25)) 1;
   border-radius: 12px;
-  background:
-    radial-gradient(circle at 8% 18%, rgba(59, 130, 246, 0.15), transparent 52%),
-    rgba(10, 18, 36, 0.72);
-  backdrop-filter: blur(10px);
-  -webkit-backdrop-filter: blur(10px);
-  box-shadow:
-    0 10px 28px rgba(2, 6, 23, 0.35),
-    inset 0 1px 0 rgba(255, 255, 255, 0.04);
-  animation: greeting-fade-in 260ms ease-out;
+  background: #13131f;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.45);
+  animation: greeting-fade-in 320ms ease-out;
 }
 
 .dashboard-greeting.hidden {
@@ -1243,23 +1243,84 @@ h1 {
 
 .dashboard-greeting--active {
   box-shadow:
-    0 12px 30px rgba(37, 99, 235, 0.22),
-    0 10px 28px rgba(2, 6, 23, 0.35),
-    inset 0 1px 0 rgba(255, 255, 255, 0.04);
+    0 0 0 1px rgba(240, 192, 64, 0.16),
+    0 12px 34px rgba(0, 0, 0, 0.48);
 }
 
 .dashboard-greeting-title {
   margin: 0;
-  color: #dbeafe;
-  font-size: clamp(1.04rem, 1.6vw + 0.35rem, 1.3rem);
+  color: #ffffff;
+  font-size: clamp(1.1rem, 1.6vw + 0.42rem, 1.42rem);
   font-weight: 760;
   letter-spacing: 0.01em;
 }
 
+.dashboard-greeting-title .dashboard-greeting-name {
+  color: #f0c040;
+}
+
 .dashboard-greeting-subtext {
-  margin: 0.2rem 0 0;
-  color: #bfdbfe;
+  margin: 0.28rem 0 0;
+  color: #aaaacc;
   font-size: 0.9rem;
+}
+
+.dashboard-welcome-main {
+  min-width: 0;
+}
+
+.dashboard-welcome-side {
+  display: grid;
+  justify-items: end;
+  gap: 7px;
+  flex-shrink: 0;
+}
+
+.dashboard-welcome-clock {
+  margin: 0;
+  color: #ffffff;
+  font-size: 0.84rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.dashboard-welcome-market {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  border: 1px solid rgba(102, 102, 136, 0.8);
+  color: #aaaacc;
+  font-size: 0.73rem;
+  font-weight: 800;
+  min-height: 24px;
+  padding: 2px 10px;
+}
+
+.dashboard-welcome-market.is-open {
+  color: #00c896;
+  border-color: rgba(0, 200, 150, 0.72);
+  background: rgba(0, 200, 150, 0.12);
+}
+
+.dashboard-welcome-market.is-closed {
+  color: #ff4757;
+  border-color: rgba(255, 71, 87, 0.66);
+  background: rgba(255, 71, 87, 0.12);
+}
+
+.dashboard-welcome-avatar {
+  width: 34px;
+  height: 34px;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.78rem;
+  font-weight: 800;
+  border: 1px solid rgba(240, 192, 64, 0.62);
+  color: #f8e7a3;
+  background: rgba(240, 192, 64, 0.14);
 }
 
 @keyframes greeting-fade-in {
@@ -1270,6 +1331,23 @@ h1 {
   100% {
     opacity: 1;
     transform: translateY(0);
+  }
+}
+
+@media (max-width: 760px) {
+  .dashboard-greeting {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 14px;
+    padding: 16px;
+  }
+
+  .dashboard-welcome-side {
+    width: 100%;
+    grid-template-columns: 1fr auto auto;
+    align-items: center;
+    justify-items: start;
+    gap: 10px;
   }
 }
 
@@ -8504,4 +8582,335 @@ textarea:focus {
 .auth-toast--info {
   border-color: #f0c040;
   color: #f0c040;
+}
+
+.auth-name-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1600;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background: rgba(10, 10, 15, 0.94);
+}
+
+.auth-name-overlay.hidden {
+  display: none;
+}
+
+.auth-name-card {
+  width: min(480px, 100%);
+  max-width: 480px;
+  border-radius: 14px;
+  border: 1px solid rgba(240, 192, 64, 0.65);
+  box-shadow:
+    0 0 0 1px rgba(240, 192, 64, 0.18),
+    0 18px 42px rgba(0, 0, 0, 0.58);
+  background: #13131f !important;
+  padding: 26px 24px;
+  display: grid;
+  gap: 12px;
+}
+
+.auth-name-card h2 {
+  margin: 0;
+  color: #ffffff;
+  font-size: clamp(1.45rem, 2.8vw, 1.9rem);
+}
+
+.auth-name-subtitle {
+  margin: 0;
+  color: #aaaacc;
+}
+
+.auth-name-form {
+  display: grid;
+  gap: 10px;
+}
+
+.auth-name-input {
+  width: 100%;
+  min-height: 46px;
+  border-radius: 8px;
+  border: 1px solid #2a2a3a;
+  background: #0d0d16;
+  color: #ffffff;
+  padding: 12px 14px;
+  font-size: 1rem;
+}
+
+.auth-name-input::placeholder {
+  color: #444466;
+}
+
+.auth-name-input:focus {
+  outline: none;
+  border-color: #f0c040;
+  box-shadow: 0 0 0 3px rgba(240, 192, 64, 0.2);
+}
+
+.auth-name-helper,
+.auth-name-footer {
+  margin: 0;
+  color: #aaaacc;
+}
+
+.auth-name-footer {
+  color: #666688;
+  font-size: 12px;
+}
+
+.auth-name-form .auth-primary-btn {
+  width: 100%;
+  min-height: 46px;
+}
+
+@media (max-width: 640px) {
+  .auth-name-overlay {
+    padding: 12px;
+  }
+
+  .auth-name-card {
+    width: 100%;
+    min-height: calc(100vh - 24px);
+    border-radius: 12px;
+    align-content: center;
+  }
+}
+
+.ai-trader-control-grid {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.ai-trader-status-panel {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 18px;
+  position: relative;
+}
+
+.ai-trader-status-main {
+  display: grid;
+  justify-items: center;
+  text-align: center;
+  flex: 1;
+  gap: 7px;
+}
+
+.ai-trader-controls-dropdown-wrap {
+  align-self: flex-start;
+  position: relative;
+}
+
+.ai-trader-controls-toggle {
+  min-height: 44px;
+  border-radius: 10px;
+  border: 1px solid rgba(240, 192, 64, 0.7);
+  background: #13131f;
+  color: #f0c040;
+  font-weight: 800;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  cursor: pointer;
+}
+
+.ai-trader-controls-toggle-dot,
+.ai-trader-dropdown-status-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 999px;
+  background: #666688;
+  box-shadow: 0 0 0 2px rgba(10, 10, 15, 0.35);
+}
+
+.ai-trader-controls-toggle-dot.status-running,
+.ai-trader-dropdown-status-dot.status-running {
+  background: #00c896;
+  box-shadow: 0 0 10px rgba(0, 200, 150, 0.78);
+}
+
+.ai-trader-controls-toggle-dot.status-paused,
+.ai-trader-dropdown-status-dot.status-paused {
+  background: #f0a500;
+  box-shadow: 0 0 10px rgba(240, 165, 0, 0.62);
+}
+
+.ai-trader-controls-toggle-dot.status-stopped,
+.ai-trader-dropdown-status-dot.status-stopped {
+  background: #ff4757;
+  box-shadow: 0 0 10px rgba(255, 71, 87, 0.62);
+}
+
+.ai-trader-controls-toggle-dot.status-closed,
+.ai-trader-dropdown-status-dot.status-closed {
+  background: #666688;
+}
+
+.ai-trader-controls-dropdown {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 10px);
+  width: 280px;
+  background: #13131f;
+  border: 1px solid #2a2a3a;
+  border-radius: 12px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.6);
+  padding: 12px;
+  display: grid;
+  gap: 9px;
+  z-index: 35;
+  animation: aiControlsDropIn 180ms ease-out;
+}
+
+.ai-trader-controls-dropdown.hidden {
+  display: none;
+}
+
+.ai-trader-controls-close {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  min-height: 28px;
+  min-width: 28px;
+  border: 1px solid #2a2a3a;
+  border-radius: 8px;
+  background: transparent;
+  color: #aaaacc;
+  cursor: pointer;
+}
+
+.ai-trader-dropdown-label {
+  margin: 0;
+  color: #666688;
+  font-size: 0.68rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+}
+
+.ai-trader-dropdown-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 1rem;
+  color: #ffffff;
+}
+
+.ai-trader-dropdown-divider {
+  width: 100%;
+  height: 1px;
+  background: #2a2a3a;
+  margin-bottom: 8px;
+}
+
+.ai-trader-control-btn--stacked {
+  width: 100%;
+  min-height: 52px;
+  justify-content: flex-start;
+  align-items: center;
+  text-align: left;
+  border-left-width: 4px;
+}
+
+.ai-trader-control-text {
+  display: grid;
+  gap: 2px;
+}
+
+.ai-trader-control-subtext {
+  color: rgba(255, 255, 255, 0.74);
+  font-size: 0.7rem;
+  font-weight: 600;
+}
+
+.ai-trader-control-btn--stacked .ai-trader-button-spinner {
+  margin-left: auto;
+}
+
+.ai-trader-control-btn--start.ai-trader-control-btn--stacked {
+  border-left-color: #00c896;
+}
+
+.ai-trader-control-btn--pause.ai-trader-control-btn--stacked {
+  border-left-color: #f0a500;
+}
+
+.ai-trader-control-btn--stop.ai-trader-control-btn--stacked {
+  border-left-color: #ff4757;
+}
+
+.ai-trader-stats-bar--dropdown {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.ai-trader-stats-bar--dropdown .ai-trader-stat {
+  padding: 8px;
+}
+
+.ai-trader-dropdown-links {
+  display: grid;
+  gap: 4px;
+}
+
+.ai-trader-dropdown-link {
+  display: inline-flex;
+  align-items: center;
+  min-height: 34px;
+  border-radius: 8px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: #aaaacc;
+  text-decoration: none;
+  font-size: 0.84rem;
+  font-weight: 600;
+  padding: 6px 8px;
+  cursor: pointer;
+}
+
+.ai-trader-dropdown-link:hover {
+  color: #ffffff;
+  border-color: #2a2a3a;
+  background: rgba(255, 255, 255, 0.03);
+}
+
+@keyframes aiControlsDropIn {
+  from {
+    opacity: 0;
+    transform: translateY(-6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (max-width: 760px) {
+  .ai-trader-status-panel {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .ai-trader-controls-dropdown-wrap {
+    width: 100%;
+  }
+
+  .ai-trader-controls-toggle {
+    width: 100%;
+    justify-content: center;
+  }
+}
+
+@media (max-width: 640px) {
+  .ai-trader-controls-dropdown {
+    position: fixed;
+    left: 16px;
+    right: 16px;
+    top: auto;
+    width: auto;
+    max-height: min(82vh, 680px);
+    overflow: auto;
+  }
 }

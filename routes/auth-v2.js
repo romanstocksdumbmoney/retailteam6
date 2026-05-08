@@ -80,12 +80,23 @@ function sanitizeUser(authUser) {
     return null;
   }
   const legacy = findUserByEmail(authUser.email);
+  const displayName = String(legacy?.displayName || '').trim();
+  const fallbackDisplayName = String(authUser.email || '')
+    .split('@')[0]
+    .trim()
+    .replace(/[._]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .replace(/\b\w/g, (char) => char.toUpperCase()) || 'Trader';
+  const hasCustomDisplayName = Boolean(displayName) && displayName.toLowerCase() !== fallbackDisplayName.toLowerCase();
   return {
     id: legacy?.id || authUser.id,
     authUserId: authUser.id,
     email: authUser.email,
     plan: legacy?.plan || 'free',
     traderMode: legacy?.traderMode || 'day',
+    displayName: displayName || fallbackDisplayName,
+    display_name: displayName || fallbackDisplayName,
+    needsDisplayName: !hasCustomDisplayName,
     emailVerified: Boolean(authUser.email_verified),
     emailVerifiedAt: authUser.email_verified_at || null,
     createdAt: authUser.created_at || nowIso()
@@ -299,6 +310,8 @@ async function handleSignup(req, res) {
     const password = String(req.body?.password || '');
     const confirmPassword = String(req.body?.confirmPassword || req.body?.passwordConfirm || '');
     const traderMode = normalizeTraderMode(req.body?.traderMode || '');
+    const rememberRaw = parseOptionalBoolean(req.body?.remember);
+    const remember = rememberRaw !== false;
     if (!isValidEmail(email)) {
       return res.status(400).json({
         error: 'invalid_email',
@@ -334,11 +347,20 @@ async function handleSignup(req, res) {
     });
     await sendVerificationEmail(authUser);
     const responseUser = getUserByEmailForAuth(authUser.email) || authUser;
+    const { rawToken } = createSessionForUser(responseUser, {
+      persistent: remember,
+      userAgent: req.get('user-agent'),
+      ipAddress: getClientIp(req)
+    });
+    setSessionCookie(res, rawToken, remember);
     return res.status(201).json({
       ok: true,
+      success: true,
+      redirect: '/dashboard',
+      token: issueCompatibilityToken(responseUser),
       user: sanitizeUser(responseUser),
       requiresEmailVerification: true,
-      message: 'Account created. Please verify your email before signing in.'
+      message: 'Account created. Please verify your email to unlock all features.'
     });
   } catch (error) {
     if (String(error?.message) === 'email_exists') {

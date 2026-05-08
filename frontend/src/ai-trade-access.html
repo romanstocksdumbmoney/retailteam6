@@ -140,6 +140,31 @@
         <div id="ai-access-status-actions" class="auth-actions"></div>
       </article>
     </main>
+    <div id="auth-name-overlay" class="auth-name-overlay hidden" aria-hidden="true">
+      <div class="auth-name-card card" role="dialog" aria-modal="true" aria-labelledby="auth-name-title">
+        <h2 id="auth-name-title">Welcome to DumbDollars 👋</h2>
+        <p class="auth-name-subtitle">One quick thing before we get started —</p>
+        <form id="auth-name-form" class="auth-name-form" novalidate>
+          <label for="auth-name-input" class="auth-input-label">
+            <span>What should we call you?</span>
+          </label>
+          <input
+            id="auth-name-input"
+            type="text"
+            class="auth-name-input"
+            placeholder="Your first name or nickname"
+            autocomplete="given-name"
+            maxlength="60"
+            autofocus
+          />
+          <p class="small-note auth-name-helper">This is just how we greet you. You can change it anytime.</p>
+          <p id="auth-name-error" class="small-note auth-error hidden"></p>
+          <button id="auth-name-submit" class="auth-primary-btn" type="submit">Let's Go →</button>
+        </form>
+        <p class="small-note auth-name-footer">You can update this anytime in Settings</p>
+      </div>
+    </div>
+    <div id="auth-toast-stack" class="auth-toast-stack" aria-live="polite" aria-atomic="true"></div>
     <script src="./ai-trade-access.js"></script>
     <script src="./ai-copilot-widget.js"></script>
   </body>

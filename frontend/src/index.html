@@ -83,8 +83,15 @@
         </nav>
 
         <section id="dashboard-greeting" class="dashboard-greeting hidden" aria-live="polite">
-          <h2 id="dashboard-greeting-title" class="dashboard-greeting-title">Hello, Trader 👋</h2>
-          <p id="dashboard-greeting-subtext" class="small-note dashboard-greeting-subtext">Logged out. Log in to save your dashboard and history.</p>
+          <div class="dashboard-welcome-main">
+            <h2 id="dashboard-greeting-title" class="dashboard-greeting-title">Hello, Trader 👋</h2>
+            <p id="dashboard-greeting-subtext" class="small-note dashboard-greeting-subtext">Sign in to load your personalized market workspace.</p>
+          </div>
+          <aside class="dashboard-welcome-side">
+            <p id="dashboard-welcome-clock" class="dashboard-welcome-clock">--</p>
+            <span id="dashboard-welcome-market" class="dashboard-welcome-market is-closed">CLOSED</span>
+            <span id="dashboard-welcome-avatar" class="dashboard-welcome-avatar">DT</span>
+          </aside>
         </section>
         <section id="email-verify-banner" class="card hidden" aria-live="polite">
           <p class="small-note">
@@ -760,54 +767,84 @@
               <h3 id="ai-trader-control-title">Bot Status + Controls</h3>
               <div class="ai-trader-control-grid">
                 <div class="ai-trader-status-panel">
-                  <div id="ai-trader-status-orb" class="ai-trader-status-orb ai-trader-status-orb--stopped" aria-hidden="true"></div>
-                  <p id="ai-trader-status-word" class="ai-trader-status-word">STOPPED</p>
-                  <p id="ai-trader-status-subline" class="small-note ai-trader-status-subline">Configure and start your bot to begin scanning.</p>
-                </div>
-                <div class="ai-trader-controls-panel">
-                  <div class="ai-trader-controls-row">
-                    <button id="ai-trader-start-btn" class="ai-trader-control-btn ai-trader-control-btn--start" type="button">
-                      <span class="ai-trader-control-icon" aria-hidden="true">▶</span>
-                      <span class="ai-trader-control-label">START</span>
-                      <span class="ai-trader-button-spinner hidden" aria-hidden="true"></span>
-                    </button>
-                    <button id="ai-trader-pause-btn" class="ai-trader-control-btn ai-trader-control-btn--pause" type="button">
-                      <span class="ai-trader-control-icon" aria-hidden="true">⏸</span>
-                      <span class="ai-trader-control-label">PAUSE</span>
-                      <span class="ai-trader-button-spinner hidden" aria-hidden="true"></span>
-                    </button>
-                    <button id="ai-trader-stop-btn" class="ai-trader-control-btn ai-trader-control-btn--stop" type="button">
-                      <span class="ai-trader-control-icon" aria-hidden="true">⏹</span>
-                      <span class="ai-trader-control-label">STOP</span>
-                      <span class="ai-trader-button-spinner hidden" aria-hidden="true"></span>
-                    </button>
+                  <div class="ai-trader-status-main">
+                    <div id="ai-trader-status-orb" class="ai-trader-status-orb ai-trader-status-orb--stopped" aria-hidden="true"></div>
+                    <p id="ai-trader-status-word" class="ai-trader-status-word">STOPPED</p>
+                    <p id="ai-trader-status-subline" class="small-note ai-trader-status-subline">Configure and start your bot to begin scanning.</p>
                   </div>
-                  <div id="ai-trader-stats-bar" class="ai-trader-stats-bar">
-                    <div class="ai-trader-stat">
-                      <span class="ai-trader-stat-label">Trades Today</span>
-                      <span id="ai-trader-stat-trades-today" class="ai-trader-stat-value">0</span>
-                    </div>
-                    <div class="ai-trader-stat">
-                      <span class="ai-trader-stat-label">Win Rate Today</span>
-                      <span id="ai-trader-stat-win-rate" class="ai-trader-stat-value">0%</span>
-                    </div>
-                    <div class="ai-trader-stat">
-                      <span class="ai-trader-stat-label">P&amp;L Today</span>
-                      <span id="ai-trader-stat-pnl-today" class="ai-trader-stat-value">$0.00</span>
-                    </div>
-                    <div class="ai-trader-stat ai-trader-stat--positions">
-                      <span class="ai-trader-stat-label">Open Positions</span>
-                      <span id="ai-trader-stat-open-positions" class="ai-trader-stat-value">0 / 0</span>
-                      <span class="ai-trader-open-progress"><span id="ai-trader-stat-open-progress-fill"></span></span>
-                    </div>
-                    <div class="ai-trader-stat">
-                      <span class="ai-trader-stat-label">Next Scan In</span>
-                      <span id="ai-trader-stat-next-scan" class="ai-trader-stat-value">--s</span>
-                    </div>
-                    <div class="ai-trader-stat">
-                      <span class="ai-trader-stat-label">Market Status</span>
-                      <span id="ai-trader-stat-market-status" class="ai-trader-stat-value">CLOSED</span>
-                      <span id="ai-trader-stat-market-detail" class="ai-trader-stat-subvalue">--</span>
+                  <div class="ai-trader-controls-dropdown-wrap">
+                    <button id="ai-trader-controls-toggle" class="ai-trader-controls-toggle" type="button" aria-expanded="false" aria-controls="ai-trader-controls-dropdown">
+                      <span id="ai-trader-controls-toggle-dot" class="ai-trader-controls-toggle-dot"></span>
+                      <span>Bot Controls ▾</span>
+                    </button>
+                    <div id="ai-trader-controls-dropdown" class="ai-trader-controls-dropdown hidden" role="dialog" aria-label="Bot controls panel">
+                      <button id="ai-trader-controls-close" class="ai-trader-controls-close" type="button" aria-label="Close controls">✕</button>
+                      <section class="ai-trader-dropdown-section">
+                        <p class="ai-trader-dropdown-label">BOT STATUS</p>
+                        <div id="ai-trader-dropdown-status" class="ai-trader-dropdown-status">
+                          <span id="ai-trader-dropdown-status-dot" class="ai-trader-dropdown-status-dot status-stopped" aria-hidden="true"></span>
+                          <strong id="ai-trader-dropdown-status-text">STOPPED</strong>
+                        </div>
+                      </section>
+                      <section class="ai-trader-dropdown-section">
+                        <div class="ai-trader-dropdown-divider"></div>
+                        <button id="ai-trader-start-btn" class="ai-trader-control-btn ai-trader-control-btn--start ai-trader-control-btn--stacked" type="button">
+                          <span class="ai-trader-control-icon" aria-hidden="true">▶</span>
+                          <span class="ai-trader-control-text">
+                            <span class="ai-trader-control-label">Start Bot</span>
+                            <span class="ai-trader-control-subtext">Begin scanning and trading</span>
+                          </span>
+                          <span class="ai-trader-button-spinner hidden" aria-hidden="true"></span>
+                        </button>
+                        <button id="ai-trader-pause-btn" class="ai-trader-control-btn ai-trader-control-btn--pause ai-trader-control-btn--stacked" type="button">
+                          <span class="ai-trader-control-icon" aria-hidden="true">⏸</span>
+                          <span class="ai-trader-control-text">
+                            <span class="ai-trader-control-label">Pause Bot</span>
+                            <span class="ai-trader-control-subtext">Stop new trades, keep monitoring</span>
+                          </span>
+                          <span class="ai-trader-button-spinner hidden" aria-hidden="true"></span>
+                        </button>
+                        <button id="ai-trader-stop-btn" class="ai-trader-control-btn ai-trader-control-btn--stop ai-trader-control-btn--stacked" type="button">
+                          <span class="ai-trader-control-icon" aria-hidden="true">⏹</span>
+                          <span class="ai-trader-control-text">
+                            <span class="ai-trader-control-label">Stop Bot</span>
+                            <span class="ai-trader-control-subtext">Halt all activity</span>
+                          </span>
+                          <span class="ai-trader-button-spinner hidden" aria-hidden="true"></span>
+                        </button>
+                      </section>
+                      <section class="ai-trader-dropdown-section">
+                        <div class="ai-trader-dropdown-divider"></div>
+                        <p class="ai-trader-dropdown-label">TODAY</p>
+                        <div id="ai-trader-stats-bar" class="ai-trader-stats-bar ai-trader-stats-bar--dropdown">
+                          <div class="ai-trader-stat">
+                            <span class="ai-trader-stat-label">Trades</span>
+                            <span id="ai-trader-stat-trades-today" class="ai-trader-stat-value">0</span>
+                          </div>
+                          <div class="ai-trader-stat">
+                            <span class="ai-trader-stat-label">Win Rate</span>
+                            <span id="ai-trader-stat-win-rate" class="ai-trader-stat-value">0%</span>
+                          </div>
+                          <div class="ai-trader-stat">
+                            <span class="ai-trader-stat-label">P&amp;L</span>
+                            <span id="ai-trader-stat-pnl-today" class="ai-trader-stat-value">$0.00</span>
+                          </div>
+                          <div class="ai-trader-stat ai-trader-stat--positions">
+                            <span class="ai-trader-stat-label">Positions</span>
+                            <span id="ai-trader-stat-open-positions" class="ai-trader-stat-value">0 / 0</span>
+                            <span class="ai-trader-open-progress"><span id="ai-trader-stat-open-progress-fill"></span></span>
+                          </div>
+                        </div>
+                      </section>
+                      <section class="ai-trader-dropdown-section">
+                        <div class="ai-trader-dropdown-divider"></div>
+                        <div class="ai-trader-dropdown-links">
+                          <button id="ai-trader-quick-settings-link" class="ai-trader-dropdown-link" type="button">⚙ Bot Settings</button>
+                          <button id="ai-trader-quick-broker-link" class="ai-trader-dropdown-link" type="button">🔌 Broker Status</button>
+                          <button id="ai-trader-quick-performance-link" class="ai-trader-dropdown-link" type="button">📊 Performance</button>
+                          <a id="ai-trader-quick-email-link" class="ai-trader-dropdown-link open-link" href="/settings#email">📧 Email Reports</a>
+                        </div>
+                      </section>
                     </div>
                   </div>
                 </div>

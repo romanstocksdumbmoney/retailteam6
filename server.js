@@ -11,6 +11,7 @@ const earningsRoutes = require('./routes/earnings');
 const marketRoutes = require('./routes/market');
 const botRoutes = require('./routes/bot');
 const brokerRoutes = require('./routes/broker');
+const userRoutes = require('./routes/user');
 const { authV2Router, bootstrapAuthV2 } = require('./routes/auth-v2');
 const { maybeProtectPageRoute } = require('./services/routeAuth');
 const { startScheduler } = require('./services/schedulerService');
@@ -268,6 +269,7 @@ app.use('/api/market', marketRoutes);
 app.use('/api/bot', botRoutes);
 app.use('/api/broker', brokerRoutes);
 app.use('/api/auth', authV2Router);
+app.use('/api/user', userRoutes);
 
 void warmTickerUniverseCache();
 

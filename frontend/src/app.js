@@ -33,6 +33,9 @@ let traderModeShowAll = false;
 const AUTH_EMAIL_STORAGE_KEY = 'dumbdollars_saved_email';
 const SAVED_EMAIL_KEY = 'dumbdollars_saved_email';
 const AUTH_TOKEN_STORAGE_KEY = 'dumbdollars_token';
+const AUTH_USER_SNAPSHOT_STORAGE_KEY = 'dumbdollars_auth_user_snapshot';
+const PENDING_DISPLAY_NAME_STORAGE_KEY = 'dumbdollars_pending_display_name';
+const AI_TRADER_STATUS_EVENT = 'dumbdollars:bot-status-update';
 const PREMIUM_SPIKE_PROOF_STORAGE_KEY = 'dumbdollars_premium_spike_proofs_v1';
 const FALLBACK_AI_DISCOVERY_LINK = 'https://x.com';
 const CHECKOUT_RETURN_PATH_STORAGE_KEY = 'dumbdollars_return_after_checkout';
@@ -42,6 +45,12 @@ const EMAIL_AUTOMATION_TEST_IDLE_LABEL = 'Send Test Email Now';
 const FUN_MODE_BACKGROUND_STORAGE_KEY = 'dumbdollars_fun_mode_background';
 const RECENT_ANALYSES_STORAGE_KEY = 'dumbdollars_recent_analyses_v1';
 let restoreSessionInFlight = false;
+let dashboardGreetingClockTimer = null;
+const dashboardStatusSnapshot = {
+  statusWord: 'STOPPED',
+  brokerConnected: false,
+  marketOpen: null
+};
 
 function normalizeAuthToken(token) {
   return String(token || '').trim();
@@ -94,6 +103,7 @@ function applyAuthStatePatch(patch = {}, options = {}) {
   }
   if (Object.prototype.hasOwnProperty.call(patch, 'user')) {
     authState.user = patch.user || null;
+    persistAuthUserSnapshot(authState.user);
   }
   if (Object.prototype.hasOwnProperty.call(patch, 'session')) {
     authState.session = patch.session ? buildAuthSession(patch.session.token) : null;
@@ -611,6 +621,189 @@ function loadPreferredEmail() {
   return String(localStorage.getItem(SAVED_EMAIL_KEY) || '').trim().toLowerCase();
 }
 
+function parseJsonSafe(value, fallback = null) {
+  try {
+    return JSON.parse(String(value || ''));
+  } catch (_error) {
+    return fallback;
+  }
+}
+
+function getStoredAuthUserSnapshot() {
+  const parsed = parseJsonSafe(localStorage.getItem(AUTH_USER_SNAPSHOT_STORAGE_KEY), null);
+  return parsed && typeof parsed === 'object' ? parsed : null;
+}
+
+function persistAuthUserSnapshot(user) {
+  if (!user || typeof user !== 'object') {
+    localStorage.removeItem(AUTH_USER_SNAPSHOT_STORAGE_KEY);
+    return;
+  }
+  localStorage.setItem(AUTH_USER_SNAPSHOT_STORAGE_KEY, JSON.stringify(user));
+}
+
+function getEtDateParts(date = new Date()) {
+  const formatter = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'America/New_York',
+    weekday: 'short',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false
+  });
+  const bag = {};
+  formatter.formatToParts(date).forEach((part) => {
+    bag[part.type] = part.value;
+  });
+  return {
+    hour: Number(bag.hour || 0),
+    minute: Number(bag.minute || 0),
+    weekday: String(bag.weekday || '')
+  };
+}
+
+function isMarketOpenEt(date = new Date()) {
+  const parts = getEtDateParts(date);
+  const weekday = parts.weekday.toLowerCase();
+  if (weekday === 'sat' || weekday === 'sun') {
+    return false;
+  }
+  const minutes = (parts.hour * 60) + parts.minute;
+  const openMinutes = (9 * 60) + 30;
+  const closeMinutes = 16 * 60;
+  return minutes >= openMinutes && minutes < closeMinutes;
+}
+
+function resolveTimeGreeting(name) {
+  const now = new Date();
+  const hour = now.getHours();
+  const safeName = escapeHtml(name || 'Trader');
+  if (hour >= 5 && hour < 12) {
+    return `Good morning, <span class="dashboard-greeting-name">${safeName}</span> ☀️`;
+  }
+  if (hour >= 12 && hour < 17) {
+    return `Good afternoon, <span class="dashboard-greeting-name">${safeName}</span> 📈`;
+  }
+  if (hour >= 17 && hour < 21) {
+    return `Good evening, <span class="dashboard-greeting-name">${safeName}</span> 🌆`;
+  }
+  return `Hey <span class="dashboard-greeting-name">${safeName}</span>, trading never sleeps 🌙`;
+}
+
+function getUserInitials(user) {
+  const name = String(user?.displayName || user?.display_name || '').trim();
+  if (name) {
+    const parts = name.split(/\s+/).filter(Boolean);
+    const letters = parts.slice(0, 2).map((part) => part.charAt(0).toUpperCase()).join('');
+    if (letters) {
+      return letters;
+    }
+  }
+  const email = String(user?.email || '').trim().toUpperCase();
+  return (email.slice(0, 2) || 'DD').replace(/[^A-Z]/g, '') || 'DD';
+}
+
+function resolveDashboardContextLine({ isAuthenticated, statusWord, brokerConnected, marketOpen }) {
+  if (!isAuthenticated) {
+    return 'Sign in to load your personalized market workspace.';
+  }
+  if (!brokerConnected) {
+    return 'Connect your broker to start automated trading.';
+  }
+  if (!marketOpen) {
+    return 'Markets are closed. Your bot resumes at 9:30 AM ET.';
+  }
+  if (statusWord === 'RUNNING') {
+    return "Your AI is actively trading. Here's today so far.";
+  }
+  if (statusWord === 'PAUSED') {
+    return 'Your bot is paused. Resume it to continue trading.';
+  }
+  return 'Your bot is ready to go. Hit start when you are.';
+}
+
+function updateDashboardWelcomeClock() {
+  const clockNode = document.getElementById('dashboard-welcome-clock');
+  const marketNode = document.getElementById('dashboard-welcome-market');
+  if (!(clockNode instanceof HTMLElement) || !(marketNode instanceof HTMLElement)) {
+    return;
+  }
+  const now = new Date();
+  const clockText = now.toLocaleString([], {
+    weekday: 'short',
+    month: 'short',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit'
+  });
+  const marketOpen = isMarketOpenEt(now);
+  dashboardStatusSnapshot.marketOpen = marketOpen;
+  clockNode.textContent = `${clockText} • Local`;
+  marketNode.textContent = marketOpen ? 'OPEN' : 'CLOSED';
+  marketNode.classList.toggle('is-open', marketOpen);
+  marketNode.classList.toggle('is-closed', !marketOpen);
+}
+
+function bindDashboardStatusEvents() {
+  window.addEventListener(AI_TRADER_STATUS_EVENT, (event) => {
+    const detail = event?.detail && typeof event.detail === 'object' ? event.detail : {};
+    const nextWord = String(detail.statusWord || '').trim().toUpperCase();
+    if (nextWord) {
+      dashboardStatusSnapshot.statusWord = nextWord;
+    }
+    if (Object.prototype.hasOwnProperty.call(detail, 'brokerConnected')) {
+      dashboardStatusSnapshot.brokerConnected = Boolean(detail.brokerConnected);
+    }
+    if (Object.prototype.hasOwnProperty.call(detail, 'marketOpen')) {
+      dashboardStatusSnapshot.marketOpen = Boolean(detail.marketOpen);
+    }
+    renderDashboardGreeting();
+  });
+}
+
+function flushPendingDisplayNameUpdate() {
+  const pendingDisplayName = String(localStorage.getItem(PENDING_DISPLAY_NAME_STORAGE_KEY) || '').trim();
+  if (!pendingDisplayName || !authState.session?.token) {
+    return;
+  }
+  fetch('/api/user/update-profile', {
+    method: 'POST',
+    credentials: 'include',
+    keepalive: true,
+    headers: {
+      'Content-Type': 'application/json',
+      authorization: `Bearer ${authState.session.token}`
+    },
+    body: JSON.stringify({ display_name: pendingDisplayName })
+  }).then(async (response) => {
+    if (!response.ok) {
+      return;
+    }
+    localStorage.removeItem(PENDING_DISPLAY_NAME_STORAGE_KEY);
+    const payload = await response.json().catch(() => ({}));
+    const resolvedName = String(payload?.user?.displayName || payload?.user?.display_name || pendingDisplayName).trim();
+    if (!resolvedName) {
+      return;
+    }
+    const snapshot = getStoredAuthUserSnapshot() || {};
+    persistAuthUserSnapshot({
+      ...snapshot,
+      displayName: resolvedName,
+      display_name: resolvedName,
+      needsDisplayName: false
+    });
+    if (authState.user && typeof authState.user === 'object') {
+      applyAuthStatePatch({
+        user: {
+          ...authState.user,
+          displayName: resolvedName,
+          display_name: resolvedName,
+          needsDisplayName: false
+        }
+      }, { skipRender: false, skipLog: true, persistToken: true });
+    }
+  }).catch(() => {});
+}
+
 
 function getCurrentAppPath() {
   const path = `${window.location.pathname || '/'}${window.location.search || ''}${window.location.hash || ''}`;
@@ -627,7 +820,7 @@ function getAuthAccessUrl(mode = 'login', nextPath = getCurrentAppPath()) {
 }
 
 function resolveGreetingName(user) {
-  const preferred = String(user?.displayName || '').trim();
+  const preferred = String(user?.displayName || user?.display_name || '').trim();
   if (preferred) {
     return preferred;
   }
@@ -650,30 +843,55 @@ function resolveGreetingName(user) {
 function renderDashboardGreeting() {
   const greetingNode = document.getElementById('dashboard-greeting');
   const titleNode = document.getElementById('dashboard-greeting-title');
-  const welcomeNode = document.getElementById('dashboard-greeting-subtext');
+  const contextNode = document.getElementById('dashboard-greeting-subtext');
+  const avatarNode = document.getElementById('dashboard-welcome-avatar');
   const authSnapshot = getAuthStateSnapshot();
-  if (!(greetingNode instanceof HTMLElement) || !(titleNode instanceof HTMLElement) || !(welcomeNode instanceof HTMLElement)) {
+  if (!(greetingNode instanceof HTMLElement) || !(titleNode instanceof HTMLElement) || !(contextNode instanceof HTMLElement)) {
     return;
+  }
+  updateDashboardWelcomeClock();
+  if (!dashboardGreetingClockTimer) {
+    dashboardGreetingClockTimer = window.setInterval(() => {
+      updateDashboardWelcomeClock();
+      renderDashboardGreeting();
+    }, 60 * 1000);
+  }
+  const statusWordNode = document.getElementById('ai-trader-status-word');
+  if (statusWordNode instanceof HTMLElement) {
+    const word = String(statusWordNode.textContent || '').trim().toUpperCase();
+    if (word === 'RUNNING' || word === 'PAUSED' || word === 'STOPPED') {
+      dashboardStatusSnapshot.statusWord = word;
+    }
   }
   if (authSnapshot.loading) {
     greetingNode.classList.remove('hidden');
     greetingNode.classList.add('dashboard-greeting--active');
     titleNode.textContent = 'Checking your session...';
-    welcomeNode.textContent = 'Loading your account and workspace preferences.';
+    contextNode.textContent = 'Loading your account and workspace preferences.';
+    if (avatarNode instanceof HTMLElement) {
+      avatarNode.textContent = 'DD';
+    }
     return;
   }
   if (!authSnapshot.user) {
     greetingNode.classList.add('hidden');
     greetingNode.classList.remove('dashboard-greeting--active');
     titleNode.textContent = 'Hello, Trader 👋';
-    welcomeNode.textContent = 'Sign in to load your personalized market workspace.';
+    contextNode.textContent = 'Sign in to load your personalized market workspace.';
     return;
   }
   const name = resolveGreetingName(authSnapshot.user);
-  titleNode.textContent = `Hello, ${name} 👋`;
-  const email = String(authSnapshot.user?.email || '').trim().toLowerCase();
-  const loggedInLine = email ? `Logged in as ${email}. ` : '';
-  welcomeNode.textContent = `${loggedInLine}Glad to have you back. Let’s find your next trade.`;
+  const marketOpen = Boolean(dashboardStatusSnapshot.marketOpen);
+  titleNode.innerHTML = resolveTimeGreeting(name);
+  contextNode.textContent = resolveDashboardContextLine({
+    isAuthenticated: true,
+    statusWord: dashboardStatusSnapshot.statusWord,
+    brokerConnected: dashboardStatusSnapshot.brokerConnected,
+    marketOpen
+  });
+  if (avatarNode instanceof HTMLElement) {
+    avatarNode.textContent = getUserInitials(authSnapshot.user);
+  }
   greetingNode.classList.remove('hidden');
   greetingNode.classList.add('dashboard-greeting--active');
 }
@@ -693,6 +911,7 @@ function applyAuthPayload(payload, fallbackEmail = '') {
   if (payload?.user?.traderMode) {
     persistTraderMode(payload.user.traderMode);
   }
+  persistAuthUserSnapshot(payload?.user || null);
 }
 
 async function restoreAuthSessionFromRememberToken() {
@@ -2910,6 +3129,11 @@ function renderAuthState() {
   if (headerProfileButton instanceof HTMLButtonElement) {
     headerProfileButton.classList.toggle('hidden', authSnapshot.loading || !authSnapshot.user);
     headerProfileButton.disabled = authSnapshot.loading || !authSnapshot.user;
+    if (authSnapshot.user) {
+      headerProfileButton.textContent = `Hi, ${resolveGreetingName(authSnapshot.user)}`;
+    } else {
+      headerProfileButton.textContent = 'Profile';
+    }
   }
   if (headerLogoutButton instanceof HTMLButtonElement) {
     headerLogoutButton.classList.toggle('hidden', authSnapshot.loading || !authSnapshot.user);
@@ -4124,6 +4348,7 @@ async function fetchCurrentUser() {
       loading: false,
       user: payload.user || null
     });
+    flushPendingDisplayNameUpdate();
     if (payload?.user && restoredFromRemember) {
       setAuthMessage(`Welcome back, ${payload.user.email}. Session restored.`);
     }
@@ -4154,6 +4379,7 @@ async function fetchCurrentUser() {
         loading: false,
         user: retryPayload.user || null
       });
+      flushPendingDisplayNameUpdate();
       if (retryPayload?.user) {
         setAuthMessage(`Welcome back, ${retryPayload.user.email}. Session restored.`);
       }
@@ -5308,9 +5534,11 @@ function setupProPopup() {
 async function init() {
   setupBrowseToolsMenu();
   setupTraderModeControls();
+  bindDashboardStatusEvents();
+  const cachedUser = getStoredAuthUserSnapshot();
   applyAuthStatePatch({
     token: localStorage.getItem(AUTH_TOKEN_STORAGE_KEY) || '',
-    user: null,
+    user: cachedUser,
     loading: true
   }, { skipRender: true, skipLog: true, persistToken: false });
   renderAuthState();
@@ -5352,6 +5580,7 @@ async function init() {
   setupScanForm();
   setupOptionsForm();
   setupUnusualRefresh();
+  flushPendingDisplayNameUpdate();
 
   try {
     await fetchCurrentUser();

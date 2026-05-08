@@ -20,6 +20,8 @@ const DASHBOARD_PATH = '/dashboard';
 const AUTH_PAGE_MODE_LOGIN = 'login';
 const AUTH_PAGE_MODE_SIGNUP = 'signup';
 const TRADER_MODE_STORAGE_KEY = 'dumbdollars_trader_mode';
+const AUTH_USER_SNAPSHOT_STORAGE_KEY = 'dumbdollars_auth_user_snapshot';
+const PENDING_DISPLAY_NAME_STORAGE_KEY = 'dumbdollars_pending_display_name';
 const DEFAULT_TRADER_MODE = 'day';
 let lockoutCountdownTimer = null;
 const TRADER_MODE_DETAILS = Object.freeze({
@@ -216,12 +218,41 @@ function saveEmail(email) {
   localStorage.setItem('dumbdollars_saved_email', normalized);
 }
 
+function parseJsonSafe(value, fallback = null) {
+  try {
+    return JSON.parse(String(value || ''));
+  } catch (_error) {
+    return fallback;
+  }
+}
+
+function getStoredAuthUserSnapshot() {
+  const parsed = parseJsonSafe(localStorage.getItem(AUTH_USER_SNAPSHOT_STORAGE_KEY), null);
+  return parsed && typeof parsed === 'object' ? parsed : null;
+}
+
+function persistAuthUserSnapshot(user) {
+  if (!user || typeof user !== 'object') {
+    localStorage.removeItem(AUTH_USER_SNAPSHOT_STORAGE_KEY);
+    return;
+  }
+  localStorage.setItem(AUTH_USER_SNAPSHOT_STORAGE_KEY, JSON.stringify(user));
+}
+
+function mergeAuthUserSnapshot(patch = {}) {
+  const current = getStoredAuthUserSnapshot() || {};
+  const merged = { ...current, ...patch };
+  persistAuthUserSnapshot(merged);
+  return merged;
+}
+
 function applyAuthPayload(payload, fallbackEmail = '') {
   saveAuthToken(payload?.token || '');
   const email = String(payload?.user?.email || fallbackEmail || '').trim().toLowerCase();
   if (email) {
     saveEmail(email);
   }
+  persistAuthUserSnapshot(payload?.user || null);
 }
 
 function applySavedEmail() {
@@ -307,6 +338,200 @@ function setupTraderModePicker() {
   });
 }
 
+function normalizeDisplayNameInput(value) {
+  return String(value || '').replace(/\s+/g, ' ').trim().slice(0, 60);
+}
+
+function fallbackDisplayNameForEmail(email) {
+  const local = String(email || '')
+    .split('@')[0]
+    .trim()
+    .replace(/[._]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .replace(/\b\w/g, (char) => char.toUpperCase());
+  return local || 'Trader';
+}
+
+function needsDisplayNameCollection(user) {
+  if (!user || typeof user !== 'object') {
+    return false;
+  }
+  if (typeof user.needsDisplayName === 'boolean') {
+    return user.needsDisplayName;
+  }
+  const email = String(user.email || '').trim().toLowerCase();
+  const displayName = normalizeDisplayNameInput(user.displayName || user.display_name || '');
+  if (!displayName) {
+    return true;
+  }
+  return displayName.toLowerCase() === fallbackDisplayNameForEmail(email).toLowerCase();
+}
+
+function setNameOverlayVisible(visible) {
+  const overlay = document.getElementById('auth-name-overlay');
+  if (!(overlay instanceof HTMLElement)) {
+    return;
+  }
+  overlay.classList.toggle('hidden', !visible);
+  overlay.setAttribute('aria-hidden', visible ? 'false' : 'true');
+}
+
+function setNameOverlayError(message = '') {
+  const errorNode = document.getElementById('auth-name-error');
+  if (!(errorNode instanceof HTMLElement)) {
+    return;
+  }
+  errorNode.textContent = String(message || '').trim();
+  errorNode.classList.toggle('hidden', !errorNode.textContent);
+}
+
+function setNameOverlayBusy(isBusy) {
+  const submit = document.getElementById('auth-name-submit');
+  if (!(submit instanceof HTMLButtonElement)) {
+    return;
+  }
+  submit.disabled = isBusy;
+  submit.textContent = isBusy ? 'Saving...' : "Let's Go \u2192";
+}
+
+function promptForDisplayName(initialName = '') {
+  const overlay = document.getElementById('auth-name-overlay');
+  const form = document.getElementById('auth-name-form');
+  const input = document.getElementById('auth-name-input');
+  if (!(overlay instanceof HTMLElement) || !(form instanceof HTMLFormElement) || !(input instanceof HTMLInputElement)) {
+    return Promise.resolve('');
+  }
+  setNameOverlayError('');
+  setNameOverlayBusy(false);
+  input.value = normalizeDisplayNameInput(initialName);
+  setNameOverlayVisible(true);
+  window.setTimeout(() => {
+    input.focus();
+    input.select();
+  }, 40);
+  return new Promise((resolve) => {
+    const onSubmit = (event) => {
+      event.preventDefault();
+      const nextName = normalizeDisplayNameInput(input.value);
+      if (!nextName) {
+        setNameOverlayError('Please enter a name so we can welcome you properly');
+        input.focus();
+        return;
+      }
+      form.removeEventListener('submit', onSubmit);
+      setNameOverlayVisible(false);
+      setNameOverlayError('');
+      resolve(nextName);
+    };
+    form.addEventListener('submit', onSubmit);
+  });
+}
+
+async function updateProfileDisplayName(displayName) {
+  const token = String(localStorage.getItem('dumbdollars_token') || '').trim();
+  const headers = { 'Content-Type': 'application/json' };
+  if (token) {
+    headers.authorization = `Bearer ${token}`;
+  }
+  return fetchJson('/api/user/update-profile', {
+    method: 'POST',
+    credentials: 'include',
+    headers,
+    body: JSON.stringify({
+      display_name: normalizeDisplayNameInput(displayName)
+    })
+  });
+}
+
+function rememberPendingDisplayName(displayName) {
+  const normalized = normalizeDisplayNameInput(displayName);
+  if (!normalized) {
+    localStorage.removeItem(PENDING_DISPLAY_NAME_STORAGE_KEY);
+    return;
+  }
+  localStorage.setItem(PENDING_DISPLAY_NAME_STORAGE_KEY, normalized);
+}
+
+function attemptPendingDisplayNameSync() {
+  const pending = normalizeDisplayNameInput(localStorage.getItem(PENDING_DISPLAY_NAME_STORAGE_KEY) || '');
+  if (!pending) {
+    return;
+  }
+  const token = String(localStorage.getItem('dumbdollars_token') || '').trim();
+  const headers = { 'Content-Type': 'application/json' };
+  if (token) {
+    headers.authorization = `Bearer ${token}`;
+  }
+  fetch('/api/user/update-profile', {
+    method: 'POST',
+    credentials: 'include',
+    keepalive: true,
+    headers,
+    body: JSON.stringify({ display_name: pending })
+  }).then(async (response) => {
+    if (!response.ok) {
+      return;
+    }
+    localStorage.removeItem(PENDING_DISPLAY_NAME_STORAGE_KEY);
+    const payload = await response.json().catch(() => ({}));
+    const resolved = normalizeDisplayNameInput(payload?.user?.displayName || payload?.user?.display_name || pending);
+    if (resolved) {
+      mergeAuthUserSnapshot({
+        displayName: resolved,
+        display_name: resolved,
+        needsDisplayName: false
+      });
+    }
+  }).catch(() => {});
+}
+
+async function runPostAuthFlow(authPayload = {}, fallbackEmail = '') {
+  let restored = null;
+  try {
+    restored = await ensureSessionReadyAfterLogin();
+  } catch (_error) {
+    restored = null;
+  }
+  const effectiveUser = restored?.user || authPayload?.user || getStoredAuthUserSnapshot() || null;
+  if (restored?.token || restored?.user) {
+    applyAuthPayload(restored, effectiveUser?.email || fallbackEmail);
+  } else if (authPayload?.user || authPayload?.token) {
+    applyAuthPayload(authPayload, effectiveUser?.email || fallbackEmail);
+  }
+  const shouldCollectName = needsDisplayNameCollection(effectiveUser);
+  if (shouldCollectName) {
+    const initialName = normalizeDisplayNameInput(effectiveUser?.displayName || effectiveUser?.display_name || '');
+    const chosenName = await promptForDisplayName(initialName);
+    if (chosenName) {
+      mergeAuthUserSnapshot({
+        displayName: chosenName,
+        display_name: chosenName,
+        needsDisplayName: false
+      });
+      try {
+        setNameOverlayBusy(true);
+        const profilePayload = await updateProfileDisplayName(chosenName);
+        const savedName = normalizeDisplayNameInput(profilePayload?.user?.displayName || profilePayload?.user?.display_name || chosenName);
+        mergeAuthUserSnapshot({
+          displayName: savedName,
+          display_name: savedName,
+          needsDisplayName: false
+        });
+        rememberPendingDisplayName('');
+      } catch (_error) {
+        // Do not block onboarding if profile save fails. Persist locally and retry.
+        rememberPendingDisplayName(chosenName);
+        attemptPendingDisplayNameSync();
+      } finally {
+        setNameOverlayBusy(false);
+      }
+    }
+  }
+  return {
+    redirectPath: DASHBOARD_PATH
+  };
+}
+
 async function signUp(email, password, options = {}) {
   const traderMode = normalizeTraderMode(options.traderMode);
   const confirmPassword = String(options.confirmPassword || '');
@@ -325,6 +550,7 @@ async function signUp(email, password, options = {}) {
   });
   applyAuthPayload(payload, email);
   saveTraderMode(payload?.user?.traderMode || traderMode);
+  return payload;
 }
 
 async function logIn(email, password, options = {}) {
@@ -343,6 +569,7 @@ async function logIn(email, password, options = {}) {
   });
   applyAuthPayload(payload, email);
   saveTraderMode(payload?.user?.traderMode || traderMode);
+  return payload;
 }
 
 async function socialSignIn(provider, email, options = {}) {
@@ -361,6 +588,7 @@ async function socialSignIn(provider, email, options = {}) {
   });
   applyAuthPayload(payload, email);
   saveTraderMode(payload?.user?.traderMode || traderMode);
+  return payload;
 }
 
 async function requestAccessCode(email) {
@@ -691,13 +919,15 @@ function setupForms() {
       }
       setButtonBusy(submitButton, true, idleLabel, 'Creating...');
       const traderMode = getSelectedTraderModeFromUi();
-      await signUp(email, password, {
+      const signupPayload = await signUp(email, password, {
         traderMode,
         confirmPassword,
         remember
       });
-      setStatus('Account created. Check your email to verify before signing in.');
-      window.location.href = '/ai-trade-access.html?mode=login';
+      setStatus('Account created. Finalizing your workspace...');
+      await runPostAuthFlow(signupPayload, email);
+      setStatus('Setup complete. Redirecting to dashboard...');
+      goToDashboard({ replace: true });
     } catch (error) {
       setStatus(mapSignupErrorMessage(error), true);
     } finally {
@@ -720,10 +950,9 @@ function setupForms() {
       setButtonBusy(submitButton, true, idleLabel, 'Signing in...');
       const traderMode = getSelectedTraderModeFromUi();
       const loginPayload = await logIn(email, password, { remember, traderMode });
-      await ensureSessionReadyAfterLogin();
+      await runPostAuthFlow(loginPayload, email);
       setStatus('Login successful. Redirecting...');
-      const redirectPath = String(loginPayload?.redirect || DASHBOARD_PATH).trim() || DASHBOARD_PATH;
-      goToPath(redirectPath);
+      goToDashboard({ replace: true });
     } catch (error) {
       const code = String(error?.body?.error || '').trim().toLowerCase();
       const mappedMessage = mapLoginErrorMessage(error);
@@ -806,6 +1035,7 @@ async function init() {
   setupTraderModePicker();
   setupPasswordVisibilityToggles();
   applySavedEmail();
+  attemptPendingDisplayNameSync();
   setupForms();
   applyRequestedAuthMode();
   await verifySessionAndRedirectIfSignedIn();
