@@ -513,13 +513,9 @@ router.post('/login', async (req, res) => {
       attemptsRemaining
     });
   }
-  if (!verifyEmailState(user)) {
-    return res.status(403).json({
-      error: 'email_not_verified',
-      message: 'Please verify your email before signing in.',
-      resendPath: '/api/auth/resend-verification'
-    });
-  }
+  // Allow account login before email verification so users can
+  // immediately access core onboarding/dashboard flows.
+  const emailVerified = verifyEmailState(user);
   resetFailedLoginState(user.id);
   const refreshed = getUserByIdForAuth(user.id) || user;
   ensureLegacyUserRecord(refreshed, {
@@ -540,6 +536,7 @@ router.post('/login', async (req, res) => {
     ok: true,
     success: true,
     redirect: '/dashboard',
+    requiresEmailVerification: !emailVerified,
     token: issueCompatibilityToken(refreshed),
     user: sanitizeUser(refreshed)
   });
