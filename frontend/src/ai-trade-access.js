@@ -278,6 +278,14 @@ function normalizeTraderMode(mode) {
   return DEFAULT_TRADER_MODE;
 }
 
+function getQueryParam(key) {
+  const paramKey = String(key || '').trim();
+  if (!paramKey) {
+    return '';
+  }
+  return String(new URLSearchParams(window.location.search).get(paramKey) || '').trim();
+}
+
 function saveTraderMode(mode) {
   const normalized = normalizeTraderMode(mode);
   localStorage.setItem(TRADER_MODE_STORAGE_KEY, normalized);
@@ -1031,11 +1039,17 @@ function setupForms() {
 }
 
 async function init() {
-  setupTraderModePicker();
+  // Bind submit handlers first so auth actions still work
+  // even if non-critical UI setup fails.
+  setupForms();
+  try {
+    setupTraderModePicker();
+  } catch (_error) {
+    // Non-fatal; do not block login/signup.
+  }
   setupPasswordVisibilityToggles();
   applySavedEmail();
   attemptPendingDisplayNameSync();
-  setupForms();
   applyRequestedAuthMode();
   await verifySessionAndRedirectIfSignedIn();
 }
