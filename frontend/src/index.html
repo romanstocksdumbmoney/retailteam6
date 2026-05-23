@@ -627,143 +627,214 @@
         </aside>
         <div class="main-panels">
           <section id="ai-trader-hub" class="card module-card module-wide ai-trader-hub" aria-labelledby="ai-trader-hub-title">
-            <div class="section-header ai-trader-hub-header">
-              <h2 id="ai-trader-hub-title">AI Trader Control Center</h2>
-              <span id="ai-trader-hub-top-status" class="chip ai-trader-status-chip ai-trader-status-chip--stopped">BOT STOPPED</span>
-            </div>
-            <p class="small-note">Monitor and control the bot from one visual center. Status, activity, scans, positions, risk settings, and performance update in real time.</p>
+            <header class="ai-trader-sticky-header">
+              <div class="ai-trader-sticky-header-left">
+                <h2 id="ai-trader-hub-title">AI Trader</h2>
+              </div>
+              <div class="ai-trader-sticky-header-center">
+                <span id="ai-trader-hub-top-status" class="chip ai-trader-status-chip ai-trader-status-chip--stopped">BOT STOPPED</span>
+                <span id="ai-trader-setup-complete-badge" class="ai-trader-setup-complete-badge hidden">Setup complete ✓</span>
+              </div>
+              <div class="ai-trader-sticky-header-right">
+                <button id="ai-trader-controls-toggle" class="ai-trader-controls-toggle" type="button" aria-expanded="false" aria-controls="ai-trader-controls-dropdown">
+                  <span id="ai-trader-controls-toggle-dot" class="ai-trader-controls-toggle-dot"></span>
+                  <span>Bot Controls ▾</span>
+                </button>
+                <div id="ai-trader-controls-dropdown" class="ai-trader-controls-dropdown hidden" role="menu" aria-label="AI Trader shortcuts">
+                  <button id="ai-trader-controls-close" class="ai-trader-controls-close" type="button" aria-label="Close controls">✕</button>
+                  <section class="ai-trader-dropdown-section">
+                    <p class="ai-trader-dropdown-label">STATUS</p>
+                    <div id="ai-trader-dropdown-status" class="ai-trader-dropdown-status">
+                      <span id="ai-trader-dropdown-status-dot" class="ai-trader-dropdown-status-dot status-stopped" aria-hidden="true"></span>
+                      <strong id="ai-trader-dropdown-status-text">STOPPED</strong>
+                    </div>
+                  </section>
+                  <section class="ai-trader-dropdown-section">
+                    <div class="ai-trader-dropdown-divider"></div>
+                    <div class="ai-trader-dropdown-links">
+                      <button id="ai-trader-quick-control-link" class="ai-trader-dropdown-link" type="button">🎛 Bot Status + Controls</button>
+                      <button id="ai-trader-quick-settings-link" class="ai-trader-dropdown-link" type="button">⚙ Bot Settings</button>
+                      <button id="ai-trader-quick-broker-link" class="ai-trader-dropdown-link" type="button">🔌 Connect Broker</button>
+                      <button id="ai-trader-quick-performance-link" class="ai-trader-dropdown-link" type="button">📊 Performance</button>
+                    </div>
+                  </section>
+                </div>
+              </div>
+            </header>
+
+            <p class="small-note">Monitor and control your bot from one place. Status, activity, scans, positions, risk settings, and performance update in real time.</p>
+            <a id="ai-trader-show-setup-link" class="ai-trader-show-setup-link hidden" href="#">Show setup guide again</a>
             <div id="ai-trader-connection-banner" class="ai-trader-connection-banner hidden" role="status">⚠ Connection issue — retrying...</div>
 
-            <section id="ai-trader-getting-started" class="ai-trader-getting-started" aria-labelledby="ai-trader-getting-started-title" hidden>
+            <section id="ai-trader-getting-started" class="ai-trader-getting-started ai-trader-section-card" aria-labelledby="ai-trader-getting-started-title" hidden>
               <div class="ai-trader-getting-started-head">
                 <h3 id="ai-trader-getting-started-title">🚀 Set Up Your AI Trading Bot — Takes About 10 Minutes</h3>
-                <p>Complete these 5 steps once. After that the bot runs for you automatically.</p>
+                <p>Complete these 5 steps once. The bot runs automatically after.</p>
               </div>
+
               <div id="ai-trader-getting-started-steps" class="ai-trader-getting-started-steps">
-                <div class="ai-trader-setup-tracker">
-                  <article class="ai-trader-tracker-step" data-step-key="accountCreated">
+                <div class="ai-trader-setup-tracker" role="tablist" aria-label="AI trader setup steps">
+                  <button type="button" class="ai-trader-tracker-step" data-step-key="setup_step_1_complete" aria-controls="ai-trader-setup-step-1-panel">
                     <span class="ai-trader-tracker-dot">1</span>
                     <span class="ai-trader-tracker-label">Create Account</span>
-                  </article>
-                  <article class="ai-trader-tracker-step" data-step-key="settingsSaved">
+                  </button>
+                  <button type="button" class="ai-trader-tracker-step" data-step-key="setup_step_2_complete" aria-controls="ai-trader-setup-step-2-panel">
                     <span class="ai-trader-tracker-dot">2</span>
                     <span class="ai-trader-tracker-label">Save Settings</span>
-                  </article>
-                  <article class="ai-trader-tracker-step" data-step-key="brokerageReady">
+                  </button>
+                  <button type="button" class="ai-trader-tracker-step" data-step-key="setup_step_3_complete" aria-controls="ai-trader-setup-step-3-panel">
                     <span class="ai-trader-tracker-dot">3</span>
                     <span class="ai-trader-tracker-label">Open Account</span>
-                  </article>
-                  <article class="ai-trader-tracker-step" data-step-key="brokerConnected">
+                  </button>
+                  <button type="button" class="ai-trader-tracker-step" data-step-key="setup_step_4_complete" aria-controls="ai-trader-setup-step-4-panel">
                     <span class="ai-trader-tracker-dot">4</span>
                     <span class="ai-trader-tracker-label">Connect Broker</span>
-                  </article>
-                  <article class="ai-trader-tracker-step" data-step-key="botStartedOnce">
+                  </button>
+                  <button type="button" class="ai-trader-tracker-step" data-step-key="setup_step_5_complete" aria-controls="ai-trader-setup-step-5-panel">
                     <span class="ai-trader-tracker-dot">5</span>
                     <span class="ai-trader-tracker-label">Start Bot</span>
-                  </article>
+                  </button>
                 </div>
 
                 <div class="ai-trader-setup-panels">
-                  <article class="ai-trader-setup-panel" data-step-key="accountCreated">
-                    <h4>Create Your Account</h4>
-                    <p>Sign in so your bot settings and trade history are saved to your account.</p>
-                    <div class="ai-trader-setup-step-action">
-                      <a id="ai-trader-step-account-btn" class="btn-secondary" href="/ai-trade-access.html?mode=login&next=%2F">Sign In</a>
+                  <article id="ai-trader-setup-step-1-panel" class="ai-trader-setup-panel" data-step-key="setup_step_1_complete">
+                    <h4>Sign In to Save Your Setup</h4>
+                    <p>Your bot settings, trade history, and broker connection are all tied to your account. Sign in to continue.</p>
+                    <div id="ai-trader-step-1-auth-actions" class="ai-trader-setup-step-action ai-trader-setup-step-action--split">
+                      <a id="ai-trader-step-signin-btn" class="ai-trader-step-primary-link" href="/ai-trade-access.html?mode=login&next=%2Fdashboard">Sign In →</a>
+                      <a id="ai-trader-step-create-btn" class="btn-secondary" href="/ai-trade-access.html?mode=signup&next=%2Fdashboard">Create Account →</a>
                     </div>
+                    <div id="ai-trader-step-1-complete" class="ai-trader-step-success hidden">✓ You are signed in — step complete</div>
                   </article>
 
-                  <article class="ai-trader-setup-panel" data-step-key="settingsSaved">
+                  <article id="ai-trader-setup-step-2-panel" class="ai-trader-setup-panel" data-step-key="setup_step_2_complete">
                     <h4>Save Your Bot Settings</h4>
-                    <p>Choose your risk level, stop loss, and take profit below, then save.</p>
+                    <p>Choose your risk level and configure your trading preferences below, then click Save Settings.</p>
                     <div class="ai-trader-setup-step-action">
                       <button id="ai-trader-step-settings-btn" class="btn-secondary" type="button">Go to Settings ↓</button>
                     </div>
                   </article>
 
-                  <article class="ai-trader-setup-panel" data-step-key="brokerageReady">
+                  <article id="ai-trader-setup-step-3-panel" class="ai-trader-setup-panel" data-step-key="setup_step_3_complete">
                     <h4>Open a Brokerage Account</h4>
-                    <p>The AI needs a brokerage account to hold your money and place trades. DumbDollars never holds your money.</p>
+                    <p>The AI needs a brokerage account to place trades on your behalf. Your money stays in your broker account — we never touch it.</p>
                     <div class="ai-trader-broker-choice-grid">
-                      <article class="ai-trader-broker-choice-card">
-                        <span class="ai-trader-broker-choice-tag">RECOMMENDED FOR AI TRADING</span>
+                      <article class="ai-trader-broker-choice-card ai-trader-broker-choice-card--recommended">
+                        <span class="ai-trader-broker-choice-tag">⭐ RECOMMENDED</span>
                         <h5>ALPACA</h5>
-                        <p>Free to open. Built for algorithmic trading. Paper trading available with no deposit required.</p>
+                        <p>Free to open. Built for algorithmic trading. Paper trading available — test risk-free with no deposit.</p>
                         <ul>
                           <li>✓ Free account</li>
                           <li>✓ No commissions</li>
                           <li>✓ Direct AI integration</li>
-                          <li>✓ Paper trading</li>
+                          <li>✓ Paper trading available</li>
                         </ul>
-                        <a href="https://alpaca.markets" target="_blank" rel="noopener noreferrer">Open Alpaca Account →</a>
+                        <a class="ai-trader-broker-choice-link ai-trader-step-primary-link" data-broker-choice-link="alpaca" href="https://alpaca.markets" target="_blank" rel="noopener noreferrer">Open Alpaca Account →</a>
                       </article>
                       <article class="ai-trader-broker-choice-card">
                         <h5>TRADIER</h5>
                         <p>Commission-free trading with a full API. Solid alternative to Alpaca.</p>
                         <ul>
                           <li>✓ Commission-free</li>
-                          <li>✓ API access</li>
+                          <li>✓ Full API access</li>
                           <li>✓ US stocks and options</li>
                         </ul>
-                        <a href="https://tradier.com" target="_blank" rel="noopener noreferrer">Open Tradier Account →</a>
+                        <a class="ai-trader-broker-choice-link btn-secondary" data-broker-choice-link="tradier" href="https://tradier.com" target="_blank" rel="noopener noreferrer">Open Tradier Account →</a>
                       </article>
                       <article class="ai-trader-broker-choice-card">
                         <h5>INTERACTIVE BROKERS</h5>
-                        <p>The world's largest broker. Best for large accounts or international users.</p>
+                        <p>World's largest broker. Best for large accounts or international users.</p>
                         <ul>
                           <li>✓ Globally trusted</li>
                           <li>✓ Low margin rates</li>
                           <li>✓ Wide asset coverage</li>
                         </ul>
-                        <a href="https://www.interactivebrokers.com" target="_blank" rel="noopener noreferrer">Open IBKR Account →</a>
+                        <a class="ai-trader-broker-choice-link btn-secondary" data-broker-choice-link="ibkr" href="https://www.interactivebrokers.com" target="_blank" rel="noopener noreferrer">Open IBKR Account →</a>
                       </article>
                     </div>
-                    <p class="small-note ai-trader-broker-choice-note"><em>Already have an account? Skip to Step 4 to connect it.</em></p>
+                    <p class="small-note ai-trader-broker-choice-note"><em>Already have an account? Click Next to connect it in Step 4.</em></p>
+                    <div class="ai-trader-setup-step-action ai-trader-setup-step-action--center">
+                      <button id="ai-trader-step-broker-next-btn" class="btn-secondary" type="button">Next: Connect Broker →</button>
+                    </div>
                   </article>
 
-                  <article class="ai-trader-setup-panel" data-step-key="brokerConnected">
+                  <article id="ai-trader-setup-step-4-panel" class="ai-trader-setup-panel" data-step-key="setup_step_4_complete">
                     <h4>Connect Broker &amp; Run Test</h4>
-                    <p>Paste your API keys from your broker and run the connection test. The bot cannot place trades until this test passes.</p>
-                    <div class="ai-trader-setup-step-action">
-                      <button id="ai-trader-step-connect-btn" class="btn-secondary" type="button">Connect Broker &amp; Run Test →</button>
+                    <p>Paste your API keys from your broker account. The AI cannot place any trades until this connection test passes.</p>
+                    <div id="ai-trader-step4-broker-pills" class="ai-trader-broker-pill-row" role="radiogroup" aria-label="Broker selection">
+                      <button type="button" class="ai-trader-broker-pill is-active" data-broker-choice="alpaca">Alpaca</button>
+                      <button type="button" class="ai-trader-broker-pill" data-broker-choice="tradier">Tradier</button>
+                      <button type="button" class="ai-trader-broker-pill" data-broker-choice="ibkr">IBKR</button>
+                    </div>
+
+                    <div class="ai-trader-broker-inline-form">
+                      <label id="ai-trader-broker-api-key-label" for="ai-trader-broker-api-key">API Key</label>
+                      <input id="ai-trader-broker-api-key" type="text" autocomplete="off" placeholder="Paste your Alpaca API Key here" />
+                      <p id="ai-trader-broker-api-helper" class="small-note">Found in your Alpaca dashboard → API Keys section</p>
+                      <a id="ai-trader-broker-api-link" class="open-link" href="https://app.alpaca.markets" target="_blank" rel="noopener noreferrer">How to find this →</a>
+
+                      <div id="ai-trader-broker-account-wrap" class="hidden">
+                        <label id="ai-trader-broker-account-label" for="ai-trader-broker-account-id">Account ID</label>
+                        <input id="ai-trader-broker-account-id" type="text" autocomplete="off" placeholder="Paste your account ID" />
+                      </div>
+
+                      <div id="ai-trader-broker-secret-wrap">
+                        <label id="ai-trader-broker-secret-label" for="ai-trader-broker-secret-key">Secret Key</label>
+                        <div class="ai-trader-secret-row">
+                          <input id="ai-trader-broker-secret-key" type="password" autocomplete="off" placeholder="Paste your secret key" />
+                          <button id="ai-trader-broker-secret-toggle" class="btn-secondary" type="button" aria-pressed="false">Show</button>
+                        </div>
+                        <p id="ai-trader-broker-secret-helper" class="small-note">You only see this once when generated. Lost it? Make a new one.</p>
+                      </div>
+
+                      <div class="ai-trader-mode-toggle-row" role="radiogroup" aria-label="Trading mode">
+                        <button id="ai-trader-broker-mode-paper" class="ai-trader-mode-toggle is-active" type="button" data-mode="paper">📄 Paper Trading — Test with fake money</button>
+                        <button id="ai-trader-broker-mode-live" class="ai-trader-mode-toggle" type="button" data-mode="live">💵 Live Trading — Real money</button>
+                      </div>
+                      <p id="ai-trader-broker-live-warning" class="ai-trader-live-warning hidden">⚠ This uses real money. Test with paper trading first.</p>
+
+                      <button id="ai-trader-broker-test-btn" type="button" class="ai-trader-step-primary-btn">
+                        <span>🔌 Test Connection</span>
+                        <span class="ai-trader-button-spinner hidden" aria-hidden="true"></span>
+                      </button>
+
+                      <ul id="ai-trader-broker-test-checklist" class="ai-trader-broker-checklist"></ul>
+
+                      <div id="ai-trader-broker-success-card" class="ai-trader-broker-success-card hidden">
+                        <h5>✅ Broker Connected!</h5>
+                        <p>Account: <span id="ai-trader-broker-success-account">----</span></p>
+                        <p>Buying Power: <span id="ai-trader-broker-success-buying-power">$0.00</span></p>
+                        <p>Mode: <span id="ai-trader-broker-success-mode">Paper Trading</span></p>
+                        <button id="ai-trader-broker-save-continue-btn" type="button" class="ai-trader-step-primary-btn">Save &amp; Continue to Step 5 →</button>
+                      </div>
+
+                      <div id="ai-trader-broker-error-card" class="ai-trader-broker-error-card hidden">
+                        <p id="ai-trader-broker-error-text">Connection failed.</p>
+                        <button id="ai-trader-broker-try-again-btn" type="button" class="btn-secondary">Try Again</button>
+                      </div>
                     </div>
                   </article>
 
-                  <article class="ai-trader-setup-panel" data-step-key="botStartedOnce">
-                    <h4>Start the Bot</h4>
-                    <p>You're all set. Hit START and the AI begins scanning the market and placing trades during market hours.</p>
-                    <div class="ai-trader-setup-step-action">
-                      <button id="ai-trader-step-start-btn" class="ai-trader-step-start-btn" type="button">▶ Start Bot Now</button>
+                  <article id="ai-trader-setup-step-5-panel" class="ai-trader-setup-panel" data-step-key="setup_step_5_complete">
+                    <div class="ai-trader-step-5-hero">
+                      <div class="ai-trader-step-5-emoji" aria-hidden="true">🚀</div>
+                      <h4>You're All Set!</h4>
+                      <p>Your AI is ready to scan the market and trade for you automatically every market day.</p>
                     </div>
+                    <div class="ai-trader-step-5-cards">
+                      <article>📅 Scans every 5 min</article>
+                      <article>⏰ Market hours only</article>
+                      <article>🛡 Auto stop-loss</article>
+                    </div>
+                    <button id="ai-trader-step-start-btn" class="ai-trader-step-start-btn" type="button">▶ Start Bot Now</button>
+                    <p class="small-note">The bot will begin at the next market open if market is closed.</p>
+                    <p class="ai-trader-legal-warning">⚠ Automated trading involves significant risk. Only trade with money you can afford to lose. Past performance does not guarantee future results.</p>
                   </article>
                 </div>
               </div>
-
-              <div class="ai-trader-setup-faq" id="ai-trader-setup-faq">
-                <h4>Setup FAQ</h4>
-                <article class="ai-trader-setup-faq-item">
-                  <button type="button" class="ai-trader-setup-faq-trigger" aria-expanded="false">Is my money safe?</button>
-                  <div class="ai-trader-setup-faq-answer" hidden>Yes. Your funds stay in your brokerage account at all times. DumbDollars only sends trade instructions and never holds your money directly.</div>
-                </article>
-                <article class="ai-trader-setup-faq-item">
-                  <button type="button" class="ai-trader-setup-faq-trigger" aria-expanded="false">Can I test without risking real money?</button>
-                  <div class="ai-trader-setup-faq-answer" hidden>Yes. Alpaca offers paper trading with simulated funds. Select Paper Trading in Step 4 to test workflows before going live.</div>
-                </article>
-                <article class="ai-trader-setup-faq-item">
-                  <button type="button" class="ai-trader-setup-faq-trigger" aria-expanded="false">How does the AI know when to trade?</button>
-                  <div class="ai-trader-setup-faq-answer" hidden>The bot scans your selected stock universe during market hours and combines RSI, MACD, volume, Bollinger Bands, and trend signals before entering a trade.</div>
-                </article>
-                <article class="ai-trader-setup-faq-item">
-                  <button type="button" class="ai-trader-setup-faq-trigger" aria-expanded="false">Can I stop it anytime?</button>
-                  <div class="ai-trader-setup-faq-answer" hidden>Yes. Use PAUSE to stop opening new trades while monitoring open positions, or STOP to halt scanning entirely.</div>
-                </article>
-                <article class="ai-trader-setup-faq-item">
-                  <button type="button" class="ai-trader-setup-faq-trigger" aria-expanded="false">What happens to open trades if I stop the bot?</button>
-                  <div class="ai-trader-setup-faq-answer" hidden>Open positions stay open. They close only when stop loss or take profit is reached, or when you manually click CLOSE on a position card.</div>
-                </article>
-              </div>
             </section>
 
-            <section class="ai-trader-control-center" aria-labelledby="ai-trader-control-title">
+            <section class="ai-trader-control-center ai-trader-section-card" aria-labelledby="ai-trader-control-title">
               <h3 id="ai-trader-control-title">Bot Status + Controls</h3>
               <div class="ai-trader-control-grid">
                 <div class="ai-trader-status-panel">
@@ -772,94 +843,71 @@
                     <p id="ai-trader-status-word" class="ai-trader-status-word">STOPPED</p>
                     <p id="ai-trader-status-subline" class="small-note ai-trader-status-subline">Configure and start your bot to begin scanning.</p>
                   </div>
-                  <div class="ai-trader-controls-dropdown-wrap">
-                    <button id="ai-trader-controls-toggle" class="ai-trader-controls-toggle" type="button" aria-expanded="false" aria-controls="ai-trader-controls-dropdown">
-                      <span id="ai-trader-controls-toggle-dot" class="ai-trader-controls-toggle-dot"></span>
-                      <span>Bot Controls ▾</span>
+                </div>
+                <div class="ai-trader-controls-panel">
+                  <div class="ai-trader-controls-row">
+                    <button id="ai-trader-start-btn" class="ai-trader-control-btn ai-trader-control-btn--start" type="button">
+                      <span class="ai-trader-control-icon" aria-hidden="true">▶</span>
+                      <span class="ai-trader-control-label">START</span>
+                      <span class="ai-trader-button-spinner hidden" aria-hidden="true"></span>
                     </button>
-                    <div id="ai-trader-controls-dropdown" class="ai-trader-controls-dropdown hidden" role="dialog" aria-label="Bot controls panel">
-                      <button id="ai-trader-controls-close" class="ai-trader-controls-close" type="button" aria-label="Close controls">✕</button>
-                      <section class="ai-trader-dropdown-section">
-                        <p class="ai-trader-dropdown-label">BOT STATUS</p>
-                        <div id="ai-trader-dropdown-status" class="ai-trader-dropdown-status">
-                          <span id="ai-trader-dropdown-status-dot" class="ai-trader-dropdown-status-dot status-stopped" aria-hidden="true"></span>
-                          <strong id="ai-trader-dropdown-status-text">STOPPED</strong>
-                        </div>
-                      </section>
-                      <section class="ai-trader-dropdown-section">
-                        <div class="ai-trader-dropdown-divider"></div>
-                        <button id="ai-trader-start-btn" class="ai-trader-control-btn ai-trader-control-btn--start ai-trader-control-btn--stacked" type="button">
-                          <span class="ai-trader-control-icon" aria-hidden="true">▶</span>
-                          <span class="ai-trader-control-text">
-                            <span class="ai-trader-control-label">Start Bot</span>
-                            <span class="ai-trader-control-subtext">Begin scanning and trading</span>
-                          </span>
-                          <span class="ai-trader-button-spinner hidden" aria-hidden="true"></span>
-                        </button>
-                        <button id="ai-trader-pause-btn" class="ai-trader-control-btn ai-trader-control-btn--pause ai-trader-control-btn--stacked" type="button">
-                          <span class="ai-trader-control-icon" aria-hidden="true">⏸</span>
-                          <span class="ai-trader-control-text">
-                            <span class="ai-trader-control-label">Pause Bot</span>
-                            <span class="ai-trader-control-subtext">Stop new trades, keep monitoring</span>
-                          </span>
-                          <span class="ai-trader-button-spinner hidden" aria-hidden="true"></span>
-                        </button>
-                        <button id="ai-trader-stop-btn" class="ai-trader-control-btn ai-trader-control-btn--stop ai-trader-control-btn--stacked" type="button">
-                          <span class="ai-trader-control-icon" aria-hidden="true">⏹</span>
-                          <span class="ai-trader-control-text">
-                            <span class="ai-trader-control-label">Stop Bot</span>
-                            <span class="ai-trader-control-subtext">Halt all activity</span>
-                          </span>
-                          <span class="ai-trader-button-spinner hidden" aria-hidden="true"></span>
-                        </button>
-                      </section>
-                      <section class="ai-trader-dropdown-section">
-                        <div class="ai-trader-dropdown-divider"></div>
-                        <p class="ai-trader-dropdown-label">TODAY</p>
-                        <div id="ai-trader-stats-bar" class="ai-trader-stats-bar ai-trader-stats-bar--dropdown">
-                          <div class="ai-trader-stat">
-                            <span class="ai-trader-stat-label">Trades</span>
-                            <span id="ai-trader-stat-trades-today" class="ai-trader-stat-value">0</span>
-                          </div>
-                          <div class="ai-trader-stat">
-                            <span class="ai-trader-stat-label">Win Rate</span>
-                            <span id="ai-trader-stat-win-rate" class="ai-trader-stat-value">0%</span>
-                          </div>
-                          <div class="ai-trader-stat">
-                            <span class="ai-trader-stat-label">P&amp;L</span>
-                            <span id="ai-trader-stat-pnl-today" class="ai-trader-stat-value">$0.00</span>
-                          </div>
-                          <div class="ai-trader-stat ai-trader-stat--positions">
-                            <span class="ai-trader-stat-label">Positions</span>
-                            <span id="ai-trader-stat-open-positions" class="ai-trader-stat-value">0 / 0</span>
-                            <span class="ai-trader-open-progress"><span id="ai-trader-stat-open-progress-fill"></span></span>
-                          </div>
-                        </div>
-                      </section>
-                      <section class="ai-trader-dropdown-section">
-                        <div class="ai-trader-dropdown-divider"></div>
-                        <div class="ai-trader-dropdown-links">
-                          <button id="ai-trader-quick-settings-link" class="ai-trader-dropdown-link" type="button">⚙ Bot Settings</button>
-                          <button id="ai-trader-quick-broker-link" class="ai-trader-dropdown-link" type="button">🔌 Broker Status</button>
-                          <button id="ai-trader-quick-performance-link" class="ai-trader-dropdown-link" type="button">📊 Performance</button>
-                          <a id="ai-trader-quick-email-link" class="ai-trader-dropdown-link open-link" href="/settings#email">📧 Email Reports</a>
-                        </div>
-                      </section>
-                    </div>
+                    <button id="ai-trader-pause-btn" class="ai-trader-control-btn ai-trader-control-btn--pause" type="button">
+                      <span class="ai-trader-control-icon" aria-hidden="true">⏸</span>
+                      <span class="ai-trader-control-label">PAUSE</span>
+                      <span class="ai-trader-button-spinner hidden" aria-hidden="true"></span>
+                    </button>
+                    <button id="ai-trader-stop-btn" class="ai-trader-control-btn ai-trader-control-btn--stop" type="button">
+                      <span class="ai-trader-control-icon" aria-hidden="true">⏹</span>
+                      <span class="ai-trader-control-label">STOP</span>
+                      <span class="ai-trader-button-spinner hidden" aria-hidden="true"></span>
+                    </button>
+                  </div>
+                  <div id="ai-trader-stop-inline-confirm" class="ai-trader-stop-inline-confirm hidden">
+                    <span>Confirm stop?</span>
+                    <button id="ai-trader-stop-confirm-btn" type="button" class="ai-trader-stop-inline-yes">Yes</button>
+                    <button id="ai-trader-stop-cancel-btn" type="button" class="ai-trader-stop-inline-no">No</button>
+                  </div>
+                  <div id="ai-trader-stats-bar" class="ai-trader-stats-bar">
+                    <article class="ai-trader-stat">
+                      <span class="ai-trader-stat-label">TRADES TODAY</span>
+                      <span id="ai-trader-stat-trades-today" class="ai-trader-stat-value">0</span>
+                    </article>
+                    <article class="ai-trader-stat">
+                      <span class="ai-trader-stat-label">WIN RATE TODAY</span>
+                      <span id="ai-trader-stat-win-rate" class="ai-trader-stat-value">0%</span>
+                    </article>
+                    <article class="ai-trader-stat">
+                      <span class="ai-trader-stat-label">P&amp;L TODAY</span>
+                      <span id="ai-trader-stat-pnl-today" class="ai-trader-stat-value">$0.00</span>
+                    </article>
+                    <article class="ai-trader-stat ai-trader-stat--positions">
+                      <span class="ai-trader-stat-label">OPEN POSITIONS</span>
+                      <span id="ai-trader-stat-open-positions" class="ai-trader-stat-value">0 / 0</span>
+                      <span class="ai-trader-open-progress"><span id="ai-trader-stat-open-progress-fill"></span></span>
+                    </article>
+                    <article class="ai-trader-stat">
+                      <span class="ai-trader-stat-label">NEXT SCAN IN</span>
+                      <span id="ai-trader-stat-next-scan" class="ai-trader-stat-value">--s</span>
+                    </article>
+                    <article class="ai-trader-stat">
+                      <span class="ai-trader-stat-label">MARKET STATUS</span>
+                      <span id="ai-trader-stat-market-status" class="ai-trader-stat-value">CLOSED</span>
+                      <span id="ai-trader-stat-market-detail" class="ai-trader-stat-subvalue">--</span>
+                    </article>
                   </div>
                 </div>
               </div>
             </section>
 
-            <section class="ai-trader-feed-panel" aria-labelledby="ai-trader-feed-title">
+            <section class="ai-trader-feed-panel ai-trader-section-card" aria-labelledby="ai-trader-feed-title">
               <div class="section-header">
-                <h3 id="ai-trader-feed-title">Activity Feed</h3>
+                <h3 id="ai-trader-feed-title">Live Activity Feed</h3>
                 <span class="chip">Last 40 actions</span>
               </div>
               <div id="ai-trader-activity-list" class="ai-trader-activity-list" aria-live="polite"></div>
             </section>
 
-            <section class="ai-trader-positions-panel" aria-labelledby="ai-trader-positions-title">
+            <section class="ai-trader-positions-panel ai-trader-section-card" aria-labelledby="ai-trader-positions-title">
               <div class="section-header">
                 <h3 id="ai-trader-positions-title">Open Positions</h3>
                 <span id="ai-trader-positions-chip" class="chip">0 open</span>
@@ -867,7 +915,7 @@
               <div id="ai-trader-positions-grid" class="ai-trader-positions-grid"></div>
             </section>
 
-            <section id="ai-trader-scanner-panel" class="ai-trader-scanner-panel" aria-labelledby="ai-trader-scanner-title">
+            <section id="ai-trader-scanner-panel" class="ai-trader-scanner-panel ai-trader-section-card" aria-labelledby="ai-trader-scanner-title">
               <div class="section-header">
                 <h3 id="ai-trader-scanner-title">Signal Scanner</h3>
                 <span class="chip">AI scanner status</span>
@@ -875,25 +923,31 @@
               <div id="ai-trader-signal-list" class="ai-trader-signal-list"></div>
             </section>
 
-            <section id="ai-trader-settings-panel" class="ai-trader-settings-panel" aria-labelledby="ai-trader-settings-title">
+            <section id="ai-trader-settings-panel" class="ai-trader-settings-panel ai-trader-section-card" aria-labelledby="ai-trader-settings-title">
               <div class="section-header">
                 <h3 id="ai-trader-settings-title">Bot Settings</h3>
               </div>
               <div class="ai-trader-settings-grid">
-                <article class="ai-trader-setting-card">
+                <article class="ai-trader-setting-card ai-trader-setting-card--full">
                   <h4>Risk Level</h4>
                   <div id="ai-trader-risk-level-cards" class="ai-trader-risk-level-cards">
                     <button type="button" class="ai-trader-risk-card" data-risk-level="conservative">
+                      <span class="ai-trader-risk-icon" aria-hidden="true">🛡</span>
                       <strong>CONSERVATIVE</strong>
                       <span>Lower risk per trade, steadier pace.</span>
+                      <span class="ai-trader-risk-selected-dot" aria-hidden="true"></span>
                     </button>
                     <button type="button" class="ai-trader-risk-card" data-risk-level="moderate">
+                      <span class="ai-trader-risk-icon" aria-hidden="true">⚖</span>
                       <strong>BALANCED</strong>
                       <span>Balanced risk and growth targets.</span>
+                      <span class="ai-trader-risk-selected-dot" aria-hidden="true"></span>
                     </button>
                     <button type="button" class="ai-trader-risk-card" data-risk-level="aggressive">
+                      <span class="ai-trader-risk-icon" aria-hidden="true">🚀</span>
                       <strong>AGGRESSIVE</strong>
                       <span>Higher risk, faster strategy rotation.</span>
+                      <span class="ai-trader-risk-selected-dot" aria-hidden="true"></span>
                     </button>
                   </div>
                 </article>
@@ -902,7 +956,7 @@
                   <h4>Stop Loss %</h4>
                   <label class="ai-trader-slider-wrap" for="ai-trader-setting-stop-loss">
                     <input id="ai-trader-setting-stop-loss" type="range" min="0.5" max="15" step="0.1" value="2.5" />
-                    <span id="ai-trader-setting-stop-loss-text" class="small-note">Sell if down 2.5%</span>
+                    <span id="ai-trader-setting-stop-loss-text" class="small-note ai-trader-setting-danger-text">Sell if down 2.5%</span>
                   </label>
                 </article>
 
@@ -910,7 +964,7 @@
                   <h4>Take Profit %</h4>
                   <label class="ai-trader-slider-wrap" for="ai-trader-setting-take-profit">
                     <input id="ai-trader-setting-take-profit" type="range" min="1" max="30" step="0.1" value="5.5" />
-                    <span id="ai-trader-setting-take-profit-text" class="small-note">Sell if up 5.5%</span>
+                    <span id="ai-trader-setting-take-profit-text" class="small-note ai-trader-setting-profit-text">Sell if up 5.5%</span>
                   </label>
                 </article>
 
@@ -919,7 +973,7 @@
                   <label for="ai-trader-setting-max-position-size">
                     <input id="ai-trader-setting-max-position-size" type="number" min="100" step="100" value="1000" />
                   </label>
-                  <p id="ai-trader-setting-position-size-text" class="small-note">= 0% of your $0 account</p>
+                  <p id="ai-trader-setting-position-size-text" class="small-note">Connect your broker to see your account size</p>
                 </article>
 
                 <article class="ai-trader-setting-card">
@@ -949,13 +1003,13 @@
                 </article>
               </div>
               <button id="ai-trader-save-settings-btn" class="ai-trader-save-settings-btn" type="button">
-                <span>Save Settings</span>
+                <span id="ai-trader-save-settings-label">Save Settings</span>
                 <span class="ai-trader-button-spinner hidden" aria-hidden="true"></span>
               </button>
               <p id="ai-trader-settings-feedback" class="ai-trader-settings-feedback" role="status" aria-live="polite"></p>
             </section>
 
-            <section class="ai-trader-performance-panel" aria-labelledby="ai-trader-performance-title">
+            <section class="ai-trader-performance-panel ai-trader-section-card" aria-labelledby="ai-trader-performance-title">
               <div class="section-header">
                 <h3 id="ai-trader-performance-title">Performance Summary</h3>
                 <span class="chip">Today / Week / Month / All Time</span>
@@ -977,100 +1031,25 @@
               <div id="ai-trader-performance-chart" class="ai-trader-performance-chart">
                 <span class="ai-trader-chart-label">Daily P&amp;L</span>
                 <div class="ai-trader-chart-bars">
-                  <span class="ai-trader-chart-empty">No trades yet — chart will appear as the bot trades</span>
+                  <span class="ai-trader-chart-empty">📉 <em>No trades yet — chart will appear as the bot trades.</em></span>
                 </div>
               </div>
             </section>
 
-            <div id="ai-trader-toast-stack" class="ai-trader-toast-stack" aria-live="polite" aria-atomic="true"></div>
-
-            <div id="ai-trader-stop-modal" class="ai-trader-modal hidden" role="dialog" aria-modal="true" aria-labelledby="ai-trader-stop-modal-title">
-              <div class="ai-trader-modal-card">
-                <h3 id="ai-trader-stop-modal-title">Stop the Bot?</h3>
-                <p>This stops all scanning. Open positions stay open until your stop loss or take profit levels are hit, or you close them manually.</p>
-                <div class="ai-trader-modal-actions">
-                  <button id="ai-trader-stop-confirm-btn" type="button" class="ai-trader-control-btn ai-trader-control-btn--stop">
-                    <span>Yes, Stop Bot</span>
-                    <span class="ai-trader-button-spinner hidden" aria-hidden="true"></span>
-                  </button>
-                  <button id="ai-trader-stop-cancel-btn" type="button" class="btn-secondary">Cancel</button>
-                </div>
+            <section id="stock-outlook-module" class="card module-card module-wide quick-stock-lookup ai-trader-section-card">
+              <div class="section-header">
+                <h3>Quick Stock Lookup</h3>
               </div>
-            </div>
-
-            <div id="ai-trader-broker-modal" class="ai-trader-modal hidden" role="dialog" aria-modal="true" aria-labelledby="ai-trader-broker-modal-title">
-              <div class="ai-trader-modal-card ai-trader-broker-modal-card">
-                <div class="ai-trader-broker-modal-head">
-                  <h3 id="ai-trader-broker-modal-title">Connect a Broker First</h3>
-                  <button id="ai-trader-broker-modal-close" type="button" class="btn-secondary">Close</button>
-                </div>
-                <p>The AI needs a broker account to place trades. Choose one to get started:</p>
-
-                <div id="ai-trader-broker-step-1" class="ai-trader-broker-step">
-                  <div class="ai-trader-broker-modal-grid">
-                    <button type="button" class="ai-trader-broker-modal-option" data-broker-choice="alpaca" data-broker-url="https://alpaca.markets">
-                      <strong>Alpaca — Recommended</strong>
-                      <span>Fastest setup with paper trading support.</span>
-                      <span class="ai-trader-broker-open-hint">Open Account ↗</span>
-                    </button>
-                    <button type="button" class="ai-trader-broker-modal-option" data-broker-choice="tradier" data-broker-url="https://tradier.com">
-                      <strong>Tradier</strong>
-                      <span>Commission-free API brokerage for US markets.</span>
-                      <span class="ai-trader-broker-open-hint">Open Account ↗</span>
-                    </button>
-                    <button type="button" class="ai-trader-broker-modal-option" data-broker-choice="interactive-brokers" data-broker-url="https://www.interactivebrokers.com">
-                      <strong>Interactive Brokers</strong>
-                      <span>Global broker access for advanced accounts.</span>
-                      <span class="ai-trader-broker-open-hint">Open Account ↗</span>
-                    </button>
-                  </div>
-                  <p class="small-note">Already have keys? <button id="ai-trader-open-key-entry" type="button" class="ai-trader-inline-link">Enter API Keys</button></p>
-                </div>
-
-                <div id="ai-trader-broker-step-2" class="ai-trader-broker-step hidden">
-                  <h4>Step 2 — Enter API Keys</h4>
-                  <label for="ai-trader-broker-api-key">API Key</label>
-                  <input id="ai-trader-broker-api-key" type="password" autocomplete="off" />
-                  <label for="ai-trader-broker-secret-key">Secret Key</label>
-                  <input id="ai-trader-broker-secret-key" type="password" autocomplete="off" />
-                  <label for="ai-trader-broker-mode">Mode</label>
-                  <select id="ai-trader-broker-mode">
-                    <option value="paper">Paper Trading</option>
-                    <option value="live">Live Trading</option>
-                  </select>
-                  <button id="ai-trader-broker-test-btn" type="button" class="ai-trader-save-settings-btn">
-                    <span>Test Connection</span>
-                    <span class="ai-trader-button-spinner hidden" aria-hidden="true"></span>
-                  </button>
-                </div>
-
-                <div id="ai-trader-broker-step-3" class="ai-trader-broker-step hidden">
-                  <h4>Step 3 — Connection Test</h4>
-                  <ul id="ai-trader-broker-test-checklist" class="ai-trader-broker-checklist"></ul>
-                  <p id="ai-trader-broker-test-result" class="small-note"></p>
-                  <button id="ai-trader-broker-test-done" type="button" class="ai-trader-save-settings-btn hidden">Done</button>
-                </div>
-              </div>
-            </div>
-          </section>
-
-          <section id="stock-outlook-module" class="card module-card module-wide">
-            <div class="section-header">
-              <h2>Search a Stock</h2>
-              <span class="chip">Core</span>
-            </div>
-            <form id="stock-form" class="row-form">
-              <label>
-                Ticker
+              <form id="stock-form" class="row-form quick-stock-form">
+                <label class="quick-stock-label" for="ticker-input">Ticker</label>
                 <input id="ticker-input" name="ticker" type="text" placeholder="AAPL" required />
-              </label>
-              <button id="analyze-stock-button" type="submit">Analyze Stock</button>
-            </form>
-            <p id="stock-inline-error" class="analysis-inline-error hidden" role="alert"></p>
-            <p class="small-note">
-              Enter a ticker to fetch real quote, technical, news, earnings, and analyst context. You will get a clear outlook card or a setup error.
-            </p>
-            <div id="stock-results" class="prob-grid"></div>
+                <button id="analyze-stock-button" type="submit">Analyze Stock</button>
+              </form>
+              <p id="stock-inline-error" class="analysis-inline-error hidden" role="alert"></p>
+              <div id="stock-results" class="prob-grid"></div>
+            </section>
+
+            <div id="ai-trader-toast-stack" class="ai-trader-toast-stack" aria-live="polite" aria-atomic="true"></div>
           </section>
 
           <section id="earnings-module" class="card module-card module-wide">

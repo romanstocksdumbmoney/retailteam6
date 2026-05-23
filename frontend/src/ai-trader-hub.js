@@ -1,6 +1,5 @@
 const AI_TRADER_STATUS_PILL_EVENT = 'dumbdollars:bot-status-update';
 const AUTH_TOKEN_STORAGE_KEY = 'dumbdollars_token';
-const SETUP_COMPLETE_STORAGE_KEY = 'dumbdollars_ai_trader_setup_complete';
 const NYSE_HOLIDAYS_2026 = new Set([
   '2026-01-01',
   '2026-01-19',
@@ -26,6 +25,65 @@ const ET_TIME_FORMATTER = new Intl.DateTimeFormat('en-US', {
   hour12: false
 });
 
+const SETUP_STEP_ORDER = [
+  'setup_step_1_complete',
+  'setup_step_2_complete',
+  'setup_step_3_complete',
+  'setup_step_4_complete',
+  'setup_step_5_complete'
+];
+
+const SETUP_LEGACY_STEP_MAP = Object.freeze({
+  setup_step_1_complete: 'accountCreated',
+  setup_step_2_complete: 'settingsSaved',
+  setup_step_3_complete: 'brokerageReady',
+  setup_step_4_complete: 'brokerConnected',
+  setup_step_5_complete: 'botStartedOnce'
+});
+
+const BROKER_CONFIG = Object.freeze({
+  alpaca: {
+    label: 'Alpaca',
+    apiLabel: 'API Key',
+    apiPlaceholder: 'Paste your Alpaca API Key here',
+    apiHelper: 'Found in your Alpaca dashboard → API Keys section',
+    apiLink: 'https://app.alpaca.markets',
+    apiLinkLabel: 'How to find this →',
+    needsSecret: true,
+    secretLabel: 'Secret Key',
+    secretHelper: 'You only see this once when generated. Lost it? Make a new one.',
+    needsAccountId: false
+  },
+  tradier: {
+    label: 'Tradier',
+    apiLabel: 'Access Token',
+    apiPlaceholder: 'Paste your Tradier access token here',
+    apiHelper: 'Create this token in Tradier → API settings.',
+    apiLink: 'https://brokerage.tradier.com/settings/api',
+    apiLinkLabel: 'Open Tradier API settings →',
+    needsSecret: false,
+    secretLabel: 'Secret Key',
+    secretHelper: '',
+    needsAccountId: true,
+    accountLabel: 'Account ID',
+    accountPlaceholder: 'Paste your Tradier account ID'
+  },
+  ibkr: {
+    label: 'IBKR',
+    apiLabel: 'API Key (optional)',
+    apiPlaceholder: 'Optional for IBKR socket mode',
+    apiHelper: 'IBKR uses account ID + enabled API socket access.',
+    apiLink: 'https://www.interactivebrokers.com/en/software/api/api.htm',
+    apiLinkLabel: 'IBKR API documentation →',
+    needsSecret: false,
+    secretLabel: 'Secret Key',
+    secretHelper: '',
+    needsAccountId: true,
+    accountLabel: 'Account ID',
+    accountPlaceholder: 'Paste your IBKR account ID'
+  }
+});
+
 const state = {
   mounted: false,
   authRequired: false,
@@ -40,21 +98,33 @@ const state = {
   selectedPerformancePeriod: 'today',
   selectedRiskLevel: 'moderate',
   selectedUniverse: 'sp500',
-  connectionIssues: 0,
+  selectedBroker: 'alpaca',
+  selectedBrokerMode: 'paper',
   scanIntervalSeconds: 300,
   nextScanSeconds: null,
+  connectionIssues: 0,
   localMarket: null,
-  seenActivityIds: new Set(),
-  setupCompleteLocally: false,
-  selectedBroker: 'alpaca',
   controlsDropdownOpen: false,
+  seenActivityIds: new Set(),
+  setup: {
+    steps: SETUP_STEP_ORDER.reduce((acc, key) => ({ ...acc, [key]: false }), {}),
+    completed: false,
+    currentStepKey: SETUP_STEP_ORDER[0]
+  },
+  activeSetupStepKey: SETUP_STEP_ORDER[0],
+  forceShowSetupGuide: false,
+  brokerTest: {
+    passed: false,
+    payload: null,
+    checks: [],
+    accountInfo: null
+  },
   timers: {
     oneSecond: null,
-    marketStatus: null,
     status: null,
+    activity: null,
     positions: null,
     scanner: null,
-    activity: null,
     performance: null
   }
 };
@@ -70,6 +140,15 @@ function toNum(value, fallback = 0) {
 
 function clamp(value, min, max) {
   return Math.max(min, Math.min(max, value));
+}
+
+function escapeHtml(value) {
+  return String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
 }
 
 function formatUsd(value) {
@@ -93,40 +172,11 @@ function formatSignedPct(value, digits = 1) {
   return `${sign}${Math.abs(parsed).toLocaleString(undefined, { minimumFractionDigits: digits, maximumFractionDigits: digits })}%`;
 }
 
-function escapeHtml(value) {
-  return String(value ?? '')
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;');
-}
-
 function getStoredToken() {
   try {
     return String(localStorage.getItem(AUTH_TOKEN_STORAGE_KEY) || '').trim();
   } catch (_error) {
     return '';
-  }
-}
-
-function getStoredSetupCompleted() {
-  try {
-    return localStorage.getItem(SETUP_COMPLETE_STORAGE_KEY) === '1';
-  } catch (_error) {
-    return false;
-  }
-}
-
-function setStoredSetupCompleted(completed) {
-  try {
-    if (completed) {
-      localStorage.setItem(SETUP_COMPLETE_STORAGE_KEY, '1');
-    } else {
-      localStorage.removeItem(SETUP_COMPLETE_STORAGE_KEY);
-    }
-  } catch (_error) {
-    // Non-fatal.
   }
 }
 
@@ -143,7 +193,7 @@ async function tryRestoreAuthSession() {
     const response = await fetch('/api/auth/session/restore', {
       method: 'POST',
       credentials: 'include',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json' }
     });
     if (!response.ok) {
       return false;
@@ -166,6 +216,7 @@ async function fetchJsonWithAuthRetry(url, options = {}, timeoutMs = 12000) {
   const request = {
     ...options,
     signal: controller.signal,
+    credentials: 'include',
     headers: {
       ...(options.headers || {}),
       ...buildAuthHeaders()
@@ -186,14 +237,14 @@ async function fetchJsonWithAuthRetry(url, options = {}, timeoutMs = 12000) {
   window.clearTimeout(timeout);
   if (response.status === 401) {
     await tryRestoreAuthSession();
-    const retryResponse = await fetch(url, {
+    response = await fetch(url, {
       ...options,
+      credentials: 'include',
       headers: {
         ...(options.headers || {}),
         ...buildAuthHeaders()
       }
     });
-    response = retryResponse;
   }
   let payload = {};
   try {
@@ -210,11 +261,14 @@ async function fetchJsonWithAuthRetry(url, options = {}, timeoutMs = 12000) {
   return payload;
 }
 
-function emitBotStatusPill(payload) {
+async function fetchWithFallback(primaryUrl, fallbackUrl, options = {}) {
   try {
-    window.dispatchEvent(new CustomEvent(AI_TRADER_STATUS_PILL_EVENT, { detail: payload }));
-  } catch (_error) {
-    // Non-fatal.
+    return await fetchJsonWithAuthRetry(primaryUrl, options);
+  } catch (error) {
+    if (error?.status === 404 && fallbackUrl) {
+      return fetchJsonWithAuthRetry(fallbackUrl, options);
+    }
+    throw error;
   }
 }
 
@@ -247,9 +301,7 @@ function showToast(message, tone = 'info', durationMs = 2600) {
   stack.appendChild(toast);
   window.setTimeout(() => {
     toast.classList.add('is-leaving');
-    window.setTimeout(() => {
-      toast.remove();
-    }, 240);
+    window.setTimeout(() => toast.remove(), 240);
   }, durationMs);
 }
 
@@ -263,6 +315,14 @@ function setButtonLoading(button, loading) {
   }
   button.classList.toggle('is-loading', loading);
   button.dataset.loading = loading ? '1' : '0';
+}
+
+function emitBotStatusPill(payload) {
+  try {
+    window.dispatchEvent(new CustomEvent(AI_TRADER_STATUS_PILL_EVENT, { detail: payload }));
+  } catch (_error) {
+    // Non-fatal.
+  }
 }
 
 function etParts(date = new Date()) {
@@ -358,34 +418,18 @@ function computeLocalMarketStatus() {
   const openValue = etComparable(openEt);
   const closeValue = etComparable(closeEt);
   if (isWeekend) {
-    return {
-      state: 'CLOSED',
-      detail: 'CLOSED — Weekend',
-      isOpen: false
-    };
+    return { state: 'CLOSED', detail: 'CLOSED — Weekend', isOpen: false };
   }
   if (isHoliday) {
-    return {
-      state: 'CLOSED',
-      detail: 'CLOSED — Holiday',
-      isOpen: false
-    };
+    return { state: 'CLOSED', detail: 'CLOSED — Holiday', isOpen: false };
   }
   if (nowValue >= openValue && nowValue < closeValue) {
     const closeIn = secondsBetweenEt(nowEt, closeEt);
-    return {
-      state: 'OPEN',
-      detail: `Closes in ${formatHoursMinutes(closeIn)}`,
-      isOpen: true
-    };
+    return { state: 'OPEN', detail: `Closes in ${formatHoursMinutes(closeIn)}`, isOpen: true };
   }
   if (nowValue < openValue) {
     const openIn = secondsBetweenEt(nowEt, openEt);
-    return {
-      state: 'CLOSED',
-      detail: `Opens in ${formatHoursMinutes(openIn)}`,
-      isOpen: false
-    };
+    return { state: 'CLOSED', detail: `Opens in ${formatHoursMinutes(openIn)}`, isOpen: false };
   }
   let offset = 1;
   while (offset <= 7) {
@@ -394,19 +438,11 @@ function computeLocalMarketStatus() {
     const candidateHoliday = NYSE_HOLIDAYS_2026.has(etDateStamp(candidate));
     if (!candidateWeekend && !candidateHoliday) {
       const openIn = secondsBetweenEt(nowEt, candidate);
-      return {
-        state: 'CLOSED',
-        detail: `Opens in ${formatHoursMinutes(openIn)}`,
-        isOpen: false
-      };
+      return { state: 'CLOSED', detail: `Opens in ${formatHoursMinutes(openIn)}`, isOpen: false };
     }
     offset += 1;
   }
-  return {
-    state: 'CLOSED',
-    detail: 'Opens next session',
-    isOpen: false
-  };
+  return { state: 'CLOSED', detail: 'Opens next session', isOpen: false };
 }
 
 function statusVisualWord() {
@@ -436,7 +472,7 @@ function resolveDropdownStatusWord() {
 function setControlsDropdownOpen(open) {
   const dropdown = byId('ai-trader-controls-dropdown');
   const toggle = byId('ai-trader-controls-toggle');
-  if (!dropdown || !(toggle instanceof HTMLButtonElement)) {
+  if (!(dropdown && toggle instanceof HTMLButtonElement)) {
     return;
   }
   state.controlsDropdownOpen = Boolean(open);
@@ -476,6 +512,54 @@ function updateControlsDropdownStatus() {
   }
 }
 
+function normalizeSetupSteps(rawSetup = {}) {
+  const rawSteps = rawSetup?.stepFlags && typeof rawSetup.stepFlags === 'object'
+    ? rawSetup.stepFlags
+    : rawSetup?.steps && typeof rawSetup.steps === 'object'
+      ? rawSetup.steps
+      : {};
+  const mapped = {};
+  SETUP_STEP_ORDER.forEach((key) => {
+    const legacyKey = SETUP_LEGACY_STEP_MAP[key];
+    mapped[key] = Boolean(rawSteps[key] ?? rawSteps[legacyKey]);
+  });
+  if (!state.authRequired) {
+    mapped.setup_step_1_complete = true;
+  }
+  if (isBrokerConnectedFromStatus()) {
+    mapped.setup_step_4_complete = true;
+  }
+  const allComplete = SETUP_STEP_ORDER.every((key) => mapped[key]);
+  const currentStepKey = SETUP_STEP_ORDER.find((key) => !mapped[key]) || SETUP_STEP_ORDER[SETUP_STEP_ORDER.length - 1];
+  return {
+    steps: mapped,
+    completed: allComplete,
+    currentStepKey
+  };
+}
+
+function syncSetupStateFromStatus() {
+  const normalized = normalizeSetupSteps(state.status?.setup || {});
+  state.setup = normalized;
+  if (!state.activeSetupStepKey || !SETUP_STEP_ORDER.includes(state.activeSetupStepKey)) {
+    state.activeSetupStepKey = normalized.currentStepKey;
+    return;
+  }
+  const activeComplete = Boolean(state.setup.steps[state.activeSetupStepKey]);
+  if (!state.forceShowSetupGuide && activeComplete) {
+    state.activeSetupStepKey = normalized.currentStepKey;
+  }
+}
+
+function applyLocalSetupStep(stepKey, complete = true) {
+  if (!SETUP_STEP_ORDER.includes(stepKey)) {
+    return;
+  }
+  state.setup.steps[stepKey] = Boolean(complete);
+  state.setup.completed = SETUP_STEP_ORDER.every((key) => Boolean(state.setup.steps[key]));
+  state.setup.currentStepKey = SETUP_STEP_ORDER.find((key) => !state.setup.steps[key]) || SETUP_STEP_ORDER[SETUP_STEP_ORDER.length - 1];
+}
+
 function applyTopStatus() {
   const chip = byId('ai-trader-hub-top-status');
   const orb = byId('ai-trader-status-orb');
@@ -513,20 +597,14 @@ function applyTopStatus() {
   }
   updateControlsDropdownStatus();
   const market = state.localMarket || computeLocalMarketStatus();
-  const brokerConnected = isBrokerConnectedFromStatus();
   emitBotStatusPill({
     statusWord,
     stateClass: statusWord === 'RUNNING' ? 'running' : statusWord === 'PAUSED' ? 'paused' : 'off',
     isRunning: statusWord === 'RUNNING',
-    brokerConnected,
+    brokerConnected: isBrokerConnectedFromStatus(),
     marketOpen: Boolean(market?.isOpen),
     href: '/#ai-trader-hub'
   });
-  const navDot = byId('ai-trader-nav-dot');
-  if (navDot) {
-    navDot.classList.toggle('is-running', statusWord === 'RUNNING');
-    navDot.classList.toggle('is-paused', statusWord === 'PAUSED');
-  }
 }
 
 function setControlsDisabledState() {
@@ -546,7 +624,6 @@ function setControlsDisabledState() {
   if (stopBtn instanceof HTMLButtonElement) {
     stopBtn.disabled = stopBusy || statusWord === 'STOPPED';
   }
-  updateControlsDropdownStatus();
 }
 
 function renderStatsBar() {
@@ -660,7 +737,6 @@ function renderActivityFeed() {
       </article>
     `;
   }).join('');
-  list.scrollTop = 0;
 }
 
 function heldTimeLabel(secondsRaw) {
@@ -683,8 +759,9 @@ function renderPositions() {
   if (!rows.length) {
     grid.innerHTML = `
       <article class="ai-trader-empty-state ai-trader-empty-state--center">
-        <div class="ai-trader-empty-icon">📈</div>
-        <h4>No open positions — the bot will display active trades here</h4>
+        <div class="ai-trader-empty-icon">📊</div>
+        <h4>No open positions</h4>
+        <p>Active trades will appear here once the bot starts trading</p>
       </article>
     `;
     return;
@@ -758,8 +835,9 @@ function renderScanner() {
   if (!rows.length) {
     list.innerHTML = `
       <article class="ai-trader-empty-state ai-trader-empty-state--center">
-        <div class="ai-trader-empty-icon">📡</div>
-        <h4>Bot is not scanning. Press START to begin.</h4>
+        <div class="ai-trader-empty-icon">🔍</div>
+        <h4>Not scanning yet</h4>
+        <p>The bot will scan your stock universe every 5 minutes during market hours once started</p>
       </article>
     `;
     return;
@@ -823,6 +901,7 @@ function renderRiskLevelSelection() {
     }
     const active = String(node.dataset.riskLevel || '').toLowerCase() === state.selectedRiskLevel;
     node.classList.toggle('is-active', active);
+    node.classList.toggle('is-inactive', !active);
     node.setAttribute('aria-pressed', active ? 'true' : 'false');
   });
 }
@@ -861,7 +940,7 @@ function updateTakeProfitText() {
 function currentAccountValue() {
   const value = toNum(state.status?.bot?.cashUsd, 0);
   const deposited = toNum(state.status?.bot?.totalDepositedUsd, 0);
-  return Math.max(100, value || deposited || 10_000);
+  return Math.max(0, value || deposited);
 }
 
 function updatePositionSizeText() {
@@ -870,7 +949,15 @@ function updatePositionSizeText() {
   if (!(input instanceof HTMLInputElement) || !text) {
     return;
   }
+  if (!isBrokerConnectedFromStatus()) {
+    text.textContent = 'Connect your broker to see your account size';
+    return;
+  }
   const accountValue = currentAccountValue();
+  if (accountValue <= 0) {
+    text.textContent = 'Connect your broker to see your account size';
+    return;
+  }
   const amount = Math.max(100, toNum(input.value, 1000));
   const pct = clamp((amount / accountValue) * 100, 0, 100);
   text.textContent = `= ${pct.toFixed(1)}% of your ${formatUsd(accountValue)} account`;
@@ -883,7 +970,7 @@ function applySettingsFromStatus() {
   const maxPositionSizeInput = byId('ai-trader-setting-max-position-size');
   const maxOpenValue = byId('ai-trader-setting-max-open-value');
   const dailyLossInput = byId('ai-trader-setting-daily-max-loss');
-  const accountValue = currentAccountValue();
+  const accountValue = Math.max(100, currentAccountValue() || 10_000);
   if (stopLossInput instanceof HTMLInputElement) {
     stopLossInput.value = String(clamp(toNum(config.stopLossPct, 2.5), 0.5, 15));
   }
@@ -938,7 +1025,33 @@ function showSettingsFeedback(message, tone = 'success') {
   node.classList.add('is-visible');
   window.setTimeout(() => {
     node.classList.remove('is-visible');
-  }, 2000);
+  }, 2500);
+}
+
+function updateSaveButtonLabel(label) {
+  const node = byId('ai-trader-save-settings-label');
+  if (node) {
+    node.textContent = label;
+  }
+}
+
+async function persistSetupProgress(stepKey, complete = true) {
+  if (!SETUP_STEP_ORDER.includes(stepKey)) {
+    return;
+  }
+  try {
+    await fetchJsonWithAuthRetry('/api/bot/setup-progress', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        stepKey,
+        complete: Boolean(complete)
+      })
+    });
+    applyLocalSetupStep(stepKey, complete);
+  } catch (_error) {
+    // Non-fatal; status polling may still catch completion from source events.
+  }
 }
 
 async function saveSettingsFlow() {
@@ -948,6 +1061,7 @@ async function saveSettingsFlow() {
   }
   setButtonLoading(button, true);
   button.disabled = true;
+  updateSaveButtonLabel('Saving...');
   try {
     const payload = getSettingsPayload();
     const saved = await fetchJsonWithAuthRetry('/api/bot/settings', {
@@ -963,14 +1077,20 @@ async function saveSettingsFlow() {
         body: JSON.stringify(payload)
       });
     }
+    await persistSetupProgress('setup_step_2_complete', true);
+    applyLocalSetupStep('setup_step_2_complete', true);
     showSettingsFeedback('✓ Settings saved', 'success');
+    updateSaveButtonLabel('✓ Saved!');
     showToast('✓ Settings saved', 'success');
-    applyTopStatus();
-    renderStatsBar();
+    applyStatusPayload(saved);
+    state.activeSetupStepKey = 'setup_step_3_complete';
     renderGettingStartedGuide();
+    window.setTimeout(() => updateSaveButtonLabel('Save Settings'), 1700);
   } catch (error) {
     showSettingsFeedback('✗ Failed to save — try again', 'error');
+    updateSaveButtonLabel('✗ Failed');
     showToast(error?.message || '✗ Failed to save — try again', 'error', 3200);
+    window.setTimeout(() => updateSaveButtonLabel('Save Settings'), 1800);
   } finally {
     setButtonLoading(button, false);
     setControlsDisabledState();
@@ -1032,329 +1152,122 @@ function renderPerformance() {
     const minutes = Math.max(0, Math.round(toNum(periodData.avgHoldMinutes, 0)));
     holdNode.textContent = `${Math.floor(minutes / 60)}h ${minutes % 60}m`;
   }
-  if (chart) {
-    const bars = Array.isArray(perf.chart) ? perf.chart : [];
-    if (!bars.length) {
-      chart.innerHTML = `
-        <span class="ai-trader-chart-label">Daily P&amp;L</span>
-        <div class="ai-trader-chart-bars">
-          <span class="ai-trader-chart-empty">No trades yet — chart will appear as the bot trades</span>
-        </div>
-      `;
-    } else {
-      const maxAbs = Math.max(1, ...bars.map((row) => Math.abs(toNum(row.pnl, 0))));
-      chart.innerHTML = `
-        <span class="ai-trader-chart-label">Daily P&amp;L</span>
-        <div class="ai-trader-chart-bars">
-          ${bars.map((row) => {
-            const pnl = toNum(row.pnl, 0);
-            const height = clamp((Math.abs(pnl) / maxAbs) * 100, 8, 100);
-            const cls = pnl >= 0 ? 'is-positive' : 'is-negative';
-            return `
-              <span class="ai-trader-chart-col">
-                <span class="ai-trader-chart-bar ${cls}" style="height:${height}%"></span>
-                <span class="ai-trader-chart-day">${escapeHtml(String(row.day || '').slice(5))}</span>
-              </span>
-            `;
-          }).join('')}
-        </div>
-      `;
-    }
+  if (!chart) {
+    return;
   }
+  const bars = Array.isArray(perf.chart) ? perf.chart : [];
+  if (!bars.length) {
+    chart.innerHTML = `
+      <span class="ai-trader-chart-label">Daily P&amp;L</span>
+      <div class="ai-trader-chart-bars">
+        <span class="ai-trader-chart-empty">📉 <em>No trades yet — chart will appear as the bot trades.</em></span>
+      </div>
+    `;
+    return;
+  }
+  const maxAbs = Math.max(1, ...bars.map((row) => Math.abs(toNum(row.pnl, 0))));
+  chart.innerHTML = `
+    <span class="ai-trader-chart-label">Daily P&amp;L</span>
+    <div class="ai-trader-chart-bars">
+      ${bars.map((row) => {
+        const pnl = toNum(row.pnl, 0);
+        const height = clamp((Math.abs(pnl) / maxAbs) * 100, 8, 100);
+        const cls = pnl >= 0 ? 'is-positive' : 'is-negative';
+        return `
+          <span class="ai-trader-chart-col">
+            <span class="ai-trader-chart-bar ${cls}" style="height:${height}%"></span>
+            <span class="ai-trader-chart-day">${escapeHtml(String(row.day || '').slice(5))}</span>
+          </span>
+        `;
+      }).join('')}
+    </div>
+  `;
 }
 
-function setupGuideCompletion() {
-  const setup = state.status?.setup || {};
-  const completed = Boolean(setup.completed);
-  if (completed) {
-    state.setupCompleteLocally = true;
-    setStoredSetupCompleted(true);
+function resolveActiveSetupStep() {
+  if (SETUP_STEP_ORDER.includes(state.activeSetupStepKey)) {
+    return state.activeSetupStepKey;
   }
-  return completed || state.setupCompleteLocally;
+  return state.setup.currentStepKey || SETUP_STEP_ORDER[0];
+}
+
+function renderStep1AuthState() {
+  const actionWrap = byId('ai-trader-step-1-auth-actions');
+  const success = byId('ai-trader-step-1-complete');
+  if (!(actionWrap && success)) {
+    return;
+  }
+  const signedIn = !state.authRequired;
+  actionWrap.classList.toggle('hidden', signedIn);
+  success.classList.toggle('hidden', !signedIn);
 }
 
 function renderGettingStartedGuide() {
   const card = byId('ai-trader-getting-started');
+  const badge = byId('ai-trader-setup-complete-badge');
+  const showLink = byId('ai-trader-show-setup-link');
   if (!card) {
     return;
   }
-  if (setupGuideCompletion()) {
-    card.hidden = true;
+  const allComplete = Boolean(state.setup.completed);
+  const shouldShow = !allComplete || state.forceShowSetupGuide;
+  card.hidden = !shouldShow;
+  if (badge) {
+    badge.classList.toggle('hidden', !allComplete);
+  }
+  if (showLink) {
+    showLink.classList.toggle('hidden', shouldShow || !allComplete);
+  }
+  if (!shouldShow) {
     return;
   }
-  card.hidden = false;
-  const setup = state.status?.setup || {};
-  const steps = setup.steps || {};
-  const currentStepIndex = Math.max(0, toNum(setup.currentStepIndex, 0));
-  document.querySelectorAll('#ai-trader-getting-started .ai-trader-tracker-step').forEach((stepNode, index) => {
-    if (!(stepNode instanceof HTMLElement)) {
-      return;
-    }
-    const key = String(stepNode.dataset.stepKey || '').trim();
-    const done = Boolean(steps[key]);
-    const isCurrent = !done && index === currentStepIndex;
-    stepNode.classList.toggle('is-complete', done);
-    stepNode.classList.toggle('is-current', isCurrent);
-    const dot = stepNode.querySelector('.ai-trader-tracker-dot');
-    if (dot) {
-      dot.textContent = done ? '✓' : String(index + 1);
-    }
-  });
-  document.querySelectorAll('#ai-trader-getting-started .ai-trader-setup-panel').forEach((panelNode, index) => {
-    if (!(panelNode instanceof HTMLElement)) {
-      return;
-    }
-    const key = String(panelNode.dataset.stepKey || '').trim();
-    const done = Boolean(steps[key]);
-    const isCurrent = !done && index === currentStepIndex;
-    panelNode.classList.toggle('is-complete', done);
-    panelNode.classList.toggle('is-active', isCurrent);
-    panelNode.hidden = !isCurrent;
-  });
-  const accountBtn = byId('ai-trader-step-account-btn');
-  if (accountBtn instanceof HTMLAnchorElement) {
-    if (state.authRequired) {
-      accountBtn.textContent = 'Sign In';
-      accountBtn.href = '/ai-trade-access.html?mode=login&next=%2F';
-      accountBtn.classList.remove('is-disabled');
-    } else {
-      accountBtn.textContent = 'Account Ready ✓';
-      accountBtn.href = '#';
-      accountBtn.classList.add('is-disabled');
-    }
-  }
-}
-
-async function pollMarketStatus() {
-  try {
-    const payload = await fetchJsonWithAuthRetry('/api/market/status', { method: 'GET' });
-    if (payload?.market) {
-      state.localMarket = payload.market;
-      renderStatsBar();
-    }
-    registerConnectionSuccess();
-  } catch (error) {
-    if (error?.status !== 401) {
-      registerConnectionFailure();
-    }
-  }
-}
-
-function openStopModal() {
-  const modal = byId('ai-trader-stop-modal');
-  if (!modal) {
-    return;
-  }
-  modal.classList.remove('hidden');
-}
-
-function closeStopModal() {
-  const modal = byId('ai-trader-stop-modal');
-  if (!modal) {
-    return;
-  }
-  modal.classList.add('hidden');
-}
-
-function openBrokerModal(step = 1) {
-  const modal = byId('ai-trader-broker-modal');
-  if (!modal) {
-    return;
-  }
-  modal.classList.remove('hidden');
-  showBrokerModalStep(step);
-}
-
-function closeBrokerModal() {
-  const modal = byId('ai-trader-broker-modal');
-  if (!modal) {
-    return;
-  }
-  modal.classList.add('hidden');
-}
-
-function bindModalDismissShortcuts() {
-  const stopModal = byId('ai-trader-stop-modal');
-  const brokerModal = byId('ai-trader-broker-modal');
-  if (stopModal) {
-    stopModal.addEventListener('click', (event) => {
-      if (event.target === stopModal) {
-        closeStopModal();
-      }
-    });
-  }
-  if (brokerModal) {
-    brokerModal.addEventListener('click', (event) => {
-      if (event.target === brokerModal) {
-        closeBrokerModal();
-      }
-    });
-  }
-  document.addEventListener('keydown', (event) => {
-    if (event.key !== 'Escape') {
-      return;
-    }
-    if (state.controlsDropdownOpen) {
-      closeControlsDropdown();
-      return;
-    }
-    if (stopModal && !stopModal.classList.contains('hidden')) {
-      closeStopModal();
-      return;
-    }
-    if (brokerModal && !brokerModal.classList.contains('hidden')) {
-      closeBrokerModal();
-    }
-  });
-}
-
-function showBrokerModalStep(step) {
-  const step1 = byId('ai-trader-broker-step-1');
-  const step2 = byId('ai-trader-broker-step-2');
-  const step3 = byId('ai-trader-broker-step-3');
-  if (step1) {
-    step1.classList.toggle('hidden', step !== 1);
-  }
-  if (step2) {
-    step2.classList.toggle('hidden', step !== 2);
-  }
-  if (step3) {
-    step3.classList.toggle('hidden', step !== 3);
-  }
-}
-
-function applyBrokerChoice() {
-  document.querySelectorAll('.ai-trader-broker-modal-option').forEach((node) => {
+  renderStep1AuthState();
+  const activeStepKey = resolveActiveSetupStep();
+  document.querySelectorAll('#ai-trader-getting-started .ai-trader-tracker-step').forEach((node, index) => {
     if (!(node instanceof HTMLButtonElement)) {
       return;
     }
-    const active = String(node.dataset.brokerChoice || '') === state.selectedBroker;
-    node.classList.toggle('is-active', active);
+    const key = String(node.dataset.stepKey || '').trim();
+    const completed = Boolean(state.setup.steps[key]);
+    const isCurrent = key === activeStepKey;
+    const isFuture = !completed && !isCurrent;
+    node.classList.toggle('is-complete', completed);
+    node.classList.toggle('is-current', isCurrent);
+    node.classList.toggle('is-future', isFuture);
+    node.setAttribute('aria-selected', isCurrent ? 'true' : 'false');
+    const dot = node.querySelector('.ai-trader-tracker-dot');
+    if (dot) {
+      dot.textContent = completed ? '✓' : String(index + 1);
+    }
+  });
+  document.querySelectorAll('#ai-trader-getting-started .ai-trader-setup-panel').forEach((panel) => {
+    if (!(panel instanceof HTMLElement)) {
+      return;
+    }
+    const key = String(panel.dataset.stepKey || '').trim();
+    const isActive = key === activeStepKey;
+    panel.hidden = !isActive;
+    panel.classList.toggle('is-active', isActive);
+    panel.classList.toggle('is-complete', Boolean(state.setup.steps[key]));
   });
 }
 
-function mapBrokerAlias(value) {
-  const raw = String(value || '').trim().toLowerCase();
-  if (raw === 'tradier') {
-    return 'tradier';
+function applyStatusPayload(payload) {
+  state.status = payload;
+  state.authRequired = false;
+  state.localMarket = payload?.marketStatus || payload?.market || computeLocalMarketStatus();
+  state.scanIntervalSeconds = Math.max(5, toNum(payload?.stats?.nextScanInSeconds, 300));
+  if (statusVisualWord() === 'RUNNING') {
+    state.nextScanSeconds = Math.max(1, state.scanIntervalSeconds);
+  } else {
+    state.nextScanSeconds = null;
   }
-  return raw;
-}
-
-async function runBrokerTestFlow() {
-  const testBtn = byId('ai-trader-broker-test-btn');
-  if (!(testBtn instanceof HTMLButtonElement)) {
-    return;
-  }
-  const keyInput = byId('ai-trader-broker-api-key');
-  const secretInput = byId('ai-trader-broker-secret-key');
-  const modeSelect = byId('ai-trader-broker-mode');
-  const apiKey = keyInput instanceof HTMLInputElement ? keyInput.value.trim() : '';
-  const secretKey = secretInput instanceof HTMLInputElement ? secretInput.value.trim() : '';
-  const mode = modeSelect instanceof HTMLSelectElement ? modeSelect.value : 'paper';
-  if (!apiKey || !secretKey) {
-    showToast('Enter both API key and secret key first.', 'error');
-    return;
-  }
-  setButtonLoading(testBtn, true);
-  testBtn.disabled = true;
-  const checklist = byId('ai-trader-broker-test-checklist');
-  const resultText = byId('ai-trader-broker-test-result');
-  const doneBtn = byId('ai-trader-broker-test-done');
-  if (doneBtn) {
-    doneBtn.classList.add('hidden');
-  }
-  if (resultText) {
-    resultText.textContent = '';
-  }
-  try {
-    showBrokerModalStep(3);
-    await fetchJsonWithAuthRetry('/api/broker/connect', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        broker: state.selectedBroker,
-        api_key: apiKey,
-        secret_key: secretKey,
-        mode
-      })
-    });
-    const tested = await fetchJsonWithAuthRetry('/api/broker/test', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        broker: state.selectedBroker
-      })
-    });
-    const checks = Array.isArray(tested?.checks) ? tested.checks : [];
-    if (checklist) {
-      checklist.innerHTML = '';
-      for (let i = 0; i < checks.length; i += 1) {
-        const check = checks[i];
-        const li = document.createElement('li');
-        li.className = 'ai-trader-broker-check-item is-pending';
-        li.textContent = `⏳ ${check.label}...`;
-        checklist.appendChild(li);
-        // eslint-disable-next-line no-await-in-loop
-        await new Promise((resolve) => window.setTimeout(resolve, 260));
-        li.classList.remove('is-pending');
-        li.classList.toggle('is-success', Boolean(check.ok));
-        li.classList.toggle('is-failed', !Boolean(check.ok));
-        li.textContent = `${check.ok ? '✓' : '✗'} ${check.label}${check.detail ? ` — ${check.detail}` : ''}`;
-      }
-    }
-    if (tested?.bridgeReady) {
-      if (resultText) {
-        resultText.textContent = '✅ Broker connected! You are ready to trade.';
-      }
-      if (doneBtn) {
-        doneBtn.classList.remove('hidden');
-      }
-      showToast('Broker connected successfully.', 'success');
-      await pollStatus();
-      await pollPositions();
-      await pollScanner();
-    } else {
-      const message = tested?.failure?.explanation || 'Connection test failed. Check API keys, permissions, and account mode.';
-      if (resultText) {
-        resultText.textContent = `✗ ${message}`;
-      }
-      showToast(message, 'error', 3600);
-    }
-  } catch (error) {
-    if (resultText) {
-      resultText.textContent = `✗ ${error?.message || 'Broker test failed.'}`;
-    }
-    showToast(error?.message || 'Broker test failed.', 'error', 3600);
-  } finally {
-    setButtonLoading(testBtn, false);
-    setControlsDisabledState();
-  }
-}
-
-function bindGuideFaqAccordion() {
-  const wrap = byId('ai-trader-setup-faq');
-  if (!wrap) {
-    return;
-  }
-  wrap.addEventListener('click', (event) => {
-    const target = event.target;
-    if (!(target instanceof Element)) {
-      return;
-    }
-    const button = target.closest('.ai-trader-setup-faq-trigger');
-    if (!(button instanceof HTMLButtonElement)) {
-      return;
-    }
-    const item = button.closest('.ai-trader-setup-faq-item');
-    const answer = item?.querySelector('.ai-trader-setup-faq-answer');
-    if (!answer) {
-      return;
-    }
-    const expanded = button.getAttribute('aria-expanded') === 'true';
-    button.setAttribute('aria-expanded', expanded ? 'false' : 'true');
-    answer.hidden = expanded;
-  });
+  syncSetupStateFromStatus();
+  applyTopStatus();
+  setControlsDisabledState();
+  renderStatsBar();
+  applySettingsFromStatus();
+  renderGettingStartedGuide();
 }
 
 function applyLoadingAuthState() {
@@ -1366,7 +1279,7 @@ function applyLoadingAuthState() {
     <article class="ai-trader-empty-state ai-trader-empty-state--center">
       <h4>Sign in required</h4>
       <p>Log in to use the AI Trader control center.</p>
-      <a class="btn-secondary open-link" href="/ai-trade-access.html?mode=login&next=%2F">Sign In</a>
+      <a class="btn-secondary open-link" href="/ai-trade-access.html?mode=login&next=%2Fdashboard">Sign In</a>
     </article>
   `;
   [list, grid, scanner, chart].forEach((node) => {
@@ -1376,26 +1289,9 @@ function applyLoadingAuthState() {
   });
 }
 
-function applyStatusPayload(payload) {
-  state.status = payload;
-  state.authRequired = false;
-  state.scanIntervalSeconds = Math.max(5, toNum(payload?.stats?.nextScanInSeconds, 300));
-  if (statusVisualWord() === 'RUNNING') {
-    state.nextScanSeconds = Math.max(1, state.scanIntervalSeconds);
-  } else {
-    state.nextScanSeconds = null;
-  }
-  applyTopStatus();
-  setControlsDisabledState();
-  renderStatsBar();
-  applySettingsFromStatus();
-  renderGettingStartedGuide();
-}
-
 async function pollStatus() {
   try {
     const payload = await fetchJsonWithAuthRetry('/api/bot/status', { method: 'GET' });
-    state.localMarket = payload?.marketStatus || payload?.market || computeLocalMarketStatus();
     applyStatusPayload(payload);
     registerConnectionSuccess();
   } catch (error) {
@@ -1471,6 +1367,14 @@ async function closePosition(positionId) {
   });
 }
 
+function showStopInlineConfirm(show) {
+  const row = byId('ai-trader-stop-inline-confirm');
+  if (!row) {
+    return;
+  }
+  row.classList.toggle('hidden', !show);
+}
+
 async function startBotFlow() {
   const startBtn = byId('ai-trader-start-btn');
   if (!(startBtn instanceof HTMLButtonElement)) {
@@ -1485,16 +1389,21 @@ async function startBotFlow() {
       applyStatusPayload(status);
     }
     const brokerConnected = isBrokerConnectedFromStatus(status);
-    const settingsSavedStep = Boolean(status?.setup?.steps?.settingsSaved);
+    const settingsSaved = Boolean(state.setup.steps.setup_step_2_complete);
     if (!brokerConnected) {
-      openBrokerModal(1);
       showToast('Connect a broker first.', 'error');
+      state.forceShowSetupGuide = true;
+      state.activeSetupStepKey = 'setup_step_4_complete';
+      renderGettingStartedGuide();
+      scrollToSection('ai-trader-getting-started');
       return;
     }
-    if (!Boolean(status?.configured) || !settingsSavedStep) {
-      showToast('Save your bot settings first', 'error');
-      const panel = byId('ai-trader-settings-panel');
-      panel?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    if (!Boolean(status?.configured) || !settingsSaved) {
+      showToast('Save your bot settings first.', 'error');
+      state.forceShowSetupGuide = true;
+      state.activeSetupStepKey = 'setup_step_2_complete';
+      renderGettingStartedGuide();
+      scrollToSection('ai-trader-settings-panel');
       return;
     }
     const started = await fetchJsonWithAuthRetry('/api/bot/start', {
@@ -1503,12 +1412,13 @@ async function startBotFlow() {
       body: JSON.stringify({})
     });
     applyStatusPayload(started);
+    await persistSetupProgress('setup_step_5_complete', true);
+    applyLocalSetupStep('setup_step_5_complete', true);
+    state.forceShowSetupGuide = false;
     showToast('Bot started successfully.', 'success');
-    await Promise.all([pollActivity(), pollPositions(), pollScanner()]);
+    showStopInlineConfirm(false);
+    await Promise.all([pollActivity(), pollPositions(), pollScanner(), pollPerformance()]);
   } catch (error) {
-    if (String(error?.body?.error || '').includes('broker')) {
-      openBrokerModal(1);
-    }
     showToast(error?.message || 'Could not start bot.', 'error', 3400);
   } finally {
     setButtonLoading(startBtn, false);
@@ -1540,12 +1450,12 @@ async function pauseBotFlow() {
 }
 
 async function stopBotFlow() {
-  const stopBtn = byId('ai-trader-stop-confirm-btn');
-  if (!(stopBtn instanceof HTMLButtonElement)) {
+  const stopConfirmBtn = byId('ai-trader-stop-confirm-btn');
+  if (!(stopConfirmBtn instanceof HTMLButtonElement)) {
     return;
   }
-  setButtonLoading(stopBtn, true);
-  stopBtn.disabled = true;
+  setButtonLoading(stopConfirmBtn, true);
+  stopConfirmBtn.disabled = true;
   try {
     const payload = await fetchJsonWithAuthRetry('/api/bot/stop', {
       method: 'POST',
@@ -1553,14 +1463,331 @@ async function stopBotFlow() {
       body: JSON.stringify({})
     });
     applyStatusPayload(payload);
-    closeStopModal();
     showToast('Bot stopped.', 'success');
+    showStopInlineConfirm(false);
   } catch (error) {
     showToast(error?.message || 'Could not stop bot.', 'error');
   } finally {
-    setButtonLoading(stopBtn, false);
+    setButtonLoading(stopConfirmBtn, false);
+    stopConfirmBtn.disabled = false;
     setControlsDisabledState();
   }
+}
+
+function scoreFailureGuidance(message, broker) {
+  const lower = String(message || '').toLowerCase();
+  if (lower.includes('invalid') || lower.includes('unauthorized') || lower.includes('access token')) {
+    return `The ${BROKER_CONFIG[broker]?.label || 'broker'} credentials look invalid. Re-generate your keys and paste the newest values.`;
+  }
+  if (lower.includes('account') && lower.includes('not found')) {
+    return 'The account could not be found. Confirm the account ID and that it matches your selected broker.';
+  }
+  if (lower.includes('permission')) {
+    return 'Your key does not have enough permissions. Enable trading + account access in broker API settings.';
+  }
+  return String(message || 'Connection test failed. Double check keys and broker mode, then try again.');
+}
+
+function normalizeBrokerChoice(rawValue) {
+  const value = String(rawValue || '').trim().toLowerCase();
+  if (value === 'interactive-brokers') {
+    return 'ibkr';
+  }
+  if (value === 'tradier') {
+    return 'tradier';
+  }
+  return 'alpaca';
+}
+
+function checklistLabelForKey(checkKey, broker) {
+  const brokerLabel = BROKER_CONFIG[broker]?.label || 'broker';
+  const key = String(checkKey || '').trim().toLowerCase();
+  if (key === 'connecting') {
+    return `Connecting to ${brokerLabel}...`;
+  }
+  if (key === 'validating') {
+    return 'Validating API keys...';
+  }
+  if (key === 'account') {
+    return 'Reading account details...';
+  }
+  if (key === 'buyingpower') {
+    return 'Checking buying power...';
+  }
+  if (key === 'permissions') {
+    return 'Verifying trade permissions...';
+  }
+  if (key === 'marketdata') {
+    return 'Checking market data access...';
+  }
+  return 'Running connection check...';
+}
+
+function brokerPayloadFromForm() {
+  const apiInput = byId('ai-trader-broker-api-key');
+  const secretInput = byId('ai-trader-broker-secret-key');
+  const accountInput = byId('ai-trader-broker-account-id');
+  const broker = state.selectedBroker;
+  const payload = {
+    broker,
+    trading_mode: state.selectedBrokerMode,
+    api_key: apiInput instanceof HTMLInputElement ? apiInput.value.trim() : '',
+    api_secret: secretInput instanceof HTMLInputElement ? secretInput.value.trim() : '',
+    account_id: accountInput instanceof HTMLInputElement ? accountInput.value.trim() : ''
+  };
+  if (broker === 'alpaca') {
+    if (!payload.api_key || !payload.api_secret) {
+      throw new Error('Enter both API key and secret key for Alpaca.');
+    }
+  }
+  if (broker === 'tradier') {
+    if (!payload.api_key || !payload.account_id) {
+      throw new Error('Enter both Tradier access token and account ID.');
+    }
+  }
+  if (broker === 'ibkr' && !payload.account_id) {
+    throw new Error('Enter your IBKR account ID before testing.');
+  }
+  return payload;
+}
+
+function renderBrokerChecklist(checks = [], withDelay = false) {
+  const list = byId('ai-trader-broker-test-checklist');
+  if (!list) {
+    return Promise.resolve();
+  }
+  list.innerHTML = '';
+  const run = async () => {
+    for (let i = 0; i < checks.length; i += 1) {
+      const check = checks[i];
+      const lineLabel = checklistLabelForKey(check?.key, state.selectedBroker);
+      const detailText = String(check?.detail || check?.message || '').trim();
+      const row = document.createElement('li');
+      row.className = 'ai-trader-broker-check-item';
+      row.textContent = `⏳ ${lineLabel}`;
+      list.appendChild(row);
+      if (withDelay) {
+        // eslint-disable-next-line no-await-in-loop
+        await new Promise((resolve) => window.setTimeout(resolve, 220));
+      }
+      row.classList.add(Boolean(check.ok) ? 'is-success' : 'is-failed');
+      row.textContent = `${check.ok ? '✅' : '❌'} ${lineLabel}${detailText ? ` — ${detailText}` : ''}`;
+    }
+  };
+  return run();
+}
+
+function setBrokerSuccessCardVisible(visible, accountInfo = null) {
+  const success = byId('ai-trader-broker-success-card');
+  if (!success) {
+    return;
+  }
+  success.classList.toggle('hidden', !visible);
+  if (!visible) {
+    return;
+  }
+  const accountNode = byId('ai-trader-broker-success-account');
+  const buyingNode = byId('ai-trader-broker-success-buying-power');
+  const modeNode = byId('ai-trader-broker-success-mode');
+  if (accountNode) {
+    accountNode.textContent = String(accountInfo?.account_masked || accountInfo?.accountMasked || 'XXXX----');
+  }
+  if (buyingNode) {
+    buyingNode.textContent = formatUsd(accountInfo?.buying_power || accountInfo?.buyingPower || 0);
+  }
+  if (modeNode) {
+    modeNode.textContent = state.selectedBrokerMode === 'live' ? 'Live Trading' : 'Paper Trading';
+  }
+}
+
+function setBrokerErrorCard(message = '') {
+  const errorCard = byId('ai-trader-broker-error-card');
+  const errorText = byId('ai-trader-broker-error-text');
+  if (!(errorCard && errorText)) {
+    return;
+  }
+  if (!message) {
+    errorCard.classList.add('hidden');
+    errorText.textContent = '';
+    return;
+  }
+  errorCard.classList.remove('hidden');
+  errorText.textContent = message;
+}
+
+async function testBrokerConnection(payload) {
+  return fetchWithFallback('/api/broker/test-connection', '/api/broker/test', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload)
+  });
+}
+
+async function saveBrokerConnection(payload) {
+  return fetchWithFallback('/api/broker/save-keys', '/api/broker/connect', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload)
+  });
+}
+
+async function runBrokerTestFlow() {
+  const testBtn = byId('ai-trader-broker-test-btn');
+  if (!(testBtn instanceof HTMLButtonElement)) {
+    return;
+  }
+  setButtonLoading(testBtn, true);
+  testBtn.disabled = true;
+  setBrokerErrorCard('');
+  setBrokerSuccessCardVisible(false);
+  try {
+    const payload = brokerPayloadFromForm();
+    const response = await testBrokerConnection(payload);
+    const checks = Array.isArray(response?.checks) ? response.checks : [];
+    await renderBrokerChecklist(checks, true);
+    if (!response?.success && !response?.bridgeReady) {
+      const failedCheck = checks.find((check) => !check?.ok);
+      const failedLabel = checklistLabelForKey(failedCheck?.key, payload.broker);
+      const failedDetail = String(failedCheck?.detail || failedCheck?.message || response?.message || 'Connection test failed.').trim();
+      const guidance = `${failedLabel} failed. ${scoreFailureGuidance(failedDetail, payload.broker)}`;
+      setBrokerErrorCard(guidance);
+      state.brokerTest = {
+        passed: false,
+        payload: null,
+        checks,
+        accountInfo: null
+      };
+      showToast(guidance, 'error', 3600);
+      return;
+    }
+    state.brokerTest = {
+      passed: true,
+      payload,
+      checks,
+      accountInfo: response?.account_info || null
+    };
+    setBrokerSuccessCardVisible(true, response?.account_info || {});
+    showToast('Broker connection test passed.', 'success');
+  } catch (error) {
+    const guidance = scoreFailureGuidance(error?.message || 'Connection test failed.', state.selectedBroker);
+    setBrokerErrorCard(guidance);
+    showToast(guidance, 'error', 3600);
+    state.brokerTest = {
+      passed: false,
+      payload: null,
+      checks: [],
+      accountInfo: null
+    };
+  } finally {
+    setButtonLoading(testBtn, false);
+    testBtn.disabled = false;
+  }
+}
+
+async function saveBrokerAndContinueFlow() {
+  if (!state.brokerTest.passed || !state.brokerTest.payload) {
+    showToast('Run a successful connection test first.', 'error');
+    return;
+  }
+  const button = byId('ai-trader-broker-save-continue-btn');
+  if (button instanceof HTMLButtonElement) {
+    button.disabled = true;
+  }
+  try {
+    await saveBrokerConnection(state.brokerTest.payload);
+    await persistSetupProgress('setup_step_4_complete', true);
+    applyLocalSetupStep('setup_step_4_complete', true);
+    state.activeSetupStepKey = 'setup_step_5_complete';
+    state.forceShowSetupGuide = true;
+    showToast('Broker saved. Continue to start the bot.', 'success');
+    await Promise.all([pollStatus(), pollPositions(), pollScanner()]);
+    renderGettingStartedGuide();
+  } catch (error) {
+    showToast(error?.message || 'Could not save broker connection.', 'error');
+  } finally {
+    if (button instanceof HTMLButtonElement) {
+      button.disabled = false;
+    }
+  }
+}
+
+function applyBrokerFormState() {
+  const broker = state.selectedBroker;
+  const config = BROKER_CONFIG[broker] || BROKER_CONFIG.alpaca;
+  const apiLabel = byId('ai-trader-broker-api-key-label');
+  const apiInput = byId('ai-trader-broker-api-key');
+  const apiHelper = byId('ai-trader-broker-api-helper');
+  const apiLink = byId('ai-trader-broker-api-link');
+  const secretWrap = byId('ai-trader-broker-secret-wrap');
+  const secretLabel = byId('ai-trader-broker-secret-label');
+  const secretHelper = byId('ai-trader-broker-secret-helper');
+  const accountWrap = byId('ai-trader-broker-account-wrap');
+  const accountLabel = byId('ai-trader-broker-account-label');
+  const accountInput = byId('ai-trader-broker-account-id');
+  if (apiLabel) {
+    apiLabel.textContent = config.apiLabel;
+  }
+  if (apiInput instanceof HTMLInputElement) {
+    apiInput.placeholder = config.apiPlaceholder;
+  }
+  if (apiHelper) {
+    apiHelper.textContent = config.apiHelper;
+  }
+  if (apiLink instanceof HTMLAnchorElement) {
+    apiLink.href = config.apiLink;
+    apiLink.textContent = config.apiLinkLabel;
+  }
+  if (secretWrap) {
+    secretWrap.classList.toggle('hidden', !config.needsSecret);
+  }
+  if (secretLabel) {
+    secretLabel.textContent = config.secretLabel;
+  }
+  if (secretHelper) {
+    secretHelper.textContent = config.secretHelper;
+  }
+  if (accountWrap) {
+    accountWrap.classList.toggle('hidden', !config.needsAccountId);
+  }
+  if (accountLabel) {
+    accountLabel.textContent = config.accountLabel || 'Account ID';
+  }
+  if (accountInput instanceof HTMLInputElement) {
+    accountInput.placeholder = config.accountPlaceholder || 'Paste your account ID';
+  }
+  document.querySelectorAll('#ai-trader-step4-broker-pills .ai-trader-broker-pill').forEach((pill) => {
+    if (!(pill instanceof HTMLButtonElement)) {
+      return;
+    }
+    const active = String(pill.dataset.brokerChoice || '') === broker;
+    pill.classList.toggle('is-active', active);
+    pill.setAttribute('aria-pressed', active ? 'true' : 'false');
+  });
+}
+
+function applyBrokerModeState() {
+  const paperBtn = byId('ai-trader-broker-mode-paper');
+  const liveBtn = byId('ai-trader-broker-mode-live');
+  const warning = byId('ai-trader-broker-live-warning');
+  const paperActive = state.selectedBrokerMode === 'paper';
+  if (paperBtn instanceof HTMLButtonElement) {
+    paperBtn.classList.toggle('is-active', paperActive);
+  }
+  if (liveBtn instanceof HTMLButtonElement) {
+    liveBtn.classList.toggle('is-active', !paperActive);
+  }
+  if (warning) {
+    warning.classList.toggle('hidden', paperActive);
+  }
+}
+
+async function trackStepThreeClick() {
+  await persistSetupProgress('setup_step_3_complete', true);
+  applyLocalSetupStep('setup_step_3_complete', true);
+  if (state.activeSetupStepKey === 'setup_step_3_complete') {
+    state.activeSetupStepKey = 'setup_step_4_complete';
+  }
+  renderGettingStartedGuide();
 }
 
 function scrollToSection(sectionId) {
@@ -1572,11 +1799,10 @@ function bindControlsDropdown() {
   const toggleBtn = byId('ai-trader-controls-toggle');
   const closeBtn = byId('ai-trader-controls-close');
   const dropdown = byId('ai-trader-controls-dropdown');
+  const controlLink = byId('ai-trader-quick-control-link');
   const settingsLink = byId('ai-trader-quick-settings-link');
   const brokerLink = byId('ai-trader-quick-broker-link');
   const performanceLink = byId('ai-trader-quick-performance-link');
-  const emailLink = byId('ai-trader-quick-email-link');
-
   if (toggleBtn instanceof HTMLButtonElement) {
     toggleBtn.addEventListener('click', (event) => {
       event.preventDefault();
@@ -1585,8 +1811,12 @@ function bindControlsDropdown() {
     });
   }
   if (closeBtn instanceof HTMLButtonElement) {
-    closeBtn.addEventListener('click', () => {
+    closeBtn.addEventListener('click', () => closeControlsDropdown());
+  }
+  if (controlLink instanceof HTMLButtonElement) {
+    controlLink.addEventListener('click', () => {
       closeControlsDropdown();
+      scrollToSection('ai-trader-control-title');
     });
   }
   if (settingsLink instanceof HTMLButtonElement) {
@@ -1598,6 +1828,9 @@ function bindControlsDropdown() {
   if (brokerLink instanceof HTMLButtonElement) {
     brokerLink.addEventListener('click', () => {
       closeControlsDropdown();
+      state.forceShowSetupGuide = true;
+      state.activeSetupStepKey = 'setup_step_4_complete';
+      renderGettingStartedGuide();
       scrollToSection('ai-trader-getting-started');
     });
   }
@@ -1605,11 +1838,6 @@ function bindControlsDropdown() {
     performanceLink.addEventListener('click', () => {
       closeControlsDropdown();
       scrollToSection('ai-trader-performance-title');
-    });
-  }
-  if (emailLink instanceof HTMLAnchorElement) {
-    emailLink.addEventListener('click', () => {
-      closeControlsDropdown();
     });
   }
   document.addEventListener('click', (event) => {
@@ -1626,112 +1854,6 @@ function bindControlsDropdown() {
     }
     closeControlsDropdown();
   });
-}
-
-function bindControls() {
-  const startBtn = byId('ai-trader-start-btn');
-  const pauseBtn = byId('ai-trader-pause-btn');
-  const stopBtn = byId('ai-trader-stop-btn');
-  const stopConfirmBtn = byId('ai-trader-stop-confirm-btn');
-  const stopCancelBtn = byId('ai-trader-stop-cancel-btn');
-  const settingsBtn = byId('ai-trader-save-settings-btn');
-  const tabs = byId('ai-trader-performance-tabs');
-  const positionsGrid = byId('ai-trader-positions-grid');
-  const connectStepBtn = byId('ai-trader-step-connect-btn');
-  const settingsStepBtn = byId('ai-trader-step-settings-btn');
-  const startStepBtn = byId('ai-trader-step-start-btn');
-  if (startBtn instanceof HTMLButtonElement) {
-    startBtn.addEventListener('click', () => {
-      closeControlsDropdown();
-      startBotFlow().catch(() => {});
-    });
-  }
-  if (pauseBtn instanceof HTMLButtonElement) {
-    pauseBtn.addEventListener('click', () => {
-      closeControlsDropdown();
-      pauseBotFlow().catch(() => {});
-    });
-  }
-  if (stopBtn instanceof HTMLButtonElement) {
-    stopBtn.addEventListener('click', () => {
-      closeControlsDropdown();
-      openStopModal();
-    });
-  }
-  if (stopConfirmBtn instanceof HTMLButtonElement) {
-    stopConfirmBtn.addEventListener('click', () => {
-      stopBotFlow().catch(() => {});
-    });
-  }
-  if (stopCancelBtn instanceof HTMLButtonElement) {
-    stopCancelBtn.addEventListener('click', closeStopModal);
-  }
-  if (settingsBtn instanceof HTMLButtonElement) {
-    settingsBtn.addEventListener('click', () => {
-      saveSettingsFlow().catch(() => {});
-    });
-  }
-  if (tabs) {
-    tabs.addEventListener('click', (event) => {
-      const target = event.target;
-      if (!(target instanceof Element)) {
-        return;
-      }
-      const button = target.closest('.ai-trader-pill--tab');
-      if (!(button instanceof HTMLButtonElement)) {
-        return;
-      }
-      const period = String(button.dataset.performancePeriod || '').trim();
-      if (!period) {
-        return;
-      }
-      state.selectedPerformancePeriod = period;
-      applyPerformancePeriodTabs();
-      renderPerformance();
-    });
-  }
-  if (positionsGrid) {
-    positionsGrid.addEventListener('click', async (event) => {
-      const target = event.target;
-      if (!(target instanceof Element)) {
-        return;
-      }
-      const closeBtn = target.closest('.ai-trader-close-position-btn');
-      if (!(closeBtn instanceof HTMLButtonElement)) {
-        return;
-      }
-      const positionId = String(closeBtn.dataset.closePositionId || '').trim();
-      if (!positionId) {
-        return;
-      }
-      try {
-        closeBtn.disabled = true;
-        await closePosition(positionId);
-        showToast('Position closed.', 'success');
-        await Promise.all([pollStatus(), pollPositions(), pollActivity(), pollPerformance()]);
-      } catch (error) {
-        showToast(error?.message || 'Could not close position.', 'error');
-      } finally {
-        closeBtn.disabled = false;
-      }
-    });
-  }
-  if (connectStepBtn instanceof HTMLButtonElement) {
-    connectStepBtn.addEventListener('click', () => openBrokerModal(1));
-  }
-  if (settingsStepBtn instanceof HTMLButtonElement) {
-    settingsStepBtn.addEventListener('click', () => {
-      const panel = byId('ai-trader-settings-panel');
-      panel?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    });
-  }
-  if (startStepBtn instanceof HTMLButtonElement) {
-    startStepBtn.addEventListener('click', () => {
-      const control = byId('ai-trader-control-title');
-      control?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-      startBotFlow().catch(() => {});
-    });
-  }
 }
 
 function bindSettingsInteractions() {
@@ -1802,43 +1924,226 @@ function bindSettingsInteractions() {
   }
 }
 
-function bindBrokerModal() {
-  const closeBtn = byId('ai-trader-broker-modal-close');
-  const inlineOpen = byId('ai-trader-open-key-entry');
+function bindSetupGuideInteractions() {
+  const tracker = byId('ai-trader-getting-started-steps');
+  const showGuideLink = byId('ai-trader-show-setup-link');
+  const stepSettingsBtn = byId('ai-trader-step-settings-btn');
+  const stepBrokerNextBtn = byId('ai-trader-step-broker-next-btn');
+  const stepStartBtn = byId('ai-trader-step-start-btn');
   const testBtn = byId('ai-trader-broker-test-btn');
-  const doneBtn = byId('ai-trader-broker-test-done');
-  if (closeBtn instanceof HTMLButtonElement) {
-    closeBtn.addEventListener('click', closeBrokerModal);
+  const saveContinueBtn = byId('ai-trader-broker-save-continue-btn');
+  const retryBtn = byId('ai-trader-broker-try-again-btn');
+  const secretToggle = byId('ai-trader-broker-secret-toggle');
+  if (tracker) {
+    tracker.addEventListener('click', (event) => {
+      const target = event.target;
+      if (!(target instanceof Element)) {
+        return;
+      }
+      const stepBtn = target.closest('.ai-trader-tracker-step');
+      if (!(stepBtn instanceof HTMLButtonElement)) {
+        return;
+      }
+      const key = String(stepBtn.dataset.stepKey || '').trim();
+      if (!SETUP_STEP_ORDER.includes(key)) {
+        return;
+      }
+      const completed = Boolean(state.setup.steps[key]);
+      if (completed || key === state.setup.currentStepKey) {
+        state.forceShowSetupGuide = true;
+        state.activeSetupStepKey = key;
+        renderGettingStartedGuide();
+      }
+    });
   }
-  if (inlineOpen instanceof HTMLButtonElement) {
-    inlineOpen.addEventListener('click', () => showBrokerModalStep(2));
+  if (showGuideLink instanceof HTMLAnchorElement) {
+    showGuideLink.addEventListener('click', (event) => {
+      event.preventDefault();
+      state.forceShowSetupGuide = true;
+      state.activeSetupStepKey = state.setup.currentStepKey;
+      renderGettingStartedGuide();
+      scrollToSection('ai-trader-getting-started');
+    });
+  }
+  if (stepSettingsBtn instanceof HTMLButtonElement) {
+    stepSettingsBtn.addEventListener('click', () => {
+      scrollToSection('ai-trader-settings-panel');
+    });
+  }
+  if (stepBrokerNextBtn instanceof HTMLButtonElement) {
+    stepBrokerNextBtn.addEventListener('click', () => {
+      trackStepThreeClick().catch(() => {});
+      state.activeSetupStepKey = 'setup_step_4_complete';
+      renderGettingStartedGuide();
+      scrollToSection('ai-trader-getting-started');
+    });
+  }
+  if (stepStartBtn instanceof HTMLButtonElement) {
+    stepStartBtn.addEventListener('click', () => {
+      scrollToSection('ai-trader-control-title');
+      startBotFlow().catch(() => {});
+    });
+  }
+  document.querySelectorAll('.ai-trader-broker-choice-link').forEach((link) => {
+    if (!(link instanceof HTMLAnchorElement)) {
+      return;
+    }
+    link.addEventListener('click', () => {
+      trackStepThreeClick().catch(() => {});
+    });
+  });
+  const brokerPills = byId('ai-trader-step4-broker-pills');
+  if (brokerPills) {
+    brokerPills.addEventListener('click', (event) => {
+      const target = event.target;
+      if (!(target instanceof Element)) {
+        return;
+      }
+      const pill = target.closest('.ai-trader-broker-pill');
+      if (!(pill instanceof HTMLButtonElement)) {
+        return;
+      }
+      state.selectedBroker = normalizeBrokerChoice(pill.dataset.brokerChoice || 'alpaca');
+      state.brokerTest = { passed: false, payload: null, checks: [], accountInfo: null };
+      setBrokerSuccessCardVisible(false);
+      setBrokerErrorCard('');
+      applyBrokerFormState();
+    });
+  }
+  const modePaper = byId('ai-trader-broker-mode-paper');
+  const modeLive = byId('ai-trader-broker-mode-live');
+  if (modePaper instanceof HTMLButtonElement) {
+    modePaper.addEventListener('click', () => {
+      state.selectedBrokerMode = 'paper';
+      applyBrokerModeState();
+    });
+  }
+  if (modeLive instanceof HTMLButtonElement) {
+    modeLive.addEventListener('click', () => {
+      state.selectedBrokerMode = 'live';
+      applyBrokerModeState();
+    });
   }
   if (testBtn instanceof HTMLButtonElement) {
     testBtn.addEventListener('click', () => {
       runBrokerTestFlow().catch(() => {});
     });
   }
-  if (doneBtn instanceof HTMLButtonElement) {
-    doneBtn.addEventListener('click', async () => {
-      closeBrokerModal();
-      await pollStatus();
-      showToast('Broker connection saved. You can start the bot now.', 'success');
+  if (saveContinueBtn instanceof HTMLButtonElement) {
+    saveContinueBtn.addEventListener('click', () => {
+      saveBrokerAndContinueFlow().catch(() => {});
     });
   }
-  document.querySelectorAll('.ai-trader-broker-modal-option').forEach((node) => {
-    if (!(node instanceof HTMLButtonElement)) {
-      return;
-    }
-    node.addEventListener('click', () => {
-      state.selectedBroker = mapBrokerAlias(node.dataset.brokerChoice || 'alpaca');
-      applyBrokerChoice();
-      const openAccountUrl = String(node.dataset.brokerUrl || '').trim();
-      if (openAccountUrl) {
-        window.open(openAccountUrl, '_blank', 'noopener,noreferrer');
-      }
-      showBrokerModalStep(2);
+  if (retryBtn instanceof HTMLButtonElement) {
+    retryBtn.addEventListener('click', () => {
+      setBrokerErrorCard('');
+      runBrokerTestFlow().catch(() => {});
     });
-  });
+  }
+  if (secretToggle instanceof HTMLButtonElement) {
+    secretToggle.addEventListener('click', () => {
+      const secretInput = byId('ai-trader-broker-secret-key');
+      if (!(secretInput instanceof HTMLInputElement)) {
+        return;
+      }
+      const nextType = secretInput.type === 'password' ? 'text' : 'password';
+      secretInput.type = nextType;
+      const shown = nextType === 'text';
+      secretToggle.textContent = shown ? 'Hide' : 'Show';
+      secretToggle.setAttribute('aria-pressed', shown ? 'true' : 'false');
+    });
+  }
+  applyBrokerFormState();
+  applyBrokerModeState();
+}
+
+function bindControls() {
+  const startBtn = byId('ai-trader-start-btn');
+  const pauseBtn = byId('ai-trader-pause-btn');
+  const stopBtn = byId('ai-trader-stop-btn');
+  const stopConfirmBtn = byId('ai-trader-stop-confirm-btn');
+  const stopCancelBtn = byId('ai-trader-stop-cancel-btn');
+  const settingsBtn = byId('ai-trader-save-settings-btn');
+  const tabs = byId('ai-trader-performance-tabs');
+  const positionsGrid = byId('ai-trader-positions-grid');
+  if (startBtn instanceof HTMLButtonElement) {
+    startBtn.addEventListener('click', () => {
+      closeControlsDropdown();
+      startBotFlow().catch(() => {});
+    });
+  }
+  if (pauseBtn instanceof HTMLButtonElement) {
+    pauseBtn.addEventListener('click', () => {
+      closeControlsDropdown();
+      pauseBotFlow().catch(() => {});
+    });
+  }
+  if (stopBtn instanceof HTMLButtonElement) {
+    stopBtn.addEventListener('click', () => {
+      closeControlsDropdown();
+      showStopInlineConfirm(true);
+    });
+  }
+  if (stopConfirmBtn instanceof HTMLButtonElement) {
+    stopConfirmBtn.addEventListener('click', () => {
+      stopBotFlow().catch(() => {});
+    });
+  }
+  if (stopCancelBtn instanceof HTMLButtonElement) {
+    stopCancelBtn.addEventListener('click', () => {
+      showStopInlineConfirm(false);
+    });
+  }
+  if (settingsBtn instanceof HTMLButtonElement) {
+    settingsBtn.addEventListener('click', () => {
+      saveSettingsFlow().catch(() => {});
+    });
+  }
+  if (tabs) {
+    tabs.addEventListener('click', (event) => {
+      const target = event.target;
+      if (!(target instanceof Element)) {
+        return;
+      }
+      const button = target.closest('.ai-trader-pill--tab');
+      if (!(button instanceof HTMLButtonElement)) {
+        return;
+      }
+      const period = String(button.dataset.performancePeriod || '').trim();
+      if (!period) {
+        return;
+      }
+      state.selectedPerformancePeriod = period;
+      applyPerformancePeriodTabs();
+      renderPerformance();
+    });
+  }
+  if (positionsGrid) {
+    positionsGrid.addEventListener('click', async (event) => {
+      const target = event.target;
+      if (!(target instanceof Element)) {
+        return;
+      }
+      const closeBtn = target.closest('.ai-trader-close-position-btn');
+      if (!(closeBtn instanceof HTMLButtonElement)) {
+        return;
+      }
+      const positionId = String(closeBtn.dataset.closePositionId || '').trim();
+      if (!positionId) {
+        return;
+      }
+      try {
+        closeBtn.disabled = true;
+        await closePosition(positionId);
+        showToast('Position closed.', 'success');
+        await Promise.all([pollStatus(), pollPositions(), pollActivity(), pollPerformance()]);
+      } catch (error) {
+        showToast(error?.message || 'Could not close position.', 'error');
+      } finally {
+        closeBtn.disabled = false;
+      }
+    });
+  }
 }
 
 function bindNavShortcut() {
@@ -1894,10 +2199,7 @@ function startPolling() {
     pollActivity().catch(() => {});
   }, 5000);
   state.timers.status = window.setInterval(() => {
-    Promise.all([
-      pollStatus(),
-      pollMarketStatus()
-    ]).catch(() => {});
+    pollStatus().catch(() => {});
   }, 10000);
   state.timers.positions = window.setInterval(() => {
     pollPositions().catch(() => {});
@@ -1919,15 +2221,11 @@ function initAiTraderHub() {
     return;
   }
   state.mounted = true;
-  state.setupCompleteLocally = getStoredSetupCompleted();
   bindControls();
   bindControlsDropdown();
   bindSettingsInteractions();
-  bindBrokerModal();
-  bindModalDismissShortcuts();
-  bindGuideFaqAccordion();
+  bindSetupGuideInteractions();
   bindNavShortcut();
-  applyBrokerChoice();
   oneSecondTick();
   initialLoad().catch(() => {
     registerConnectionFailure();
@@ -1940,4 +2238,3 @@ if (document.readyState === 'loading') {
 } else {
   initAiTraderHub();
 }
-
