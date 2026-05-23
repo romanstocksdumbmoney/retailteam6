@@ -1,0 +1,838 @@
+const crypto = require('crypto');
+const bcrypt = require('bcryptjs');
+const fs = require('fs');
+const path = require('path');
+const { BCRYPT_ROUNDS } = require('./authSecurityService');
+
+const usersById = new Map();
+const usersByEmail = new Map();
+const usersByStripeCustomerId = new Map();
+const configuredUserStoreFile = String(
+  process.env.USER_STORE_FILE || path.join(__dirname, '..', 'data', 'users.json')
+).trim();
+const USER_STORE_FILE = path.isAbsolute(configuredUserStoreFile)
+  ? configuredUserStoreFile
+  : path.resolve(process.cwd(), configuredUserStoreFile);
+const SUPPORTED_AUTH_PROVIDERS = new Set(['password', 'google', 'apple', 'github', 'discord', 'x']);
+const REMEMBER_SESSION_TTL_DAYS = Math.max(7, Math.min(365, Number(process.env.REMEMBER_SESSION_TTL_DAYS || 120)));
+const MAX_REMEMBER_SESSIONS_PER_USER = 8;
+const isProduction = String(process.env.NODE_ENV || '').trim().toLowerCase() === 'production';
+const OWNER_EMAILS = new Set(
+  [
+    String(process.env.OWNER_EMAIL || ''),
+    String(process.env.OWNER_EMAILS || '')
+  ]
+    .join(',')
+    .split(',')
+    .map((entry) => normalizeEmail(entry))
+    .filter(Boolean)
+);
+const OWNER_PREVIEW_IN_DEV = String(process.env.OWNER_PREVIEW_IN_DEV || '0').trim() === '1';
+const DISPOSABLE_EMAIL_DOMAINS = new Set([
+  'mailinator.com',
+  'guerrillamail.com',
+  '10minutemail.com',
+  'tempmail.com',
+  'trashmail.com',
+  'yopmail.com'
+]);
+const ALLOWED_TRADER_MODES = new Set(['scalper', 'day', 'swing', 'long']);
+const DEFAULT_TRADER_MODE = 'day';
+const AI_TRADER_SETUP_STEP_KEYS = Object.freeze([
+  'setup_step_1_complete',
+  'setup_step_2_complete',
+  'setup_step_3_complete',
+  'setup_step_4_complete',
+  'setup_step_5_complete'
+]);
+const AI_TRADER_SETUP_LEGACY_KEY_MAP = Object.freeze({
+  setup_step_1_complete: 'accountCreated',
+  setup_step_2_complete: 'settingsSaved',
+  setup_step_3_complete: 'brokerageReady',
+  setup_step_4_complete: 'brokerConnected',
+  setup_step_5_complete: 'botStartedOnce'
+});
+
+function normalizeEmail(email) {
+  return String(email || '')
+    .trim()
+    .toLowerCase();
+}
+
+function hasOwnerAccessByEmail(email) {
+  const normalizedEmail = normalizeEmail(email);
+  if (!normalizedEmail) {
+    return false;
+  }
+  if (OWNER_EMAILS.has(normalizedEmail)) {
+    return true;
+  }
+  // In non-production environments, allow preview access only when explicitly enabled.
+  return !isProduction && OWNER_PREVIEW_IN_DEV;
+}
+
+function ensureStoreDirExists() {
+  const dir = path.dirname(USER_STORE_FILE);
+  fs.mkdirSync(dir, { recursive: true });
+}
+
+function nowIso() {
+  return new Date().toISOString();
+}
+
+function normalizeTraderMode(mode) {
+  const value = String(mode || '').trim().toLowerCase();
+  if (ALLOWED_TRADER_MODES.has(value)) {
+    return value;
+  }
+  return DEFAULT_TRADER_MODE;
+}
+
+function defaultAiTraderSetup() {
+  const now = nowIso();
+  return {
+    steps: {
+      setup_step_1_complete: false,
+      setup_step_2_complete: false,
+      setup_step_3_complete: false,
+      setup_step_4_complete: false,
+      setup_step_5_complete: false
+    },
+    completed: false,
+    completedAt: null,
+    updatedAt: now
+  };
+}
+
+function normalizeAiTraderSetup(rawSetup) {
+  const fallback = defaultAiTraderSetup();
+  const source = rawSetup && typeof rawSetup === 'object' ? rawSetup : {};
+  const sourceSteps = source.steps && typeof source.steps === 'object' ? source.steps : {};
+  const steps = AI_TRADER_SETUP_STEP_KEYS.reduce((acc, key) => {
+    const legacyKey = AI_TRADER_SETUP_LEGACY_KEY_MAP[key];
+    acc[key] = Boolean(sourceSteps[key] ?? sourceSteps[legacyKey]);
+    return acc;
+  }, {});
+  const completed = AI_TRADER_SETUP_STEP_KEYS.every((key) => steps[key]);
+  const completedAt = completed
+    ? String(source.completedAt || fallback.completedAt || nowIso())
+    : null;
+  return {
+    steps,
+    completed,
+    completedAt,
+    updatedAt: String(source.updatedAt || fallback.updatedAt || nowIso())
+  };
+}
+
+function getUsernameFromEmail(email) {
+  const normalizedEmail = normalizeEmail(email);
+  if (!normalizedEmail || !normalizedEmail.includes('@')) {
+    return 'Trader';
+  }
+  const username = String(normalizedEmail.split('@')[0] || '').trim();
+  return username || 'Trader';
+}
+
+function formatDisplayName(name) {
+  const raw = String(name || '').trim();
+  if (!raw) {
+    return 'Trader';
+  }
+  const normalized = raw
+    .replace(/[._]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  if (!normalized) {
+    return 'Trader';
+  }
+  return normalized.replace(/\b\w/g, (char) => char.toUpperCase());
+}
+
+function normalizeDisplayName(email, displayName) {
+  const preferred = String(displayName || '').trim();
+  if (preferred) {
+    return formatDisplayName(preferred);
+  }
+  return formatDisplayName(getUsernameFromEmail(email));
+}
+
+function hashRememberToken(token) {
+  return crypto.createHash('sha256').update(String(token || ''), 'utf8').digest('hex');
+}
+
+function isIsoDateInFuture(isoDate) {
+  const timestamp = Date.parse(String(isoDate || ''));
+  return Number.isFinite(timestamp) && timestamp > Date.now();
+}
+
+function normalizeRememberSessions(sessions) {
+  const raw = Array.isArray(sessions) ? sessions : [];
+  return raw
+    .map((entry) => ({
+      id: String(entry?.id || '').trim(),
+      tokenHash: String(entry?.tokenHash || '').trim(),
+      createdAt: String(entry?.createdAt || ''),
+      expiresAt: String(entry?.expiresAt || ''),
+      lastUsedAt: String(entry?.lastUsedAt || ''),
+      userAgent: String(entry?.userAgent || '').trim().slice(0, 220)
+    }))
+    .filter((entry) => entry.id && entry.tokenHash && isIsoDateInFuture(entry.expiresAt))
+    .slice(0, MAX_REMEMBER_SESSIONS_PER_USER);
+}
+
+function pruneExpiredRememberSessions(user) {
+  const normalized = normalizeRememberSessions(user?.rememberSessions);
+  const changed = normalized.length !== (Array.isArray(user?.rememberSessions) ? user.rememberSessions.length : 0);
+  if (user) {
+    user.rememberSessions = normalized;
+  }
+  return changed;
+}
+
+function persistUsersToDisk(options = {}) {
+  const throwOnError = Boolean(options.throwOnError);
+  try {
+    ensureStoreDirExists();
+    const records = [...usersById.values()].map((user) => ({
+      id: user.id,
+      email: user.email,
+      passwordHash: user.passwordHash,
+      authProviders: Array.isArray(user.authProviders) ? [...new Set(user.authProviders.map((entry) => normalizeAuthProvider(entry)))] : ['password'],
+      lastAuthProvider: normalizeAuthProvider(user.lastAuthProvider || 'password'),
+      plan: user.plan === 'pro' ? 'pro' : 'free',
+      stripeCustomerId: user.stripeCustomerId || null,
+      stripeSubscriptionId: user.stripeSubscriptionId || null,
+      subscriptionStatus: user.subscriptionStatus || (user.plan === 'pro' ? 'active' : 'inactive'),
+      displayName: normalizeDisplayName(user.email, user.displayName),
+      traderMode: normalizeTraderMode(user.traderMode),
+      aiTraderSetup: normalizeAiTraderSetup(user.aiTraderSetup),
+      rememberSessions: normalizeRememberSessions(user.rememberSessions),
+      createdAt: user.createdAt || nowIso(),
+      updatedAt: user.updatedAt || nowIso()
+    }));
+    const payload = JSON.stringify({ users: records }, null, 2);
+    const tmpPath = `${USER_STORE_FILE}.tmp`;
+    fs.writeFileSync(tmpPath, payload, 'utf8');
+    fs.renameSync(tmpPath, USER_STORE_FILE);
+    return true;
+  } catch (error) {
+    if (throwOnError) {
+      throw error;
+    }
+    // Intentionally non-fatal in runtime; in-memory store still operates.
+    return false;
+  }
+}
+
+function loadUsersFromDisk() {
+  try {
+    if (!fs.existsSync(USER_STORE_FILE)) {
+      return;
+    }
+    const raw = fs.readFileSync(USER_STORE_FILE, 'utf8');
+    const parsed = JSON.parse(raw);
+    const records = Array.isArray(parsed?.users) ? parsed.users : [];
+    records.forEach((record) => {
+      const email = normalizeEmail(record?.email);
+      const id = String(record?.id || '').trim();
+      const passwordHash = String(record?.passwordHash || '').trim();
+      if (!id || !email || !passwordHash || usersById.has(id) || usersByEmail.has(email)) {
+        return;
+      }
+      const authProviders = Array.isArray(record?.authProviders)
+        ? [...new Set(record.authProviders.map((entry) => normalizeAuthProvider(entry)))]
+        : [normalizeAuthProvider(record?.lastAuthProvider || 'password')];
+      const user = {
+        id,
+        email,
+        passwordHash,
+        authProviders: authProviders.length ? authProviders : ['password'],
+        lastAuthProvider: normalizeAuthProvider(record?.lastAuthProvider || authProviders[0] || 'password'),
+        plan: record?.plan === 'pro' ? 'pro' : 'free',
+        stripeCustomerId: record?.stripeCustomerId ? String(record.stripeCustomerId).trim() : null,
+        stripeSubscriptionId: record?.stripeSubscriptionId ? String(record.stripeSubscriptionId).trim() : null,
+        subscriptionStatus: String(record?.subscriptionStatus || (record?.plan === 'pro' ? 'active' : 'inactive')),
+        displayName: normalizeDisplayName(email, record?.displayName),
+        traderMode: normalizeTraderMode(record?.traderMode),
+        aiTraderSetup: normalizeAiTraderSetup(record?.aiTraderSetup),
+        rememberSessions: normalizeRememberSessions(record?.rememberSessions),
+        createdAt: String(record?.createdAt || nowIso()),
+        updatedAt: String(record?.updatedAt || nowIso())
+      };
+      usersById.set(user.id, user);
+      usersByEmail.set(user.email, user.id);
+      if (user.stripeCustomerId) {
+        usersByStripeCustomerId.set(user.stripeCustomerId, user.id);
+      }
+    });
+  } catch (_error) {
+    // If persistence file is malformed/unavailable, start with empty in-memory store.
+  }
+}
+
+function isValidEmailFormat(email) {
+  const normalized = normalizeEmail(email);
+  if (!normalized || normalized.length > 254) {
+    return false;
+  }
+  const parts = normalized.split('@');
+  if (parts.length !== 2) {
+    return false;
+  }
+  const [localPart, domainPart] = parts;
+  if (!localPart || !domainPart) {
+    return false;
+  }
+  if (localPart.length > 64 || domainPart.length > 253) {
+    return false;
+  }
+  if (!/^[a-z0-9.!#$%&'*+/=?^_`{|}~-]+$/i.test(localPart)) {
+    return false;
+  }
+  if (!/^[a-z0-9.-]+\.[a-z]{2,}$/i.test(domainPart)) {
+    return false;
+  }
+  if (domainPart.includes('..') || domainPart.startsWith('.') || domainPart.endsWith('.')) {
+    return false;
+  }
+  if (DISPOSABLE_EMAIL_DOMAINS.has(domainPart)) {
+    return false;
+  }
+  return true;
+}
+
+function evaluatePasswordStrength(password) {
+  const value = String(password || '');
+  if (value.length < 10) {
+    return {
+      ok: false,
+      reason: 'length'
+    };
+  }
+  if (!/[A-Z]/.test(value)) {
+    return {
+      ok: false,
+      reason: 'uppercase'
+    };
+  }
+  if (!/[a-z]/.test(value)) {
+    return {
+      ok: false,
+      reason: 'lowercase'
+    };
+  }
+  if (!/[0-9]/.test(value)) {
+    return {
+      ok: false,
+      reason: 'number'
+    };
+  }
+  if (!/[^A-Za-z0-9]/.test(value)) {
+    return {
+      ok: false,
+      reason: 'symbol'
+    };
+  }
+  return { ok: true, reason: 'ok' };
+}
+
+function planFromSubscriptionStatus(status) {
+  return status === 'active' || status === 'trialing' ? 'pro' : 'free';
+}
+
+function sanitizeUser(user) {
+  const sanitized = {
+    id: user.id,
+    email: user.email,
+    plan: user.plan,
+    authProviders: Array.isArray(user.authProviders) ? [...user.authProviders] : ['password'],
+    lastAuthProvider: user.lastAuthProvider || 'password',
+    stripeCustomerId: user.stripeCustomerId || null,
+    stripeSubscriptionId: user.stripeSubscriptionId || null,
+    subscriptionStatus: user.subscriptionStatus || 'inactive',
+    displayName: normalizeDisplayName(user.email, user.displayName),
+    traderMode: normalizeTraderMode(user.traderMode),
+    aiTraderSetup: normalizeAiTraderSetup(user.aiTraderSetup),
+    createdAt: user.createdAt,
+    updatedAt: user.updatedAt
+  };
+  const ownerAccess = hasOwnerAccessByEmail(sanitized.email);
+  if (ownerAccess) {
+    sanitized.plan = 'pro';
+    sanitized.subscriptionStatus = 'active';
+  }
+  sanitized.ownerAccess = ownerAccess;
+  return sanitized;
+}
+
+function isUserOwnerById(userId) {
+  const user = findUserById(userId);
+  if (!user) {
+    return false;
+  }
+  return hasOwnerAccessByEmail(user.email);
+}
+
+function normalizeAuthProvider(provider) {
+  const value = String(provider || 'password').trim().toLowerCase();
+  if (SUPPORTED_AUTH_PROVIDERS.has(value)) {
+    return value;
+  }
+  return 'password';
+}
+
+function mergeAuthProviders(currentProviders, nextProvider) {
+  const merged = new Set(
+    (Array.isArray(currentProviders) ? currentProviders : ['password'])
+      .map((entry) => normalizeAuthProvider(entry))
+  );
+  merged.add(normalizeAuthProvider(nextProvider));
+  return [...merged];
+}
+
+function looksLikeBcryptHash(value) {
+  return /^\$2[aby]\$\d{2}\$[./A-Za-z0-9]{53}$/.test(String(value || ''));
+}
+
+function secureStringEqual(left, right) {
+  const leftBuffer = Buffer.from(String(left || ''), 'utf8');
+  const rightBuffer = Buffer.from(String(right || ''), 'utf8');
+  if (leftBuffer.length !== rightBuffer.length) {
+    return false;
+  }
+  return crypto.timingSafeEqual(leftBuffer, rightBuffer);
+}
+
+function createUser({ email, password, passwordHash, authProvider = 'password', traderMode = DEFAULT_TRADER_MODE }) {
+  const normalizedEmail = normalizeEmail(email);
+  if (!normalizedEmail) {
+    throw new Error('email_required');
+  }
+  if (!isValidEmailFormat(normalizedEmail)) {
+    throw new Error('invalid_email');
+  }
+
+  const chosenHash = String(passwordHash || '');
+  const chosenPassword = String(password || '');
+  const provider = normalizeAuthProvider(authProvider);
+  if (provider === 'password' && !chosenHash) {
+    const passwordCheck = evaluatePasswordStrength(chosenPassword);
+    if (!passwordCheck.ok) {
+      throw new Error(`weak_password_${passwordCheck.reason}`);
+    }
+  }
+  if (usersByEmail.has(normalizedEmail)) {
+    throw new Error('email_exists');
+  }
+
+  const user = {
+    id: crypto.randomUUID(),
+    email: normalizedEmail,
+    passwordHash: chosenHash || bcrypt.hashSync(chosenPassword || crypto.randomUUID(), BCRYPT_ROUNDS),
+    authProviders: [provider],
+    lastAuthProvider: provider,
+    plan: 'free',
+    stripeCustomerId: null,
+    stripeSubscriptionId: null,
+    subscriptionStatus: 'inactive',
+    displayName: normalizeDisplayName(normalizedEmail),
+    traderMode: normalizeTraderMode(traderMode),
+    aiTraderSetup: defaultAiTraderSetup(),
+    rememberSessions: [],
+    createdAt: nowIso(),
+    updatedAt: nowIso()
+  };
+
+  usersById.set(user.id, user);
+  usersByEmail.set(user.email, user.id);
+  try {
+    persistUsersToDisk({ throwOnError: true });
+  } catch (_error) {
+    usersById.delete(user.id);
+    usersByEmail.delete(user.email);
+    throw new Error('user_store_unavailable');
+  }
+  return sanitizeUser(user);
+}
+
+async function verifyUserPassword({ email, password }) {
+  const user = findUserByEmail(email);
+  if (!user) {
+    return null;
+  }
+  const valid = await verifyPasswordWithMigration(user, password);
+  if (!valid) {
+    return null;
+  }
+  return sanitizeUser(user);
+}
+
+async function verifyPasswordWithMigration(user, rawPassword) {
+  if (!user) {
+    return false;
+  }
+  const incoming = String(rawPassword || '');
+  const incomingTrimmed = incoming.trim();
+  const candidates = incomingTrimmed && incomingTrimmed !== incoming
+    ? [incoming, incomingTrimmed]
+    : [incoming];
+  const stored = String(user.passwordHash || '');
+  if (!stored) {
+    return false;
+  }
+  if (looksLikeBcryptHash(stored)) {
+    for (const candidate of candidates) {
+      // eslint-disable-next-line no-await-in-loop
+      const valid = await bcrypt.compare(candidate, stored);
+      if (valid) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  const matchedCandidate = candidates.find((candidate) => (
+    secureStringEqual(candidate, stored)
+    || secureStringEqual(candidate, stored.trim())
+  ));
+  if (!matchedCandidate) {
+    return false;
+  }
+
+  user.passwordHash = await bcrypt.hash(matchedCandidate, BCRYPT_ROUNDS);
+  user.authProviders = mergeAuthProviders(user.authProviders, 'password');
+  user.lastAuthProvider = 'password';
+  user.updatedAt = nowIso();
+  persistUsersToDisk();
+  return true;
+}
+
+function findUserByEmail(email) {
+  const userId = usersByEmail.get(normalizeEmail(email));
+  if (!userId) {
+    return null;
+  }
+  return usersById.get(userId) || null;
+}
+
+function findUserById(id) {
+  return usersById.get(id) || null;
+}
+
+function getUserById(id) {
+  const user = findUserById(id);
+  return user ? sanitizeUser(user) : null;
+}
+
+function getRawUserById(id) {
+  return findUserById(id);
+}
+
+function getAllUsers() {
+  return [...usersById.values()].map((user) => sanitizeUser(user));
+}
+
+function listUsers() {
+  return getAllUsers();
+}
+
+function updateUser(userId, patch) {
+  const user = findUserById(userId);
+  if (!user) {
+    return null;
+  }
+
+  if (Object.prototype.hasOwnProperty.call(patch, 'stripeCustomerId')) {
+    if (user.stripeCustomerId) {
+      usersByStripeCustomerId.delete(user.stripeCustomerId);
+    }
+    user.stripeCustomerId = patch.stripeCustomerId || null;
+    if (user.stripeCustomerId) {
+      usersByStripeCustomerId.set(user.stripeCustomerId, user.id);
+    }
+  }
+
+  if (Object.prototype.hasOwnProperty.call(patch, 'stripeSubscriptionId')) {
+    user.stripeSubscriptionId = patch.stripeSubscriptionId || null;
+  }
+
+  if (Object.prototype.hasOwnProperty.call(patch, 'subscriptionStatus')) {
+    user.subscriptionStatus = patch.subscriptionStatus || 'inactive';
+    user.plan = planFromSubscriptionStatus(user.subscriptionStatus);
+  }
+
+  if (Object.prototype.hasOwnProperty.call(patch, 'plan')) {
+    user.plan = patch.plan === 'pro' ? 'pro' : 'free';
+    if (user.plan === 'pro' && user.subscriptionStatus !== 'active') {
+      user.subscriptionStatus = 'active';
+    }
+    if (user.plan === 'free' && user.subscriptionStatus === 'active') {
+      user.subscriptionStatus = 'inactive';
+    }
+  }
+
+  if (Object.prototype.hasOwnProperty.call(patch, 'authProvider')) {
+    const provider = normalizeAuthProvider(patch.authProvider);
+    user.authProviders = mergeAuthProviders(user.authProviders, provider);
+    user.lastAuthProvider = provider;
+  }
+
+  if (Object.prototype.hasOwnProperty.call(patch, 'authProviders')) {
+    const providers = Array.isArray(patch.authProviders) ? patch.authProviders : [];
+    const normalizedProviders = providers
+      .map((entry) => normalizeAuthProvider(entry))
+      .filter((entry) => SUPPORTED_AUTH_PROVIDERS.has(entry));
+    if (normalizedProviders.length > 0) {
+      user.authProviders = [...new Set(normalizedProviders)];
+      user.lastAuthProvider = user.authProviders[user.authProviders.length - 1] || user.lastAuthProvider || 'password';
+    }
+  }
+
+  if (Object.prototype.hasOwnProperty.call(patch, 'displayName')) {
+    user.displayName = normalizeDisplayName(user.email, patch.displayName);
+  }
+
+  if (Object.prototype.hasOwnProperty.call(patch, 'traderMode')) {
+    user.traderMode = normalizeTraderMode(patch.traderMode);
+  }
+
+  if (Object.prototype.hasOwnProperty.call(patch, 'aiTraderSetup')) {
+    const current = normalizeAiTraderSetup(user.aiTraderSetup);
+    const incomingPatch = patch.aiTraderSetup && typeof patch.aiTraderSetup === 'object'
+      ? patch.aiTraderSetup
+      : {};
+    const merged = normalizeAiTraderSetup({
+      ...current,
+      ...incomingPatch,
+      steps: {
+        ...current.steps,
+        ...(incomingPatch.steps && typeof incomingPatch.steps === 'object' ? incomingPatch.steps : {})
+      }
+    });
+    user.aiTraderSetup = {
+      ...merged,
+      updatedAt: nowIso()
+    };
+  }
+
+  user.updatedAt = nowIso();
+  persistUsersToDisk();
+  return user;
+}
+
+function createRememberSessionForUser(userId, metadata = {}) {
+  const user = findUserById(userId);
+  if (!user) {
+    return null;
+  }
+  pruneExpiredRememberSessions(user);
+  const ttlDaysRaw = Number(metadata?.ttlDays);
+  const ttlDays = Number.isFinite(ttlDaysRaw)
+    ? Math.max(7, Math.min(365, Math.trunc(ttlDaysRaw)))
+    : REMEMBER_SESSION_TTL_DAYS;
+  const createdAt = nowIso();
+  const expiresAt = new Date(Date.now() + ttlDays * 24 * 60 * 60 * 1000).toISOString();
+  const rawToken = crypto.randomBytes(32).toString('hex');
+  const rememberSession = {
+    id: crypto.randomUUID(),
+    tokenHash: hashRememberToken(rawToken),
+    createdAt,
+    expiresAt,
+    lastUsedAt: createdAt,
+    userAgent: String(metadata?.userAgent || '').trim().slice(0, 220)
+  };
+  const existing = normalizeRememberSessions(user.rememberSessions);
+  user.rememberSessions = [rememberSession, ...existing].slice(0, MAX_REMEMBER_SESSIONS_PER_USER);
+  user.updatedAt = nowIso();
+  persistUsersToDisk();
+  return {
+    rememberToken: rawToken,
+    expiresAt
+  };
+}
+
+function restoreRememberSession(rawRememberToken, metadata = {}) {
+  const tokenHash = hashRememberToken(rawRememberToken);
+  if (!tokenHash) {
+    return null;
+  }
+  for (const user of usersById.values()) {
+    pruneExpiredRememberSessions(user);
+    const sessions = normalizeRememberSessions(user.rememberSessions);
+    const index = sessions.findIndex((entry) => entry.tokenHash === tokenHash);
+    if (index < 0) {
+      continue;
+    }
+    const oldSession = sessions[index];
+    if (!isIsoDateInFuture(oldSession.expiresAt)) {
+      user.rememberSessions = sessions.filter((entry) => entry.tokenHash !== tokenHash);
+      user.updatedAt = nowIso();
+      persistUsersToDisk();
+      return null;
+    }
+    const ttlDaysRaw = Number(metadata?.ttlDays);
+    const ttlDays = Number.isFinite(ttlDaysRaw)
+      ? Math.max(7, Math.min(365, Math.trunc(ttlDaysRaw)))
+      : REMEMBER_SESSION_TTL_DAYS;
+    const refreshedToken = crypto.randomBytes(32).toString('hex');
+    const refreshedExpiresAt = new Date(Date.now() + ttlDays * 24 * 60 * 60 * 1000).toISOString();
+    const refreshedSession = {
+      ...oldSession,
+      tokenHash: hashRememberToken(refreshedToken),
+      expiresAt: refreshedExpiresAt,
+      lastUsedAt: nowIso(),
+      userAgent: String(metadata?.userAgent || oldSession.userAgent || '').trim().slice(0, 220)
+    };
+    sessions[index] = refreshedSession;
+    user.rememberSessions = sessions.slice(0, MAX_REMEMBER_SESSIONS_PER_USER);
+    user.updatedAt = nowIso();
+    persistUsersToDisk();
+    return {
+      user: sanitizeUser(user),
+      rememberToken: refreshedToken,
+      expiresAt: refreshedExpiresAt
+    };
+  }
+  return null;
+}
+
+function revokeRememberSession(rawRememberToken) {
+  const tokenHash = hashRememberToken(rawRememberToken);
+  if (!tokenHash) {
+    return false;
+  }
+  for (const user of usersById.values()) {
+    const before = normalizeRememberSessions(user.rememberSessions);
+    const next = before.filter((entry) => entry.tokenHash !== tokenHash);
+    if (next.length !== before.length) {
+      user.rememberSessions = next;
+      user.updatedAt = nowIso();
+      persistUsersToDisk();
+      return true;
+    }
+  }
+  return false;
+}
+
+function findOrCreateUserByAuthProvider({
+  email,
+  authProvider,
+  traderMode = DEFAULT_TRADER_MODE,
+  hasTraderMode = false
+}) {
+  const normalizedEmail = normalizeEmail(email);
+  if (!normalizedEmail) {
+    throw new Error('email_required');
+  }
+  if (!isValidEmailFormat(normalizedEmail)) {
+    throw new Error('invalid_email');
+  }
+  const provider = normalizeAuthProvider(authProvider);
+  if (provider === 'password') {
+    throw new Error('invalid_auth_provider');
+  }
+
+  const existing = findUserByEmail(normalizedEmail);
+  if (existing) {
+    const patch = { authProvider: provider };
+    if (hasTraderMode) {
+      patch.traderMode = traderMode;
+    }
+    const updated = updateUser(existing.id, patch);
+    return {
+      user: sanitizeUser(updated),
+      created: false
+    };
+  }
+
+  const created = createUser({
+    email: normalizedEmail,
+    passwordHash: bcrypt.hashSync(crypto.randomUUID(), 10),
+    authProvider: provider,
+    traderMode
+  });
+  return {
+    user: created,
+    created: true
+  };
+}
+
+function setStripeCustomerForUser(userId, stripeCustomerId) {
+  const updated = updateUser(userId, { stripeCustomerId });
+  return updated ? sanitizeUser(updated) : null;
+}
+
+function setStripeCustomerId(userId, stripeCustomerId) {
+  return setStripeCustomerForUser(userId, stripeCustomerId);
+}
+
+function getUserByStripeCustomerId(customerId) {
+  const userId = usersByStripeCustomerId.get(customerId);
+  if (!userId) {
+    return null;
+  }
+  const user = findUserById(userId);
+  return user ? sanitizeUser(user) : null;
+}
+
+function setUserTraderModeById(userId, traderMode) {
+  const updated = updateUser(userId, { traderMode });
+  return updated ? sanitizeUser(updated) : null;
+}
+
+function setUserPlanById(userId, { plan, stripeSubscriptionId = null }) {
+  const updated = updateUser(userId, { plan, stripeSubscriptionId });
+  return updated ? sanitizeUser(updated) : null;
+}
+
+function setUserAiTraderSetupById(userId, setupPatch = {}) {
+  const updated = updateUser(userId, { aiTraderSetup: setupPatch });
+  return updated ? sanitizeUser(updated) : null;
+}
+
+function setUserPlanByCustomerId(customerId, { plan, stripeSubscriptionId = null }) {
+  const userId = usersByStripeCustomerId.get(customerId);
+  if (!userId) {
+    return null;
+  }
+  return setUserPlanById(userId, { plan, stripeSubscriptionId });
+}
+
+function setSubscriptionStatus(userId, status) {
+  const normalized = status === 'pro' ? 'active' : String(status || 'inactive');
+  const updated = updateUser(userId, { subscriptionStatus: normalized });
+  return updated ? sanitizeUser(updated) : null;
+}
+
+loadUsersFromDisk();
+
+module.exports = {
+  createUser,
+  findOrCreateUserByAuthProvider,
+  normalizeAuthProvider,
+  verifyUserPassword,
+  findUserByEmail,
+  findUserById,
+  getUserById,
+  getRawUserById,
+  getAllUsers,
+  listUsers,
+  updateUser,
+  sanitizeUser,
+  setStripeCustomerForUser,
+  setStripeCustomerId,
+  getUserByStripeCustomerId,
+  setUserTraderModeById,
+  setUserPlanById,
+  setUserAiTraderSetupById,
+  setUserPlanByCustomerId,
+  setSubscriptionStatus,
+  isUserOwnerById,
+  createRememberSessionForUser,
+  restoreRememberSession,
+  revokeRememberSession,
+  verifyPasswordWithMigration,
+  isValidEmailFormat,
+  evaluatePasswordStrength
+};

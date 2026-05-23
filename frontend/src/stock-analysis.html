@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>DumbDollars — Stock Analysis</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <div class="diamond-bg" aria-hidden="true"></div>
+    <div class="diamond-bg-overlay" aria-hidden="true"></div>
+    <main class="stock-analysis-page">
+      <div class="stock-analysis-shell">
+        <button id="analysis-back-button" class="btn-secondary analysis-back" type="button">← Back</button>
+        <section class="card stock-analysis-card">
+          <header class="stock-analysis-header">
+            <div>
+              <p class="analysis-kicker">Stock Research</p>
+              <h1 id="stock-name">Analyzing...</h1>
+              <p class="small-note">Loading market data from connected providers.</p>
+            </div>
+            <div class="analysis-price-block">
+              <p id="stock-price" class="analysis-price-line">$--</p>
+              <p id="stock-change" class="analysis-price-change">-- (--)</p>
+            </div>
+          </header>
+          <div id="source-badges"></div>
+
+          <div id="analysis-loading" class="analysis-loading">
+            <div class="status-loading" aria-hidden="true"></div>
+            <p id="analysis-loading-text">Analyzing ticker...</p>
+          </div>
+
+          <div id="error-box" class="pro-lock hidden" role="alert"></div>
+
+          <div id="analysis-content" class="analysis-content">
+            <div id="analyst-consensus"></div>
+
+            <section class="analysis-stat-row">
+              <span class="analysis-chip">Sector: <strong id="stock-sector">N/A</strong></span>
+              <span class="analysis-chip">P/E: <strong id="stock-pe">N/A</strong></span>
+              <span class="analysis-chip">Volume: <strong id="stock-volume">N/A</strong></span>
+              <span class="analysis-chip">Market Cap: <strong id="stock-market-cap">N/A</strong></span>
+            </section>
+
+            <section class="analysis-range-wrap">
+              <h2>52-Week Range</h2>
+              <div class="analysis-range-bar">
+                <div id="week52-marker" class="analysis-range-marker" aria-hidden="true"></div>
+              </div>
+              <div class="analysis-range-labels">
+                <span id="week52-low">N/A</span>
+                <span id="week52-high">N/A</span>
+              </div>
+            </section>
+
+            <section class="score-display">
+              <div class="score-number" id="score-number">0</div>
+              <div class="score-label" id="score-label">NEUTRAL</div>
+              <div class="score-bar">
+                <div class="score-bar-fill" id="score-bar-fill"></div>
+              </div>
+            </section>
+
+            <section id="score-breakdown" class="analysis-score-breakdown"></section>
+
+            <section id="trading-cards" class="trading-cards">
+              <article id="day-trade-card" class="trading-card" data-title="Day Trade">
+                <h3>Day Trade</h3>
+                <p class="card-score">0/100</p>
+                <p class="card-verdict">Waiting for data</p>
+                <p class="card-reason">Fetching real market context...</p>
+              </article>
+              <article id="swing-trade-card" class="trading-card" data-title="Swing Trade">
+                <h3>Swing Trade</h3>
+                <p class="card-score">0/100</p>
+                <p class="card-verdict">Waiting for data</p>
+                <p class="card-reason">Fetching real market context...</p>
+              </article>
+              <article id="long-hold-card" class="trading-card" data-title="Long Hold">
+                <h3>Long Hold</h3>
+                <p class="card-score">0/100</p>
+                <p class="card-verdict">Waiting for data</p>
+                <p class="card-reason">Fetching real market context...</p>
+              </article>
+            </section>
+
+            <section class="analysis-indicators">
+              <h2>Technical Indicators</h2>
+              <table id="indicators-table">
+                <tbody id="indicators-tbody"></tbody>
+              </table>
+            </section>
+
+            <p class="small-note legal-disclaimer-inline">
+              DumbDollars is not a registered investment advisor. Automated trading involves significant risk. Past performance does not guarantee future results. Only trade with money you can afford to lose.
+            </p>
+            <div id="data-footer"></div>
+          </div>
+        </section>
+      </div>
+    </main>
+    <script src="./stock-analysis.js"></script>
+  </body>
+</html>

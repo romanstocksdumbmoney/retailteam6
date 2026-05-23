@@ -1,0 +1,146 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>DumbDollars — AI Trade</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body class="payment-page-body">
+    <main class="ai-trade-page-shell">
+      <article class="ai-trade-page-card card" role="main" aria-labelledby="ai-trade-title">
+        <a class="open-link" href="/">Back to dashboard</a>
+        <div class="pro-plan-logo-wrap" aria-hidden="true">
+          <img class="pro-plan-logo-image" src="./logo-mark.svg" alt="" />
+        </div>
+        <h1 id="ai-trade-title">AI Trade</h1>
+        <p class="pro-plan-subtitle">Upload a chart pattern and get a multi-AI bullish/bearish consensus with stop loss and take profit guidance.</p>
+
+        <form id="ai-trade-form" class="pro-plan-box ai-trade-form" novalidate>
+          <div class="ai-trade-form-grid">
+            <label>
+              Ticker
+              <input id="ai-trade-symbol" type="text" maxlength="10" placeholder="NVDA" required />
+            </label>
+            <label>
+              Timeframe
+              <select id="ai-trade-timeframe">
+                <option value="scalp">Scalp</option>
+                <option value="intraday" selected>Intraday</option>
+                <option value="swing">Swing</option>
+                <option value="position">Position</option>
+              </select>
+            </label>
+            <label class="field-full">
+              Current Price (optional)
+              <input id="ai-trade-current-price" type="number" min="0" step="0.01" placeholder="0.00" />
+            </label>
+            <label class="field-full ai-trade-upload">
+              Pattern Image
+              <input id="ai-trade-image" type="file" accept="image/*" required />
+            </label>
+          </div>
+          <p class="small-note">Supports PNG/JPG/WEBP/GIF/BMP uploads. Login required.</p>
+          <button id="ai-trade-submit" type="submit">Analyze Pattern</button>
+        </form>
+
+        <p id="ai-trade-status" class="small-note"></p>
+        <div id="ai-trade-preview-wrap" class="ai-trade-preview-wrap hidden">
+          <img id="ai-trade-preview" class="ai-trade-preview" alt="Uploaded chart preview" />
+        </div>
+
+        <section class="ai-trade-consensus" aria-labelledby="ai-order-setup-title">
+          <h3 id="ai-order-setup-title">Screenshot Order Setup Assistant</h3>
+          <p class="small-note">Upload your order screenshot, set risk/reward percentages, and AI provides suggested entry/stop/take-profit levels and setup steps.</p>
+          <form id="ai-order-setup-form" class="pro-plan-box ai-trade-form" novalidate>
+            <div class="ai-trade-form-grid">
+              <label>
+                Ticker
+                <input id="ai-order-symbol" type="text" maxlength="10" placeholder="NVDA" required />
+              </label>
+              <label>
+                Side
+                <select id="ai-order-side">
+                  <option value="long" selected>Long</option>
+                  <option value="short">Short</option>
+                </select>
+              </label>
+              <label>
+                Planned Entry Price
+                <input id="ai-order-entry-price" type="number" min="0.01" step="0.01" placeholder="100.00" required />
+              </label>
+              <label>
+                Max Loss %
+                <input id="ai-order-loss-pct" type="number" min="0.01" max="60" step="0.01" value="1.5" required />
+              </label>
+              <label>
+                Target Gain %
+                <input id="ai-order-gain-pct" type="number" min="0.01" max="300" step="0.01" value="3" required />
+              </label>
+              <label>
+                Stop Buffer % (optional)
+                <input id="ai-order-stop-buffer-pct" type="number" min="0" max="5" step="0.01" value="0.15" />
+              </label>
+              <label>
+                Shares (optional)
+                <input id="ai-order-position-size" type="number" min="0" step="1" placeholder="100" />
+              </label>
+              <label class="field-full ai-trade-upload">
+                Order Setup Screenshot
+                <input id="ai-order-image" type="file" accept="image/*" required />
+              </label>
+            </div>
+            <button id="ai-order-setup-submit" type="submit">Build My Limit + Stop Setup</button>
+          </form>
+          <p id="ai-order-setup-status" class="small-note"></p>
+          <div id="ai-order-preview-wrap" class="ai-trade-preview-wrap hidden">
+            <img id="ai-order-preview" class="ai-trade-preview" alt="Uploaded order screenshot preview" />
+          </div>
+          <section id="ai-order-setup-results" class="ai-trade-results hidden">
+            <article id="ai-order-setup-summary" class="ai-trade-consensus"></article>
+            <article class="ai-trade-consensus">
+              <h3>Exact Setup Numbers</h3>
+              <div id="ai-order-setup-levels" class="ai-order-levels-grid"></div>
+            </article>
+            <article class="ai-trade-consensus">
+              <h3>How to set it up</h3>
+              <ol id="ai-order-setup-steps" class="detail-list"></ol>
+            </article>
+          </section>
+        </section>
+
+        <section id="ai-trade-results" class="ai-trade-results hidden">
+          <div id="ai-trade-summary"></div>
+
+          <section class="ai-bot-actions">
+            <button id="ai-trade-queue-live" type="button">Send to Live Funding Queue</button>
+            <button id="ai-trade-open-funding" class="btn-secondary" type="button">Open Funding + Test Area</button>
+            <button id="ai-trade-open-account" class="btn-secondary" type="button">Open AI Brokerage Account View</button>
+          </section>
+          <p id="ai-trade-queue-status" class="small-note"></p>
+
+          <article class="ai-trade-consensus">
+            <h3>Multi-AI Votes</h3>
+            <div id="ai-trade-votes" class="ai-trade-votes-grid"></div>
+          </article>
+
+          <article class="ai-trade-consensus">
+            <h3>Why this setup</h3>
+            <ul id="ai-trade-rationale" class="detail-list"></ul>
+          </article>
+
+          <article class="ai-trade-consensus">
+            <h3>Risk Controls</h3>
+            <ul id="ai-trade-risk-controls" class="detail-list"></ul>
+          </article>
+        </section>
+        <footer class="legal-disclaimer-footer">
+          DumbDollars is not a registered investment advisor. Automated trading involves significant risk. Past performance does not guarantee future results. Only trade with money you can afford to lose.
+        </footer>
+      </article>
+    </main>
+    <script src="./session-helper.js"></script>
+    <script src="./ai-trade.js"></script>
+    <script src="./ai-copilot-widget.js"></script>
+  </body>
+</html>

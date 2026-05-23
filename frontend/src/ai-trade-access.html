@@ -1,0 +1,171 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>DumbDollars — Account Access</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body class="payment-page-body">
+    <main class="ai-trade-page-shell">
+      <article class="ai-trade-page-card card" role="main" aria-labelledby="ai-trade-access-title">
+        <a class="open-link" href="/">Back to dashboard</a>
+        <div class="pro-plan-logo-wrap" aria-hidden="true">
+          <img class="pro-plan-logo-image" src="./logo-mark.svg" alt="" />
+        </div>
+        <h1 id="ai-trade-access-title">Sign in or create your DumbDollars account</h1>
+        <p class="pro-plan-subtitle">Use this page for both login and signup to continue into your AI trading workspace.</p>
+
+        <section class="pro-plan-box">
+          <h3>Use AI to trade with better structure</h3>
+          <ul class="detail-list">
+            <li>Upload a chart and get bullish/bearish AI consensus.</li>
+            <li>Get stop loss and take profit guidance.</li>
+            <li>Access AI Auto Trader planning, Test Area, and account view.</li>
+          </ul>
+          <p class="small-note">You must be signed in to continue.</p>
+        </section>
+
+        <section class="auth-bar">
+          <section class="card ai-trader-mode-card" aria-labelledby="ai-trader-mode-title">
+            <h3 id="ai-trader-mode-title">Choose Your Trading Style</h3>
+            <p class="small-note">We will personalize your tools, signals, and AI workflow based on this mode.</p>
+            <div id="ai-access-trader-mode-grid" class="ai-trader-mode-grid" role="radiogroup" aria-label="Trader mode selector">
+              <button type="button" class="ai-trader-mode-option" data-trader-mode="scalper" aria-pressed="false">
+                <strong>Scalper</strong>
+                <span class="small-note">Fast trades (seconds to minutes) • High risk • High frequency</span>
+              </button>
+              <button type="button" class="ai-trader-mode-option" data-trader-mode="day" aria-pressed="true">
+                <strong>Day Trader</strong>
+                <span class="small-note">Intraday setups • Medium-High risk • No overnight holds</span>
+              </button>
+              <button type="button" class="ai-trader-mode-option" data-trader-mode="swing" aria-pressed="false">
+                <strong>Swing Trader</strong>
+                <span class="small-note">Multi-day trends • Medium risk • Days to weeks</span>
+              </button>
+              <button type="button" class="ai-trader-mode-option" data-trader-mode="long" aria-pressed="false">
+                <strong>Long-Term Investor</strong>
+                <span class="small-note">Fundamentals + macro • Lower frequency • Months to years</span>
+              </button>
+            </div>
+            <p id="ai-access-trader-mode-summary" class="small-note">Selected: Day Trader.</p>
+          </section>
+
+          <div class="auth-grid">
+            <form id="ai-access-signup-form" class="auth-form">
+              <label class="auth-input-label">
+                <span>Create account</span>
+                <span class="auth-input-wrap">
+                  <span class="auth-input-icon" aria-hidden="true">✉</span>
+                  <input id="ai-access-signup-email" type="email" placeholder="email@domain.com" required />
+                </span>
+              </label>
+              <label class="auth-input-label">
+                <span>Password</span>
+                <span class="auth-input-wrap">
+                  <span class="auth-input-icon" aria-hidden="true">🔒</span>
+                  <input
+                    id="ai-access-signup-password"
+                    type="password"
+                    placeholder="Strong password (8+ chars, upper/number/symbol)"
+                    minlength="8"
+                    autocomplete="new-password"
+                    required
+                  />
+                  <button id="ai-access-signup-toggle" class="auth-eye-toggle" type="button" aria-label="Show password">👁</button>
+                </span>
+              </label>
+              <label class="auth-input-label">
+                <span>Confirm password</span>
+                <span class="auth-input-wrap">
+                  <span class="auth-input-icon" aria-hidden="true">🔒</span>
+                  <input
+                    id="ai-access-signup-confirm-password"
+                    type="password"
+                    placeholder="Re-enter password"
+                    minlength="8"
+                    autocomplete="new-password"
+                    required
+                  />
+                  <button id="ai-access-signup-confirm-toggle" class="auth-eye-toggle" type="button" aria-label="Show confirm password">👁</button>
+                </span>
+              </label>
+              <p id="ai-access-signup-password-hint" class="password-strength password-strength--weak">Weak</p>
+              <label class="auth-remember">
+                <input id="ai-access-signup-remember" type="checkbox" checked />
+                Remember Me
+              </label>
+              <button class="auth-primary-btn" type="submit">SIGN UP</button>
+            </form>
+
+            <form id="ai-access-login-form" class="auth-form">
+              <label class="auth-input-label">
+                <span>Login email</span>
+                <span class="auth-input-wrap">
+                  <span class="auth-input-icon" aria-hidden="true">✉</span>
+                  <input id="ai-access-login-email" type="email" placeholder="email@domain.com" required />
+                </span>
+              </label>
+              <label class="auth-input-label">
+                <span>Password</span>
+                <span class="auth-input-wrap">
+                  <span class="auth-input-icon" aria-hidden="true">🔒</span>
+                  <input id="ai-access-login-password" type="password" placeholder="password" required />
+                  <button id="ai-access-login-toggle" class="auth-eye-toggle" type="button" aria-label="Show password">👁</button>
+                </span>
+              </label>
+              <a id="ai-access-forgot-password-link" class="open-link" href="/forgot-password">Forgot Password?</a>
+              <label class="auth-remember">
+                <input id="ai-access-login-remember" type="checkbox" checked />
+                Remember Me
+              </label>
+              <button class="auth-primary-btn" type="submit">Log in and continue</button>
+              <p class="small-note">Don't have an account? <a id="ai-access-switch-signup" class="open-link" href="/ai-trade-access.html?mode=signup">Sign Up</a></p>
+            </form>
+          </div>
+
+          <div class="social-auth-row">
+            <p class="small-note">Quick sign in with:</p>
+            <div class="social-auth-buttons">
+              <button class="btn-secondary oauth-btn ai-access-oauth-btn" data-provider="google" type="button">Continue with Google</button>
+              <button class="btn-secondary oauth-btn ai-access-oauth-btn" data-provider="apple" type="button">Continue with Apple</button>
+              <button class="btn-secondary oauth-btn ai-access-oauth-btn" data-provider="github" type="button">Continue with GitHub</button>
+              <button class="btn-secondary oauth-btn ai-access-oauth-btn" data-provider="discord" type="button">Continue with Discord</button>
+              <button class="btn-secondary oauth-btn ai-access-oauth-btn" data-provider="x" type="button">Continue with X</button>
+            </div>
+          </div>
+        </section>
+
+        <p id="ai-access-status" class="small-note"></p>
+        <div id="ai-access-status-actions" class="auth-actions"></div>
+      </article>
+    </main>
+    <div id="auth-name-overlay" class="auth-name-overlay hidden" aria-hidden="true">
+      <div class="auth-name-card card" role="dialog" aria-modal="true" aria-labelledby="auth-name-title">
+        <h2 id="auth-name-title">Welcome to DumbDollars 👋</h2>
+        <p class="auth-name-subtitle">One quick thing before we get started —</p>
+        <form id="auth-name-form" class="auth-name-form" novalidate>
+          <label for="auth-name-input" class="auth-input-label">
+            <span>What should we call you?</span>
+          </label>
+          <input
+            id="auth-name-input"
+            type="text"
+            class="auth-name-input"
+            placeholder="Your first name or nickname"
+            autocomplete="given-name"
+            maxlength="60"
+            autofocus
+          />
+          <p class="small-note auth-name-helper">This is just how we greet you. You can change it anytime.</p>
+          <p id="auth-name-error" class="small-note auth-error hidden"></p>
+          <button id="auth-name-submit" class="auth-primary-btn" type="submit">Let's Go →</button>
+        </form>
+        <p class="small-note auth-name-footer">You can update this anytime in Settings</p>
+      </div>
+    </div>
+    <div id="auth-toast-stack" class="auth-toast-stack" aria-live="polite" aria-atomic="true"></div>
+    <script src="./ai-trade-access.js"></script>
+    <script src="./ai-copilot-widget.js"></script>
+  </body>
+</html>

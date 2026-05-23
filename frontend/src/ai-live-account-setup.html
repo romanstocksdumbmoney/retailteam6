@@ -1,0 +1,116 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>DumbDollars Set Up Trading Account with AI</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body class="payment-page-body">
+    <main class="ai-trade-page-shell">
+      <article class="ai-trade-page-card card" role="main" aria-labelledby="ai-live-account-title">
+        <a class="open-link" href="/">Back to dashboard</a>
+        <div class="pro-plan-logo-wrap" aria-hidden="true">
+          <img class="pro-plan-logo-image" src="./logo-mark.svg" alt="" />
+        </div>
+        <h1 id="ai-live-account-title">Set Up Trading Account with AI</h1>
+        <p class="pro-plan-subtitle">Follow this page to get AI connected to your account so it can plan and execute trades based on your configured rules.</p>
+        <p class="small-note">
+          <a class="open-link" href="/ai-broker-direct-setup.html">Direct Broker Signup + Auto AI Setup</a>
+        </p>
+        <p class="small-note">
+          <a class="open-link" href="/ai-simple-setup.html">Use Easy Setup Mode (simplest path)</a>
+        </p>
+
+        <section class="ai-trade-consensus">
+          <h3>What this setup does</h3>
+          <ul class="detail-list">
+            <li>Configures AI strategy + risk controls.</li>
+            <li>Sets funding mode for live account trading.</li>
+            <li>Connects broker bridge and verifies it.</li>
+            <li>Lets you run AI with manual approvals or hands-free live mode.</li>
+          </ul>
+          <p class="small-note"><strong>Important:</strong> brokerage signup/KYC/2FA must be completed by the account owner.</p>
+          <p class="small-note"><strong>Recommended broker API path:</strong> Alpaca is an API-first brokerage choice with streamlined developer docs for automated workflows, while Robinhood/Webull support can vary by integration approach.</p>
+        </section>
+
+        <section class="ai-trade-consensus">
+          <h3>Step-by-step setup</h3>
+          <section class="ai-live-broker-open-section" aria-labelledby="ai-live-broker-open-title">
+            <h4 id="ai-live-broker-open-title">Open Brokerage Account (API-ready for AI)</h4>
+            <p class="small-note">Choose a broker below, open the account signup page, then jump straight into Broker Connect preselected for that broker.</p>
+            <div class="live-ai-entry-grid">
+              <article class="live-ai-entry-card">
+                <h4>Alpaca (recommended)</h4>
+                <p>API-first broker path with straightforward trading API docs and account connectivity.</p>
+                <div class="ai-bot-actions">
+                  <a class="open-link" href="https://alpaca.markets/" target="_blank" rel="noopener noreferrer">Open Alpaca account</a>
+                  <a class="open-link" href="https://docs.alpaca.markets/" target="_blank" rel="noopener noreferrer">Alpaca API docs</a>
+                </div>
+                <button id="ai-live-open-broker-alpaca" class="btn-secondary" type="button">Use Alpaca in Broker Connect</button>
+              </article>
+              <article class="live-ai-entry-card">
+                <h4>TradeStation</h4>
+                <p>Broker with API tooling options for supported strategies and account types.</p>
+                <div class="ai-bot-actions">
+                  <a class="open-link" href="https://www.tradestation.com/" target="_blank" rel="noopener noreferrer">Open TradeStation account</a>
+                  <a class="open-link" href="https://api.tradestation.com/docs/" target="_blank" rel="noopener noreferrer">TradeStation API docs</a>
+                </div>
+                <button id="ai-live-open-broker-tradestation" class="btn-secondary" type="button">Use TradeStation in Broker Connect</button>
+              </article>
+              <article class="live-ai-entry-card">
+                <h4>Robinhood / Webull (availability varies)</h4>
+                <p>Can work depending on integration route and account permissions.</p>
+                <div class="ai-bot-actions">
+                  <a class="open-link" href="https://robinhood.com/signup" target="_blank" rel="noopener noreferrer">Open Robinhood account</a>
+                  <a class="open-link" href="https://www.webull.com/" target="_blank" rel="noopener noreferrer">Open Webull account</a>
+                </div>
+                <button id="ai-live-open-broker-robinhood" class="btn-secondary" type="button">Use Robinhood in Broker Connect</button>
+              </article>
+            </div>
+          </section>
+          <div class="live-ai-entry-grid">
+            <article class="live-ai-entry-card">
+              <h4>Step 1: Sign in</h4>
+              <p>Use your account so AI settings save to your profile.</p>
+              <a class="open-link" href="/ai-trade-access.html?next=%2Fai-bot-trader.html">Open Sign in</a>
+            </article>
+            <article class="live-ai-entry-card">
+              <h4>Step 2: Configure AI Bot</h4>
+              <p>Set prompt, risk per trade, reward/risk filter, and sectors.</p>
+              <a class="open-link" href="/ai-bot-trader.html">Open AI Bot Setup</a>
+            </article>
+            <article class="live-ai-entry-card">
+              <h4>Step 3: Open live funding flow</h4>
+              <p>Buy/enable live mode, set funding amount, and prepare account labels.</p>
+              <a class="open-link" href="/ai-bot-funding.html">Open Funding + Live Mode</a>
+            </article>
+            <article class="live-ai-entry-card">
+              <h4>Step 4: Connect broker</h4>
+              <p>Add broker credentials/API keys and run bridge test until checks are green.</p>
+              <a class="open-link" href="/brokerage-onboarding.html">Open Broker Connect</a>
+            </article>
+            <article class="live-ai-entry-card">
+              <h4>Step 5: Run + approve or auto-run</h4>
+              <p>Use account view to run cycle and submit selected trades, or enable hands-free live mode.</p>
+              <a class="open-link" href="/ai-bot-account.html">Open AI Account View</a>
+            </article>
+          </div>
+        </section>
+
+        <section class="ai-bot-actions live-ai-entry-actions">
+          <button id="ai-live-setup-start" type="button">Start Full AI Live Setup</button>
+          <button id="ai-live-setup-direct-broker" class="btn-secondary" type="button">Direct Broker Signup + Auto AI</button>
+          <button id="ai-live-setup-open-funding" class="btn-secondary" type="button">Open Funding + Live Mode</button>
+          <button id="ai-live-setup-open-broker" class="btn-secondary" type="button">Open Broker Connect</button>
+          <button id="ai-live-setup-open-account" class="btn-secondary" type="button">Open AI Account View</button>
+        </section>
+
+        <p id="ai-live-setup-status" class="small-note"></p>
+      </article>
+    </main>
+    <script src="./session-helper.js"></script>
+    <script src="./ai-copilot-widget.js"></script>
+    <script src="./ai-live-account-setup.js"></script>
+  </body>
+</html>

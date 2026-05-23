@@ -1,0 +1,145 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>DumbDollars — Settings</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body class="payment-page-body">
+    <main class="ai-trade-page-shell">
+      <article class="ai-trade-page-card card" role="main" aria-labelledby="settings-title">
+        <a class="open-link" href="/">Back to dashboard</a>
+        <h1 id="settings-title">Settings</h1>
+        <p class="small-note">Manage account security, sessions, and email notifications.</p>
+
+        <section class="card stack-item" aria-labelledby="security-title">
+          <h2 id="security-title">Security</h2>
+          <p id="security-email-line" class="small-note">Loading account...</p>
+          <p class="rotate-keys-banner">
+            Keep your trading account secure by rotating broker API credentials regularly.
+            <a id="settings-rotate-broker-keys" class="open-link" href="/settings/broker?rotate=1">Rotate API Keys →</a>
+          </p>
+          <form id="security-change-email-form" class="row-form">
+            <label>
+              Change email
+              <input id="security-new-email" type="email" placeholder="new-email@domain.com" />
+            </label>
+            <button type="submit">Update Email + Re-verify</button>
+          </form>
+
+          <form id="security-change-password-form" class="row-form">
+            <label>
+              Current password
+              <input id="security-current-password" type="password" autocomplete="current-password" />
+            </label>
+            <label>
+              New password
+              <input id="security-new-password" type="password" autocomplete="new-password" />
+            </label>
+            <label>
+              Confirm new password
+              <input id="security-confirm-password" type="password" autocomplete="new-password" />
+            </label>
+            <button type="submit">Change Password</button>
+          </form>
+
+          <h3>Active Sessions</h3>
+          <div class="table-wrap">
+            <table id="security-sessions-table">
+              <thead>
+                <tr>
+                  <th>Device</th>
+                  <th>Location</th>
+                  <th>Last Active</th>
+                  <th>Action</th>
+                </tr>
+              </thead>
+              <tbody id="security-sessions-body">
+                <tr>
+                  <td colspan="4">Loading sessions...</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="auth-actions">
+            <button id="security-signout-all-others" type="button">Sign out of all other devices</button>
+            <button id="security-signout-all" class="btn-secondary" type="button">Sign out of all devices</button>
+          </div>
+          <p class="small-note">Two-factor authentication: <strong>Coming Soon</strong></p>
+
+          <h3>Broker Security Log</h3>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Date</th>
+                  <th>Action</th>
+                  <th>IP Address</th>
+                  <th>Result</th>
+                </tr>
+              </thead>
+              <tbody id="broker-security-log-body">
+                <tr>
+                  <td colspan="4">Loading broker security log...</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        <section class="card stack-item" aria-labelledby="email-title">
+          <h2 id="email-title">Email & Notifications</h2>
+          <p id="email-verified-line" class="small-note">Loading preferences...</p>
+          <form id="email-preferences-form" class="row-form">
+            <label class="auth-remember"><input id="pref-daily-report" type="checkbox" checked /> Daily Performance Report</label>
+            <label class="auth-remember"><input id="pref-weekly-report" type="checkbox" checked /> Weekly Summary Report</label>
+            <label class="auth-remember"><input id="pref-trade-buy" type="checkbox" /> Trade Alerts — Buy Orders</label>
+            <label class="auth-remember"><input id="pref-trade-sell" type="checkbox" /> Trade Alerts — Sell Orders</label>
+            <label class="auth-remember"><input id="pref-stop-loss" type="checkbox" checked /> Stop Loss Alerts</label>
+            <label class="auth-remember"><input id="pref-daily-loss" type="checkbox" checked /> Daily Loss Limit Alert</label>
+            <label class="auth-remember"><input id="pref-bot-status" type="checkbox" checked /> Bot Status Alerts</label>
+            <label>
+              Send daily report at
+              <select id="pref-report-time">
+                <option value="16:00">4:00 PM ET</option>
+                <option value="16:30" selected>4:30 PM ET</option>
+                <option value="17:00">5:00 PM ET</option>
+                <option value="18:00">6:00 PM ET</option>
+              </select>
+            </label>
+            <label class="auth-remember"><input id="pref-unsub-all" type="checkbox" /> Unsubscribe from all emails</label>
+            <button type="submit">Save Email Preferences</button>
+          </form>
+          <div class="auth-actions">
+            <button id="send-test-email-btn" type="button">Send Test Email</button>
+          </div>
+          <p id="settings-status" class="small-note"></p>
+
+          <h3>Email History</h3>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Date</th>
+                  <th>Type</th>
+                  <th>Subject</th>
+                  <th>Status</th>
+                  <th>Preview</th>
+                </tr>
+              </thead>
+              <tbody id="email-history-body">
+                <tr>
+                  <td colspan="5">Loading history...</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <article id="email-preview-box" class="card stack-item hidden" aria-live="polite"></article>
+        </section>
+      </article>
+    </main>
+    <script src="./session-helper.js"></script>
+    <script src="./settings.js"></script>
+  </body>
+</html>

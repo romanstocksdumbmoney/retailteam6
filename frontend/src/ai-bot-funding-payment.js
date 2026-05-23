@@ -1,0 +1,307 @@
+async function fetchJson(url, options = {}) {
+  const response = await fetch(url, options);
+  if (!response.ok) {
+    let body = {};
+    try {
+      body = await response.json();
+    } catch (_error) {
+      body = { message: 'Unknown API error' };
+    }
+    const error = new Error(body.message || `Request failed: ${response.status}`);
+    error.status = response.status;
+    throw error;
+  }
+  return response.json();
+}
+
+function getStoredToken() {
+  return String(localStorage.getItem('dumbdollars_token') || '').trim();
+}
+
+function getAuthHeadersSafe() {
+  if (typeof window.getAuthHeaders === 'function') {
+    return window.getAuthHeaders();
+  }
+  const token = getStoredToken();
+  return token ? { authorization: `Bearer ${token}` } : {};
+}
+
+async function tryRestoreSession() {
+  if (typeof window.restoreSessionIfNeeded === 'function') {
+    const restored = await window.restoreSessionIfNeeded();
+    if (typeof restored === 'string') {
+      return restored;
+    }
+    return String(restored?.token || '').trim();
+  }
+  return '';
+}
+
+async function requestWithAuthRetry(url, options = {}) {
+  try {
+    return await fetchJson(url, {
+      ...options,
+      headers: {
+        ...(options.headers || {}),
+        ...getAuthHeadersSafe()
+      }
+    });
+  } catch (error) {
+    if (error?.status !== 401) {
+      throw error;
+    }
+    const restoredToken = await tryRestoreSession();
+    if (!restoredToken) {
+      throw error;
+    }
+    return fetchJson(url, {
+      ...options,
+      headers: {
+        ...(options.headers || {}),
+        ...getAuthHeadersSafe()
+      }
+    });
+  }
+}
+
+function fmtUsd(value) {
+  return `$${Number(value || 0).toLocaleString(undefined, { maximumFractionDigits: 2 })}`;
+}
+
+function setStatus(text, isError = false) {
+  const node = document.getElementById('ai-funding-payment-status');
+  if (!node) {
+    return;
+  }
+  if (typeof window.clearSignInCallout === 'function') {
+    window.clearSignInCallout('ai-funding-payment-status');
+  }
+  node.textContent = text;
+  node.className = isError ? 'small-note auth-error' : 'small-note';
+}
+
+function showSignInNeeded(message = 'Please log in to continue with funding payment.') {
+  const nextPath = `${window.location.pathname || '/ai-bot-funding-payment.html'}${window.location.search || ''}${window.location.hash || ''}`;
+  if (typeof window.showSignInCallout === 'function') {
+    window.showSignInCallout({
+      statusElementId: 'ai-funding-payment-status',
+      message,
+      nextPath,
+      linkLabel: 'Sign in to continue'
+    });
+    return;
+  }
+  setStatus(message, true);
+  if (typeof window.redirectToSignIn === 'function') {
+    window.redirectToSignIn(`${window.location.pathname || '/ai-bot-funding-payment.html'}${window.location.search || ''}${window.location.hash || ''}`);
+  }
+}
+
+function buildPaymentReference() {
+  const token = localStorage.getItem('dumbdollars_token') || 'guest';
+  const compact = token.replace(/[^a-zA-Z0-9]/g, '').slice(0, 12) || 'guest';
+  return `fund-${Date.now()}-${compact}`;
+}
+
+function setAmountHint(amountUsd) {
+  const node = document.getElementById('ai-funding-payment-amount-line');
+  if (!node) {
+    return;
+  }
+  node.textContent = `Funding Amount: ${fmtUsd(amountUsd)} (one-time funding transfer)`;
+}
+
+function parseNumberInput(id, fallback = 0) {
+  const node = document.getElementById(id);
+  const value = Number(node && 'value' in node ? node.value : fallback);
+  return Number.isFinite(value) ? value : fallback;
+}
+
+function applyQueryStateToUi() {
+  const params = new URLSearchParams(window.location.search);
+  const state = String(params.get('fundingPayment') || '').trim().toLowerCase();
+  const amount = Number(params.get('amountUsd') || 0);
+  if (Number.isFinite(amount) && amount > 0) {
+    const amountInput = document.getElementById('ai-funding-payment-amount');
+    if (amountInput instanceof HTMLInputElement) {
+      amountInput.value = String(amount);
+    }
+    setAmountHint(amount);
+  }
+  if (state === 'success') {
+    setStatus(`Funding payment approved${amount > 0 ? ` for ${fmtUsd(amount)}` : ''}. Next: apply this to your live account.`);
+  } else if (state === 'cancelled') {
+    setStatus('Funding payment was cancelled. You can retry any time.', true);
+  }
+}
+
+async function startFundingPaymentCheckout() {
+  const amountUsd = parseNumberInput('ai-funding-payment-amount', 0);
+  if (!Number.isFinite(amountUsd) || amountUsd < 10) {
+    throw new Error('Funding amount must be at least $10.');
+  }
+  setAmountHint(amountUsd);
+
+  const paymentReference = buildPaymentReference();
+  const session = await requestWithAuthRetry('/api/market/auto-trader/funding-payment-session', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({
+      amountUsd,
+      paymentReference,
+      successPath: '/ai-bot-funding-payment.html',
+      cancelPath: '/ai-bot-funding-payment.html'
+    })
+  });
+
+  if (!session?.url) {
+    throw new Error('Could not open secure funding checkout.');
+  }
+  if (typeof window.rememberCheckoutReturnPath === 'function') {
+    window.rememberCheckoutReturnPath('/ai-bot-funding-payment.html');
+  }
+  window.location.href = session.url;
+}
+
+async function applyDepositToLiveAccount() {
+  const amountUsd = parseNumberInput('ai-funding-payment-amount', 0);
+  if (!Number.isFinite(amountUsd) || amountUsd < 10) {
+    throw new Error('Enter a valid funding amount before applying deposit.');
+  }
+  const accountLabel = String(document.getElementById('ai-funding-payment-account')?.value || '').trim() || 'live-account';
+  const targetReturnPct = 12;
+  const riskPerTradePct = 1.5;
+  await requestWithAuthRetry('/api/market/auto-trader/funding-mode', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({ mode: 'live' })
+  });
+  await requestWithAuthRetry('/api/market/auto-trader/live-profile', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({
+      broker: 'manual',
+      accountLabel,
+      paymentRail: 'card_checkout',
+      executionMode: 'manual_confirmed',
+      riskAcknowledgement: true,
+      targetReturnPct,
+      riskPerTradePct
+    })
+  });
+  await requestWithAuthRetry('/api/market/auto-trader/fund', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({
+      amountUsd,
+      accountHolder: accountLabel,
+      broker: 'manual',
+      paymentRail: 'card_checkout',
+      executionMode: 'manual_confirmed',
+      riskAcknowledged: true,
+      targetReturnPct,
+      riskPerTradePct
+    })
+  });
+}
+
+function setupForm() {
+  const form = document.getElementById('ai-funding-payment-form');
+  if (!form) {
+    return;
+  }
+
+  form.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    const submit = document.getElementById('ai-funding-payment-submit');
+    try {
+      if (submit) {
+        submit.disabled = true;
+      }
+      setStatus('Opening secure funding checkout...');
+      await startFundingPaymentCheckout();
+    } catch (error) {
+      setStatus(error.message || 'Could not start funding payment checkout.', true);
+    } finally {
+      if (submit) {
+        submit.disabled = false;
+      }
+    }
+  });
+
+  const amountInput = document.getElementById('ai-funding-payment-amount');
+  if (amountInput instanceof HTMLInputElement) {
+    amountInput.addEventListener('input', () => {
+      const value = Number(amountInput.value);
+      if (Number.isFinite(value) && value > 0) {
+        setAmountHint(value);
+      }
+    });
+  }
+}
+
+function setupQuickActions() {
+  const applyButton = document.getElementById('ai-funding-apply-deposit');
+  const accountViewButton = document.getElementById('ai-funding-open-account');
+  if (applyButton) {
+    applyButton.addEventListener('click', async () => {
+      try {
+        applyButton.disabled = true;
+        setStatus('Applying deposit to AI account...');
+        await applyDepositToLiveAccount();
+        setStatus('Deposit applied to live AI account.');
+      } catch (error) {
+        setStatus(error.message || 'Could not apply deposit to AI account.', true);
+      } finally {
+        applyButton.disabled = false;
+      }
+    });
+  }
+  if (accountViewButton) {
+    accountViewButton.addEventListener('click', () => {
+      window.location.href = '/ai-bot-account.html';
+    });
+  }
+}
+
+async function init() {
+  if (!getStoredToken()) {
+    await tryRestoreSession();
+  }
+  if (!getStoredToken()) {
+    showSignInNeeded('Please log in to continue with funding payment.');
+    return;
+  }
+
+  try {
+    await requestWithAuthRetry('/api/auth/me', {
+      method: 'GET'
+    });
+  } catch (_error) {
+    showSignInNeeded('Please log in to continue with funding payment.');
+    return;
+  }
+
+  applyQueryStateToUi();
+  const queryAmount = Number(new URLSearchParams(window.location.search).get('amountUsd') || 0);
+  if (queryAmount > 0) {
+    setAmountHint(queryAmount);
+  } else {
+    setAmountHint(parseNumberInput('ai-funding-payment-amount', 1000));
+  }
+  setupForm();
+  setupQuickActions();
+  if (!String(new URLSearchParams(window.location.search).get('fundingPayment') || '').trim()) {
+    setStatus('Ready to start secure funding payment.');
+  }
+}
+
+init();

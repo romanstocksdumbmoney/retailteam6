@@ -1,0 +1,5622 @@
+const PLAN_FREE = 'free';
+const PLAN_PRO = 'pro';
+const PRO_MONTHLY_PRICE = '$15/month';
+let activePlan = PLAN_FREE;
+let activeTicker = 'AAPL';
+let authToken = '';
+let currentUser = null;
+const authState = {
+  user: null,
+  session: null,
+  loading: true
+};
+let activeAiPlatform = 'x-com';
+let activeTrendSource = 'all';
+let activePatternFilter = 'all';
+let activeInsiderSide = 'all';
+let activeInsiderSymbol = '';
+let activeInsiderMinValueUsd = 0;
+let activeInsiderSortBy = 'anomaly_desc';
+let activeInsiderUnusualOnly = true;
+let insiderAutoRefreshTimerId = null;
+let sidebarOpen = false;
+let browseToolsMenuOpen = false;
+let browseToolsMenuInitialized = false;
+let dashboardModeController = null;
+let billingInfo = null;
+let proPopupVisible = false;
+let earningsRefreshIntervalId = null;
+let earningsDayRolloverIntervalId = null;
+let earningsLastEtDateKey = '';
+let activeTraderMode = 'day';
+let traderModeShowAll = false;
+const AUTH_EMAIL_STORAGE_KEY = 'dumbdollars_saved_email';
+const SAVED_EMAIL_KEY = 'dumbdollars_saved_email';
+const AUTH_TOKEN_STORAGE_KEY = 'dumbdollars_token';
+const AUTH_USER_SNAPSHOT_STORAGE_KEY = 'dumbdollars_auth_user_snapshot';
+const PENDING_DISPLAY_NAME_STORAGE_KEY = 'dumbdollars_pending_display_name';
+const AI_TRADER_STATUS_EVENT = 'dumbdollars:bot-status-update';
+const PREMIUM_SPIKE_PROOF_STORAGE_KEY = 'dumbdollars_premium_spike_proofs_v1';
+const FALLBACK_AI_DISCOVERY_LINK = 'https://x.com';
+const CHECKOUT_RETURN_PATH_STORAGE_KEY = 'dumbdollars_return_after_checkout';
+const AUTH_ACCESS_PATH = '/ai-trade-access.html';
+const EMAIL_AUTOMATION_FORM_IDLE_LABEL = 'Save Email Automation';
+const EMAIL_AUTOMATION_TEST_IDLE_LABEL = 'Send Test Email Now';
+const FUN_MODE_BACKGROUND_STORAGE_KEY = 'dumbdollars_fun_mode_background';
+const RECENT_ANALYSES_STORAGE_KEY = 'dumbdollars_recent_analyses_v1';
+let restoreSessionInFlight = false;
+let dashboardGreetingClockTimer = null;
+const dashboardStatusSnapshot = {
+  statusWord: 'STOPPED',
+  brokerConnected: false,
+  marketOpen: null
+};
+
+function normalizeAuthToken(token) {
+  return String(token || '').trim();
+}
+
+function buildAuthSession(token) {
+  const normalizedToken = normalizeAuthToken(token);
+  if (!normalizedToken) {
+    return null;
+  }
+  return {
+    token: normalizedToken
+  };
+}
+
+function syncLegacyAuthVarsFromState() {
+  currentUser = authState.user || null;
+  authToken = normalizeAuthToken(authState.session?.token || '');
+}
+
+function persistAuthSessionToken() {
+  const token = normalizeAuthToken(authState.session?.token || '');
+  if (!token) {
+    localStorage.removeItem(AUTH_TOKEN_STORAGE_KEY);
+    return;
+  }
+  localStorage.setItem(AUTH_TOKEN_STORAGE_KEY, token);
+}
+
+function getAuthStateSnapshot() {
+  const user = authState.user || null;
+  const session = buildAuthSession(authState.session?.token || '');
+  const loading = Boolean(authState.loading);
+  return {
+    user,
+    session,
+    loading,
+    isAuthenticated: Boolean(user && session)
+  };
+}
+
+function logAuthDebugState() {
+  getAuthStateSnapshot();
+}
+
+function applyAuthStatePatch(patch = {}, options = {}) {
+  const { skipRender = false, skipLog = false, persistToken = true } = options;
+  if (Object.prototype.hasOwnProperty.call(patch, 'loading')) {
+    authState.loading = Boolean(patch.loading);
+  }
+  if (Object.prototype.hasOwnProperty.call(patch, 'user')) {
+    authState.user = patch.user || null;
+    persistAuthUserSnapshot(authState.user);
+  }
+  if (Object.prototype.hasOwnProperty.call(patch, 'session')) {
+    authState.session = patch.session ? buildAuthSession(patch.session.token) : null;
+  }
+  if (Object.prototype.hasOwnProperty.call(patch, 'token')) {
+    authState.session = buildAuthSession(patch.token);
+  }
+  syncLegacyAuthVarsFromState();
+  if (persistToken) {
+    persistAuthSessionToken();
+  }
+  if (!skipRender) {
+    renderAuthState();
+  }
+  if (!skipLog) {
+    logAuthDebugState();
+  }
+  return getAuthStateSnapshot();
+}
+
+function hasAuthenticatedSession() {
+  return getAuthStateSnapshot().isAuthenticated;
+}
+
+function promptLoginForProtectedTool(toolLabel, nextPath = getCurrentAppPath()) {
+  const label = String(toolLabel || 'this tool').trim() || 'this tool';
+  setAuthMessage(`Please log in to use ${label}.`, true);
+  renderStatus(`Please log in to use ${label}.`);
+  window.location.href = getAuthAccessUrl('login', nextPath);
+}
+
+function withCurrentPath() {
+  return `${window.location.pathname || '/'}${window.location.search || ''}${window.location.hash || ''}`;
+}
+
+function guardAuthenticatedToolAccess(toolLabel, nextPath = getCurrentAppPath()) {
+  const snapshot = getAuthStateSnapshot();
+  if (snapshot.loading) {
+    setAuthMessage('Checking your session...');
+    renderStatus('Checking your session...');
+    return false;
+  }
+  if (snapshot.isAuthenticated) {
+    return true;
+  }
+  promptLoginForProtectedTool(toolLabel, nextPath);
+  return false;
+}
+const MODULE_NAV_TARGETS = Object.freeze([
+  {
+    key: 'stock-outlook',
+    label: 'Stock Outlook Search',
+    panel: 'main',
+    selector: '#stock-outlook-module',
+    aliases: ['stock', 'outlook', 'ticker', 'stock outlook']
+  },
+  {
+    key: 'earnings-gambling',
+    label: 'Earnings Calendar',
+    panel: 'main',
+    selector: '#earnings-module',
+    aliases: ['earnings', 'earnings board', 'earnings calendar', 'gambling']
+  },
+  {
+    key: 'x-scanner',
+    label: 'x.com Scanner + Market Flow',
+    panel: 'main',
+    selector: '#scanner-module',
+    aliases: ['scanner', 'market flow', 'x scanner', 'scan']
+  },
+  {
+    key: 'options-calculator',
+    label: 'Options Calculator + Gamma Exposure',
+    panel: 'main',
+    selector: '#options-module',
+    aliases: ['options', 'gamma', 'options calculator']
+  },
+  {
+    key: 'unusual-moves',
+    label: 'Unusual Moves Feed',
+    panel: 'main',
+    selector: '#unusual-moves-module',
+    aliases: ['unusual', 'moves', 'flow feed']
+  },
+  {
+    key: 'ai-discovery',
+    label: 'AI Discovery',
+    panel: 'sidebar',
+    selector: '#ai-discovery-section',
+    aliases: ['ai search', 'discovery', 'platform search']
+  },
+  {
+    key: 'realized-patterns',
+    label: 'Realized Patterns',
+    panel: 'sidebar',
+    selector: '#realized-patterns-section',
+    aliases: ['patterns', 'candlestick', 'volume down']
+  },
+  {
+    key: 'wild-takes',
+    label: 'Wild Takes',
+    panel: 'sidebar',
+    selector: '#wild-takes-section',
+    aliases: ['wild', 'takes', 'market takes']
+  },
+  {
+    key: 'insider-trades',
+    label: 'Insider Trades',
+    panel: 'sidebar',
+    selector: '#insider-trades-section',
+    aliases: ['insider', 'sec filings', 'insiders']
+  },
+  {
+    key: 'view-portfolios',
+    label: 'View Portfolios',
+    panel: 'sidebar',
+    selector: '#portfolios-section',
+    aliases: ['portfolio', 'portfolios', 'tracker']
+  },
+  {
+    key: 'trend-trades',
+    label: 'Trend Trades',
+    panel: 'sidebar',
+    selector: '#trend-trades-section',
+    aliases: ['trend', 'social trades', 'social trend']
+  },
+  {
+    key: 'high-iv-tracker',
+    label: 'High IV Tracker',
+    panel: 'sidebar',
+    selector: '#high-iv-section',
+    aliases: ['high iv', 'iv', 'implied volatility']
+  },
+  {
+    key: 'premium-spikes',
+    label: 'Call / Put Premium Spikes',
+    panel: 'sidebar',
+    selector: '#premium-spikes-section',
+    aliases: ['premium spikes', 'call put', 'spikes', 'options spikes']
+  },
+  {
+    key: 'ai-trade',
+    label: 'AI Trading',
+    panel: 'sidebar',
+    selector: '#ai-trade-section',
+    aliases: ['chart upload', 'ai trade', 'ai trading', 'trading ai']
+  },
+  {
+    key: 'order-setup-assistant',
+    label: 'Screenshot Order Setup Assistant',
+    panel: 'sidebar',
+    selector: '#ai-order-setup-section',
+    aliases: ['order setup', 'limit order', 'stop loss', 'take profit', 'screenshot order', 'bracket order', 'order assistant']
+  },
+  {
+    key: 'ai-auto-trader',
+    label: 'AI Trading Bot (Auto Trader)',
+    panel: 'sidebar',
+    selector: '#ai-auto-trader-section',
+    aliases: ['auto trader', 'bot', 'ai bot', 'ai trading bot', 'ai trading']
+  },
+  {
+    key: 'ai-analyzer',
+    label: 'AI Analyzer',
+    panel: 'sidebar',
+    selector: '#ai-analyzer-section',
+    aliases: ['analyzer', 'screenshot analyzer']
+  },
+  {
+    key: 'ai-implementation',
+    label: 'Learn AI Implementation',
+    panel: 'sidebar',
+    selector: '#ai-implementation-section',
+    aliases: ['learn ai', 'implementation', 'ai steps']
+  }
+]);
+const DASHBOARD_MODE_STORAGE_KEY = 'dumbdollars_dashboard_mode_v1';
+const DASHBOARD_MAIN_MODULE_SELECTORS = Object.freeze([
+  '#stock-outlook-module',
+  '#earnings-module',
+  '#scanner-module',
+  '#options-module',
+  '#unusual-moves-module'
+]);
+const SIDEBAR_DROPDOWN_IDS = Object.freeze([
+  'sidebar-core-dropdown',
+  'sidebar-pro-dropdown',
+  'sidebar-ai-dropdown'
+]);
+const DASHBOARD_MODE_CONFIG = Object.freeze({
+  essentials: {
+    helperText: 'Essentials view: outlook + earnings + core AI flow shortcuts.',
+    mainSelectors: ['#stock-outlook-module', '#earnings-module'],
+    sidebarDropdownIds: ['sidebar-core-dropdown', 'sidebar-ai-dropdown']
+  },
+  ai: {
+    helperText: 'AI Trading view: focuses on setup, funding, broker, and execution flow.',
+    mainSelectors: ['#stock-outlook-module', '#earnings-module'],
+    sidebarDropdownIds: ['sidebar-ai-dropdown', 'sidebar-core-dropdown']
+  },
+  research: {
+    helperText: 'Research view: scanner, options, unusual flow, and pro intelligence modules.',
+    mainSelectors: ['#stock-outlook-module', '#earnings-module', '#scanner-module', '#options-module', '#unusual-moves-module'],
+    sidebarDropdownIds: ['sidebar-core-dropdown', 'sidebar-pro-dropdown']
+  },
+  full: {
+    helperText: 'Full workspace view: all modules shown.',
+    mainSelectors: 'all',
+    sidebarDropdownIds: 'all'
+  }
+});
+const TRADER_MODE_STORAGE_KEY = 'dumbdollars_trader_mode_v1';
+const TRADER_MODE_ORDER = Object.freeze(['scalper', 'day', 'swing', 'long']);
+const TRADER_MODE_LABELS = Object.freeze({
+  scalper: 'Scalper',
+  day: 'Day Trader',
+  swing: 'Swing Trader',
+  long: 'Long-Term Investor'
+});
+const TRADER_MODE_DETAILS = Object.freeze({
+  scalper: {
+    title: 'Scalper',
+    short: 'Fast trades, seconds to minutes, high focus, high frequency.',
+    risk: 'High',
+    horizon: 'Seconds to minutes',
+    dashboardLayout: 'quick',
+    aiTone: 'direct',
+    route: '/ai-tools/scalper',
+    mainSelectors: ['#stock-outlook-module', '#scanner-module'],
+    sidebarDropdownIds: ['sidebar-core-dropdown', 'sidebar-ai-dropdown'],
+    hiddenModuleKeys: ['earnings-gambling', 'insider-trades', 'ai-implementation'],
+    aiPrefix: 'Scalp setup detected',
+    quickSignals: [
+      '1m / 5m momentum focus',
+      'Volume spike confirmation',
+      'Tight stop-loss and quick exit workflow'
+    ]
+  },
+  day: {
+    title: 'Day Trader',
+    short: 'Intraday trades with no overnight risk and catalyst focus.',
+    risk: 'Medium-High',
+    horizon: 'Minutes to end of session',
+    dashboardLayout: 'intraday',
+    aiTone: 'fast-structured',
+    route: '/ai-tools/day',
+    mainSelectors: ['#stock-outlook-module', '#scanner-module', '#unusual-moves-module'],
+    sidebarDropdownIds: ['sidebar-core-dropdown', 'sidebar-ai-dropdown', 'sidebar-pro-dropdown'],
+    hiddenModuleKeys: ['insider-trades'],
+    aiPrefix: 'Intraday breakout forming',
+    quickSignals: [
+      '5m / 15m chart alignment',
+      'VWAP and breakout confirmation',
+      'News catalyst + intraday watchlist'
+    ]
+  },
+  swing: {
+    title: 'Swing Trader',
+    short: 'Hold trades for days to weeks with trend and pattern confirmation.',
+    risk: 'Medium',
+    horizon: 'Days to weeks',
+    dashboardLayout: 'swing',
+    aiTone: 'explainer',
+    route: '/ai-tools/swing',
+    mainSelectors: ['#stock-outlook-module', '#earnings-module', '#scanner-module'],
+    sidebarDropdownIds: ['sidebar-core-dropdown', 'sidebar-ai-dropdown', 'sidebar-pro-dropdown'],
+    hiddenModuleKeys: [],
+    aiPrefix: 'Swing setup forming',
+    quickSignals: [
+      '1H / 4H / daily structure',
+      'Support/resistance and continuation patterns',
+      'Entry, stop, and multi-day target levels'
+    ]
+  },
+  long: {
+    title: 'Long-Term Investor',
+    short: 'Build positions over months/years using fundamentals and macro context.',
+    risk: 'Low-Medium',
+    horizon: 'Months to years',
+    dashboardLayout: 'investor',
+    aiTone: 'analytical',
+    route: '/ai-tools/long',
+    mainSelectors: ['#stock-outlook-module', '#earnings-module'],
+    sidebarDropdownIds: ['sidebar-core-dropdown', 'sidebar-pro-dropdown'],
+    hiddenModuleKeys: ['ai-trade', 'order-setup-assistant', 'ai-auto-trader'],
+    aiPrefix: 'Long-term accumulation zone',
+    quickSignals: [
+      'Fundamentals and earnings strength',
+      'Insider and macro context',
+      'Valuation and risk outlook focus'
+    ]
+  }
+});
+function isSecureCheckoutUrl(url) {
+  if (typeof url !== 'string' || !url) {
+    return false;
+  }
+  const candidate = url.trim();
+  if (!candidate) {
+    return false;
+  }
+  if (candidate.startsWith('/')) {
+    return !candidate.startsWith('//');
+  }
+  try {
+    const parsed = new URL(candidate);
+    const host = parsed.hostname.toLowerCase();
+    const protocolOk = parsed.protocol === 'https:'
+      || (parsed.protocol === 'http:' && ['localhost', '127.0.0.1'].includes(host));
+    if (!protocolOk) {
+      return false;
+    }
+    // The checkout URL is issued by our backend directly from Stripe.
+    // Validate protocol only to avoid false negatives on Stripe custom domains.
+    return true;
+  } catch (_error) {
+    return false;
+  }
+}
+
+function openExternal(url) {
+  try {
+    window.open(url, '_blank', 'noopener,noreferrer');
+  } catch (_error) {
+    window.location.href = url;
+  }
+}
+
+function clearCheckoutQueryParams() {
+  const url = new URL(window.location.href);
+  let changed = false;
+  ['checkout', 'session_id'].forEach((key) => {
+    if (url.searchParams.has(key)) {
+      url.searchParams.delete(key);
+      changed = true;
+    }
+  });
+  if (changed) {
+    const nextUrl = `${url.pathname}${url.search}${url.hash}`;
+    window.history.replaceState({}, '', nextUrl || '/');
+  }
+}
+
+async function handleCheckoutReturn() {
+  const checkoutSearch = `${window.location.pathname || '/'}${window.location.search || ''}${window.location.hash || ''}`;
+  const checkoutState = String(new URLSearchParams(window.location.search).get('checkout') || '')
+    .trim()
+    .toLowerCase();
+  if (!checkoutState) {
+    return;
+  }
+
+  if (checkoutState === 'cancelled') {
+    setAuthMessage('Checkout was cancelled. No charge was made.');
+    clearCheckoutQueryParams();
+    return;
+  }
+
+  if (checkoutState !== 'success') {
+    clearCheckoutQueryParams();
+    return;
+  }
+
+  const sessionId = String(new URLSearchParams(window.location.search).get('session_id') || '').trim();
+  if (!sessionId) {
+    setAuthMessage('Checkout finished but confirmation is missing. Contact support if your card was charged.', true);
+    clearCheckoutQueryParams();
+    return;
+  }
+  if (!authState.session?.token) {
+    const restored = await restoreAuthSessionFromRememberToken();
+    if (!restored || !authState.session?.token) {
+      setAuthMessage('Please sign in again to finish activating Pro after checkout.', true);
+      if (typeof window.redirectToSignIn === 'function') {
+        window.redirectToSignIn(checkoutSearch);
+      }
+      return;
+    }
+  }
+
+  try {
+    const payload = await fetchJson('/api/auth/stripe/confirm-checkout-session', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...headersWithPlan()
+      },
+      body: JSON.stringify({ sessionId })
+    });
+    if (payload?.token || payload?.user) {
+      applyAuthStatePatch({
+        token: payload?.token || '',
+        user: payload?.user || null,
+        loading: false
+      });
+    }
+    clearCheckoutQueryParams();
+    setAuthMessage('Payment confirmed. Pro access is now active.');
+
+    const returnAfterCheckout = String(sessionStorage.getItem('dumbdollars_return_after_checkout') || '').trim();
+    sessionStorage.removeItem('dumbdollars_return_after_checkout');
+    if (returnAfterCheckout && returnAfterCheckout.startsWith('/') && returnAfterCheckout !== window.location.pathname) {
+      window.location.href = returnAfterCheckout;
+    }
+  } catch (error) {
+    setAuthMessage(error.message || 'Could not verify checkout session. Please try again.', true);
+    if (Number(error?.status || 0) === 401 && typeof window.redirectToSignIn === 'function') {
+      window.redirectToSignIn(checkoutSearch);
+      return;
+    }
+    clearCheckoutQueryParams();
+  }
+}
+
+function fallbackApiMessageByStatus(status) {
+  const numeric = Number(status || 0);
+  if (numeric === 401) {
+    return 'Your session expired. Please sign in again.';
+  }
+  if (numeric === 403) {
+    return 'You do not have access to this action yet.';
+  }
+  if (numeric === 404) {
+    return 'That resource was not found.';
+  }
+  if (numeric === 429) {
+    return 'Too many requests right now. Please wait a moment and try again.';
+  }
+  if (numeric >= 500) {
+    return 'Server is temporarily unavailable. Please try again in a moment.';
+  }
+  return `Request failed (${numeric || 'network'}).`;
+}
+
+function normalizeApiErrorMessage(status, rawMessage) {
+  const message = String(rawMessage || '').trim();
+  if (!message) {
+    return fallbackApiMessageByStatus(status);
+  }
+  const lower = message.toLowerCase();
+  if (
+    /^[a-z0-9_]+$/.test(lower)
+    || lower.includes('internal server error')
+    || lower.includes('sql')
+    || lower.includes('traceback')
+  ) {
+    return fallbackApiMessageByStatus(status);
+  }
+  return message.slice(0, 260);
+}
+
+async function fetchJson(url, options = {}) {
+  const response = await fetch(url, options);
+  if (!response.ok) {
+    let body = {};
+    try {
+      body = await response.json();
+    } catch (_error) {
+      body = { message: 'Unknown API error' };
+    }
+    const friendlyMessage = normalizeApiErrorMessage(response.status, body.message);
+    const error = new Error(friendlyMessage);
+    error.status = response.status;
+    error.body = body;
+    throw error;
+  }
+  return response.json();
+}
+
+function headersWithPlan() {
+  const headers = {};
+  const sessionToken = normalizeAuthToken(authState.session?.token || authToken);
+  if (sessionToken) {
+    headers.authorization = `Bearer ${sessionToken}`;
+  }
+  return headers;
+}
+
+function getSavedAuthEmail() {
+  return String(localStorage.getItem(AUTH_EMAIL_STORAGE_KEY) || '').trim().toLowerCase();
+}
+
+function saveAuthEmail(email) {
+  const normalized = String(email || '').trim().toLowerCase();
+  if (!normalized) {
+    return;
+  }
+  localStorage.setItem(AUTH_EMAIL_STORAGE_KEY, normalized);
+}
+
+function applySavedEmailToForms() {
+  const saved = getSavedAuthEmail();
+  if (!saved) {
+    return;
+  }
+  const loginEmail = document.getElementById('login-email');
+  const signupEmail = document.getElementById('signup-email');
+  if (loginEmail instanceof HTMLInputElement && !loginEmail.value.trim()) {
+    loginEmail.value = saved;
+  }
+  if (signupEmail instanceof HTMLInputElement && !signupEmail.value.trim()) {
+    signupEmail.value = saved;
+  }
+}
+
+function savePreferredEmail(email) {
+  const normalized = String(email || '').trim().toLowerCase();
+  if (!normalized) {
+    return;
+  }
+  localStorage.setItem(SAVED_EMAIL_KEY, normalized);
+}
+
+function loadPreferredEmail() {
+  return String(localStorage.getItem(SAVED_EMAIL_KEY) || '').trim().toLowerCase();
+}
+
+function parseJsonSafe(value, fallback = null) {
+  try {
+    return JSON.parse(String(value || ''));
+  } catch (_error) {
+    return fallback;
+  }
+}
+
+function getStoredAuthUserSnapshot() {
+  const parsed = parseJsonSafe(localStorage.getItem(AUTH_USER_SNAPSHOT_STORAGE_KEY), null);
+  return parsed && typeof parsed === 'object' ? parsed : null;
+}
+
+function persistAuthUserSnapshot(user) {
+  if (!user || typeof user !== 'object') {
+    localStorage.removeItem(AUTH_USER_SNAPSHOT_STORAGE_KEY);
+    return;
+  }
+  localStorage.setItem(AUTH_USER_SNAPSHOT_STORAGE_KEY, JSON.stringify(user));
+}
+
+function getEtDateParts(date = new Date()) {
+  const formatter = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'America/New_York',
+    weekday: 'short',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false
+  });
+  const bag = {};
+  formatter.formatToParts(date).forEach((part) => {
+    bag[part.type] = part.value;
+  });
+  return {
+    hour: Number(bag.hour || 0),
+    minute: Number(bag.minute || 0),
+    weekday: String(bag.weekday || '')
+  };
+}
+
+function isMarketOpenEt(date = new Date()) {
+  const parts = getEtDateParts(date);
+  const weekday = parts.weekday.toLowerCase();
+  if (weekday === 'sat' || weekday === 'sun') {
+    return false;
+  }
+  const minutes = (parts.hour * 60) + parts.minute;
+  const openMinutes = (9 * 60) + 30;
+  const closeMinutes = 16 * 60;
+  return minutes >= openMinutes && minutes < closeMinutes;
+}
+
+function resolveTimeGreeting(name) {
+  const now = new Date();
+  const hour = now.getHours();
+  const safeName = escapeHtml(name || 'Trader');
+  if (hour >= 5 && hour < 12) {
+    return `Good morning, <span class="dashboard-greeting-name">${safeName}</span> ☀️`;
+  }
+  if (hour >= 12 && hour < 17) {
+    return `Good afternoon, <span class="dashboard-greeting-name">${safeName}</span> 📈`;
+  }
+  if (hour >= 17 && hour < 21) {
+    return `Good evening, <span class="dashboard-greeting-name">${safeName}</span> 🌆`;
+  }
+  return `Hey <span class="dashboard-greeting-name">${safeName}</span>, trading never sleeps 🌙`;
+}
+
+function getUserInitials(user) {
+  const name = String(user?.displayName || user?.display_name || '').trim();
+  if (name) {
+    const parts = name.split(/\s+/).filter(Boolean);
+    const letters = parts.slice(0, 2).map((part) => part.charAt(0).toUpperCase()).join('');
+    if (letters) {
+      return letters;
+    }
+  }
+  const email = String(user?.email || '').trim().toUpperCase();
+  return (email.slice(0, 2) || 'DD').replace(/[^A-Z]/g, '') || 'DD';
+}
+
+function resolveDashboardContextLine({ isAuthenticated, statusWord, brokerConnected, marketOpen }) {
+  if (!isAuthenticated) {
+    return 'Sign in to load your personalized market workspace.';
+  }
+  if (!brokerConnected) {
+    return 'Connect your broker to start automated trading.';
+  }
+  if (!marketOpen) {
+    return 'Markets are closed. Your bot resumes at 9:30 AM ET.';
+  }
+  if (statusWord === 'RUNNING') {
+    return "Your AI is actively trading. Here's today so far.";
+  }
+  if (statusWord === 'PAUSED') {
+    return 'Your bot is paused. Resume it to continue trading.';
+  }
+  return 'Your bot is ready to go. Hit start when you are.';
+}
+
+function updateDashboardWelcomeClock() {
+  const clockNode = document.getElementById('dashboard-welcome-clock');
+  const marketNode = document.getElementById('dashboard-welcome-market');
+  if (!(clockNode instanceof HTMLElement) || !(marketNode instanceof HTMLElement)) {
+    return;
+  }
+  const now = new Date();
+  const clockText = now.toLocaleString([], {
+    weekday: 'short',
+    month: 'short',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit'
+  });
+  const marketOpen = isMarketOpenEt(now);
+  dashboardStatusSnapshot.marketOpen = marketOpen;
+  clockNode.textContent = `${clockText} • Local`;
+  marketNode.textContent = marketOpen ? 'OPEN' : 'CLOSED';
+  marketNode.classList.toggle('is-open', marketOpen);
+  marketNode.classList.toggle('is-closed', !marketOpen);
+}
+
+function bindDashboardStatusEvents() {
+  window.addEventListener(AI_TRADER_STATUS_EVENT, (event) => {
+    const detail = event?.detail && typeof event.detail === 'object' ? event.detail : {};
+    const nextWord = String(detail.statusWord || '').trim().toUpperCase();
+    if (nextWord) {
+      dashboardStatusSnapshot.statusWord = nextWord;
+    }
+    if (Object.prototype.hasOwnProperty.call(detail, 'brokerConnected')) {
+      dashboardStatusSnapshot.brokerConnected = Boolean(detail.brokerConnected);
+    }
+    if (Object.prototype.hasOwnProperty.call(detail, 'marketOpen')) {
+      dashboardStatusSnapshot.marketOpen = Boolean(detail.marketOpen);
+    }
+    renderDashboardGreeting();
+  });
+}
+
+function flushPendingDisplayNameUpdate() {
+  const pendingDisplayName = String(localStorage.getItem(PENDING_DISPLAY_NAME_STORAGE_KEY) || '').trim();
+  if (!pendingDisplayName || !authState.session?.token) {
+    return;
+  }
+  fetch('/api/user/update-profile', {
+    method: 'POST',
+    credentials: 'include',
+    keepalive: true,
+    headers: {
+      'Content-Type': 'application/json',
+      authorization: `Bearer ${authState.session.token}`
+    },
+    body: JSON.stringify({ display_name: pendingDisplayName })
+  }).then(async (response) => {
+    if (!response.ok) {
+      return;
+    }
+    localStorage.removeItem(PENDING_DISPLAY_NAME_STORAGE_KEY);
+    const payload = await response.json().catch(() => ({}));
+    const resolvedName = String(payload?.user?.displayName || payload?.user?.display_name || pendingDisplayName).trim();
+    if (!resolvedName) {
+      return;
+    }
+    const snapshot = getStoredAuthUserSnapshot() || {};
+    persistAuthUserSnapshot({
+      ...snapshot,
+      displayName: resolvedName,
+      display_name: resolvedName,
+      needsDisplayName: false
+    });
+    if (authState.user && typeof authState.user === 'object') {
+      applyAuthStatePatch({
+        user: {
+          ...authState.user,
+          displayName: resolvedName,
+          display_name: resolvedName,
+          needsDisplayName: false
+        }
+      }, { skipRender: false, skipLog: true, persistToken: true });
+    }
+  }).catch(() => {});
+}
+
+
+function getCurrentAppPath() {
+  const path = `${window.location.pathname || '/'}${window.location.search || ''}${window.location.hash || ''}`;
+  if (!path.startsWith('/') || path.startsWith('//')) {
+    return '/';
+  }
+  return path;
+}
+
+function getAuthAccessUrl(mode = 'login', nextPath = getCurrentAppPath()) {
+  const normalizedMode = String(mode || 'login').trim().toLowerCase() === 'signup' ? 'signup' : 'login';
+  const safeNext = String(nextPath || '/').startsWith('/') ? String(nextPath) : '/';
+  return `${AUTH_ACCESS_PATH}?mode=${encodeURIComponent(normalizedMode)}&next=${encodeURIComponent(safeNext)}`;
+}
+
+function resolveGreetingName(user) {
+  const preferred = String(user?.displayName || user?.display_name || '').trim();
+  if (preferred) {
+    return preferred;
+  }
+  const email = String(user?.email || '').trim().toLowerCase();
+  if (!email.includes('@')) {
+    return 'Trader';
+  }
+  const localPart = String(email.split('@')[0] || '').trim();
+  if (!localPart) {
+    return 'Trader';
+  }
+  return localPart
+    .replace(/[._]+/g, ' ')
+    .split(' ')
+    .filter(Boolean)
+    .map((segment) => segment.charAt(0).toUpperCase() + segment.slice(1))
+    .join(' ') || 'Trader';
+}
+
+function renderDashboardGreeting() {
+  const greetingNode = document.getElementById('dashboard-greeting');
+  const titleNode = document.getElementById('dashboard-greeting-title');
+  const contextNode = document.getElementById('dashboard-greeting-subtext');
+  const avatarNode = document.getElementById('dashboard-welcome-avatar');
+  const authSnapshot = getAuthStateSnapshot();
+  if (!(greetingNode instanceof HTMLElement) || !(titleNode instanceof HTMLElement) || !(contextNode instanceof HTMLElement)) {
+    return;
+  }
+  updateDashboardWelcomeClock();
+  if (!dashboardGreetingClockTimer) {
+    dashboardGreetingClockTimer = window.setInterval(() => {
+      updateDashboardWelcomeClock();
+      renderDashboardGreeting();
+    }, 60 * 1000);
+  }
+  const statusWordNode = document.getElementById('ai-trader-status-word');
+  if (statusWordNode instanceof HTMLElement) {
+    const word = String(statusWordNode.textContent || '').trim().toUpperCase();
+    if (word === 'RUNNING' || word === 'PAUSED' || word === 'STOPPED') {
+      dashboardStatusSnapshot.statusWord = word;
+    }
+  }
+  if (authSnapshot.loading) {
+    greetingNode.classList.remove('hidden');
+    greetingNode.classList.add('dashboard-greeting--active');
+    titleNode.textContent = 'Checking your session...';
+    contextNode.textContent = 'Loading your account and workspace preferences.';
+    if (avatarNode instanceof HTMLElement) {
+      avatarNode.textContent = 'DD';
+    }
+    return;
+  }
+  if (!authSnapshot.user) {
+    greetingNode.classList.add('hidden');
+    greetingNode.classList.remove('dashboard-greeting--active');
+    titleNode.textContent = 'Hello, Trader 👋';
+    contextNode.textContent = 'Sign in to load your personalized market workspace.';
+    return;
+  }
+  const name = resolveGreetingName(authSnapshot.user);
+  const marketOpen = Boolean(dashboardStatusSnapshot.marketOpen);
+  titleNode.innerHTML = resolveTimeGreeting(name);
+  contextNode.textContent = resolveDashboardContextLine({
+    isAuthenticated: true,
+    statusWord: dashboardStatusSnapshot.statusWord,
+    brokerConnected: dashboardStatusSnapshot.brokerConnected,
+    marketOpen
+  });
+  if (avatarNode instanceof HTMLElement) {
+    avatarNode.textContent = getUserInitials(authSnapshot.user);
+  }
+  greetingNode.classList.remove('hidden');
+  greetingNode.classList.add('dashboard-greeting--active');
+}
+
+function applyAuthPayload(payload, fallbackEmail = '') {
+  const token = String(payload?.token || '').trim();
+  applyAuthStatePatch({
+    session: token ? { token } : null,
+    user: payload?.user || null,
+    loading: false
+  }, { skipRender: true, skipLog: false, persistToken: true });
+  const email = String(payload?.user?.email || fallbackEmail || '').trim().toLowerCase();
+  if (email) {
+    saveAuthEmail(email);
+    savePreferredEmail(email);
+  }
+  if (payload?.user?.traderMode) {
+    persistTraderMode(payload.user.traderMode);
+  }
+  persistAuthUserSnapshot(payload?.user || null);
+}
+
+async function restoreAuthSessionFromRememberToken() {
+  if (restoreSessionInFlight) {
+    return false;
+  }
+  restoreSessionInFlight = true;
+  try {
+    const payload = await fetchJson('/api/auth/session/restore', {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' }
+    });
+    applyAuthPayload(payload, payload?.user?.email || '');
+    return true;
+  } catch (error) {
+    return false;
+  } finally {
+    restoreSessionInFlight = false;
+  }
+}
+
+function isLikelyRealEmail(email) {
+  const value = String(email || '').trim().toLowerCase();
+  if (!value || value.length > 254) {
+    return false;
+  }
+  // Balanced strictness: prevent obvious junk while allowing valid addresses.
+  const pattern = /^[a-z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)+$/i;
+  if (!pattern.test(value)) {
+    return false;
+  }
+  const domain = value.split('@')[1] || '';
+  if (domain.endsWith('.local') || domain.endsWith('.invalid') || domain.endsWith('.example')) {
+    return false;
+  }
+  return true;
+}
+
+function getPasswordStrength(password) {
+  const raw = String(password || '');
+  let score = 0;
+  if (raw.length >= 8) {
+    score += 1;
+  }
+  if (raw.length >= 12) {
+    score += 1;
+  }
+  if (/[A-Z]/.test(raw)) {
+    score += 1;
+  }
+  if (/[a-z]/.test(raw)) {
+    score += 1;
+  }
+  if (/\d/.test(raw)) {
+    score += 1;
+  }
+  if (/[^A-Za-z0-9]/.test(raw)) {
+    score += 1;
+  }
+  const label = score >= 6 ? 'Strong' : score >= 4 ? 'Good' : score >= 3 ? 'Fair' : 'Weak';
+  const hints = [];
+  if (raw.length < 12) {
+    hints.push('use at least 12 characters');
+  }
+  if (!/[A-Z]/.test(raw)) {
+    hints.push('add an uppercase letter');
+  }
+  if (!/[a-z]/.test(raw)) {
+    hints.push('add a lowercase letter');
+  }
+  if (!/\d/.test(raw)) {
+    hints.push('add a number');
+  }
+  if (!/[^A-Za-z0-9]/.test(raw)) {
+    hints.push('add a symbol');
+  }
+  return {
+    score,
+    label,
+    hints
+  };
+}
+
+function isSignupPasswordStrong(password) {
+  const value = String(password || '');
+  return (
+    value.length >= 8
+    && /[A-Z]/.test(value)
+    && /\d/.test(value)
+    && /[^A-Za-z0-9]/.test(value)
+  );
+}
+
+function updatePasswordHint(inputId, targetId) {
+  const input = document.getElementById(inputId);
+  const target = document.getElementById(targetId);
+  if (!(input instanceof HTMLInputElement) || !target) {
+    return;
+  }
+  const update = () => {
+    const value = String(input.value || '');
+    if (!value) {
+      target.textContent = 'Use 8+ chars with uppercase, number, and symbol.';
+      target.className = 'small-note';
+      return;
+    }
+    const strength = getPasswordStrength(value);
+    const hintsText = strength.hints.length ? ` • Try to ${strength.hints.slice(0, 2).join(' and ')}` : '';
+    target.textContent = `Password strength: ${strength.label}${hintsText}`;
+    target.className = strength.label === 'Weak' ? 'small-note auth-error' : 'small-note auth-ok';
+  };
+  input.addEventListener('input', update);
+  update();
+}
+
+function fmtPct(value) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) {
+    return '0%';
+  }
+  return `${Math.round(numeric)}%`;
+}
+
+function fmtUsd(value) {
+  return `$${Number(value || 0).toLocaleString()}`;
+}
+
+function isLoadingStatusText(text) {
+  return /\b(loading|checking|refreshing|saving|sending|starting|stopping|verifying|processing|running|syncing|activating)\b/i
+    .test(String(text || ''));
+}
+
+function applyStatusClass(node, baseClass, text, isError = false) {
+  if (!node) {
+    return;
+  }
+  const classParts = [baseClass];
+  if (isError) {
+    classParts.push('auth-error');
+  } else if (isLoadingStatusText(text)) {
+    classParts.push('status-loading');
+  }
+  node.className = classParts.join(' ').trim();
+}
+
+function setModuleSearchStatus(text, isError = false) {
+  const node = document.getElementById('module-search-status');
+  if (!node) {
+    return;
+  }
+  node.textContent = text;
+  applyStatusClass(node, 'small-note', text, isError);
+}
+
+function normalizeModuleSearchTerm(value) {
+  return String(value || '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim();
+}
+
+function scoreModuleMatch(term, target) {
+  const normalizedTerm = normalizeModuleSearchTerm(term);
+  if (!normalizedTerm) {
+    return -1;
+  }
+  const values = [
+    target.key,
+    target.label,
+    ...(Array.isArray(target.aliases) ? target.aliases : [])
+  ].map((item) => normalizeModuleSearchTerm(item));
+
+  if (values.includes(normalizedTerm)) {
+    return 100;
+  }
+  if (values.some((value) => value.startsWith(normalizedTerm))) {
+    return 85;
+  }
+  if (values.some((value) => value.includes(normalizedTerm))) {
+    return 75;
+  }
+
+  const tokens = normalizedTerm.split(' ').filter(Boolean);
+  if (tokens.length && values.some((value) => tokens.every((token) => value.includes(token)))) {
+    return 65;
+  }
+  return -1;
+}
+
+function getModuleTargetByKey(key) {
+  const normalized = normalizeModuleSearchTerm(key);
+  return MODULE_NAV_TARGETS.find((target) => normalizeModuleSearchTerm(target.key) === normalized) || null;
+}
+
+function normalizeTraderMode(mode) {
+  const value = String(mode || '').trim().toLowerCase();
+  if (TRADER_MODE_ORDER.includes(value)) {
+    return value;
+  }
+  return 'day';
+}
+
+function getTraderModeFromRoutePath() {
+  const path = String(window.location.pathname || '').trim().toLowerCase();
+  const match = path.match(/^\/ai-tools\/(scalper|day|swing|long)\/?$/);
+  if (!match) {
+    return '';
+  }
+  return normalizeTraderMode(match[1]);
+}
+
+function getStoredTraderMode() {
+  try {
+    return normalizeTraderMode(localStorage.getItem(TRADER_MODE_STORAGE_KEY) || '');
+  } catch (_error) {
+    return 'day';
+  }
+}
+
+function getActiveTraderMode() {
+  const routeMode = getTraderModeFromRoutePath();
+  if (routeMode) {
+    return routeMode;
+  }
+  if (currentUser?.traderMode) {
+    return normalizeTraderMode(currentUser.traderMode);
+  }
+  return getStoredTraderMode();
+}
+
+function persistTraderMode(mode) {
+  const normalized = normalizeTraderMode(mode);
+  try {
+    localStorage.setItem(TRADER_MODE_STORAGE_KEY, normalized);
+  } catch (_error) {
+    // Ignore storage failures.
+  }
+  return normalized;
+}
+
+function isModeVisibleForTarget(mode, target) {
+  if (!target) {
+    return false;
+  }
+  if (target.panel === 'main') {
+    return Boolean((TRADER_MODE_DETAILS[mode]?.mainSelectors || []).includes(target.selector));
+  }
+  if (target.panel === 'sidebar') {
+    const selector = String(target.selector || '').trim();
+    if (!selector) {
+      return true;
+    }
+    const hiddenKeys = new Set(TRADER_MODE_DETAILS[mode]?.hiddenModuleKeys || []);
+    if (!hiddenKeys.size) {
+      return true;
+    }
+    const bySelector = MODULE_NAV_TARGETS.find((entry) => String(entry.selector || '').trim() === selector);
+    if (!bySelector?.key) {
+      return true;
+    }
+    return !hiddenKeys.has(bySelector.key);
+  }
+  return true;
+}
+
+function openModeRoute(mode) {
+  const normalized = normalizeTraderMode(mode);
+  const routeNode = document.getElementById('trader-mode-routing');
+  const route = TRADER_MODE_DETAILS[normalized]?.route || `/ai-tools/${normalized}`;
+  if (routeNode instanceof HTMLElement) {
+    routeNode.innerHTML = `
+      Mode route: <a class="open-link" href="${route}">${route}</a>
+    `;
+  }
+}
+
+function renderModeAwareInsights(mode) {
+  const normalized = normalizeTraderMode(mode);
+  const config = TRADER_MODE_DETAILS[normalized];
+  const container = document.getElementById('trader-mode-meta');
+  if (!(container instanceof HTMLElement) || !config) {
+    return;
+  }
+  const toneLine = normalized === 'scalper'
+    ? `${config.aiPrefix}: Enter now / exit now / momentum fading.`
+    : normalized === 'swing'
+      ? `${config.aiPrefix}: Trend forming, wait for confirmation before entry.`
+      : normalized === 'long'
+        ? `${config.aiPrefix}: Valuation suggests upside over 6–12 months with macro risk context.`
+        : `${config.aiPrefix}: Volume confirmation detected, suggested entries + stops ready.`;
+  container.innerHTML = `
+    <p><strong>${config.title}</strong> • Risk: ${config.risk} • Horizon: ${config.horizon}</p>
+    <p class="small-note">${config.short}</p>
+    <p class="small-note"><strong>AI style:</strong> ${toneLine}</p>
+    <ul class="detail-list">
+      ${(config.quickSignals || []).map((line) => `<li>${line}</li>`).join('')}
+    </ul>
+  `;
+}
+
+function renderTraderModeCards(activeMode, showAllModes) {
+  const cardsHost = document.getElementById('trader-mode-cards');
+  if (!(cardsHost instanceof HTMLElement)) {
+    return;
+  }
+  const normalized = normalizeTraderMode(activeMode);
+  const modes = showAllModes ? TRADER_MODE_ORDER : [normalized];
+  cardsHost.innerHTML = modes.map((mode) => {
+    const details = TRADER_MODE_DETAILS[mode];
+    const activeClass = mode === normalized ? ' trader-mode-option--active' : '';
+    return `
+      <article class="trader-mode-option${activeClass}" data-mode-card="${mode}">
+        <h4>${details.title}</h4>
+        <p>${details.short}</p>
+        <p><strong>Risk:</strong> ${details.risk}</p>
+        <p><strong>Time horizon:</strong> ${details.horizon}</p>
+      </article>
+    `;
+  }).join('');
+}
+
+async function saveTraderMode(mode) {
+  const normalized = persistTraderMode(mode);
+  if (!authState.session?.token) {
+    return normalized;
+  }
+  try {
+    const payload = await fetchJson('/api/auth/trader-mode', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...headersWithPlan()
+      },
+      body: JSON.stringify({ traderMode: normalized })
+    });
+    if (payload?.user) {
+      applyAuthStatePatch({ user: payload.user }, { skipRender: true });
+    }
+    return normalizeTraderMode(payload?.traderMode || normalized);
+  } catch (_error) {
+    return normalized;
+  }
+}
+
+function applyTraderModeUI(mode, options = {}) {
+  const normalized = normalizeTraderMode(mode);
+  const { save = false } = options;
+  const select = document.getElementById('trader-mode-select');
+  const showAllToggle = document.getElementById('trader-mode-show-all');
+  const showAllModes = showAllToggle instanceof HTMLInputElement ? Boolean(showAllToggle.checked) : false;
+  if (select instanceof HTMLSelectElement) {
+    select.value = normalized;
+  }
+  document.body.setAttribute('data-trader-mode', normalized);
+  renderTraderModeCards(normalized, showAllModes);
+  renderModeAwareInsights(normalized);
+  openModeRoute(normalized);
+
+  const modeConfig = TRADER_MODE_DETAILS[normalized];
+  const visibleMainSelectors = new Set(modeConfig?.mainSelectors || []);
+  DASHBOARD_MAIN_MODULE_SELECTORS.forEach((selector) => {
+    const node = document.querySelector(selector);
+    if (!(node instanceof HTMLElement)) {
+      return;
+    }
+    node.hidden = !showAllModes && !visibleMainSelectors.has(selector);
+  });
+
+  const visibleDropdownIds = new Set(modeConfig?.sidebarDropdownIds || []);
+  SIDEBAR_DROPDOWN_IDS.forEach((dropdownId) => {
+    const dropdown = getSidebarDropdownById(dropdownId);
+    if (!dropdown) {
+      return;
+    }
+    dropdown.hidden = !showAllModes && !visibleDropdownIds.has(dropdownId);
+    if (dropdown.hidden) {
+      dropdown.open = false;
+    }
+  });
+
+  MODULE_NAV_TARGETS.forEach((target) => {
+    if (!target?.selector) {
+      return;
+    }
+    const node = document.querySelector(target.selector);
+    if (!(node instanceof HTMLElement)) {
+      return;
+    }
+    const visible = showAllModes ? true : isModeVisibleForTarget(normalized, target);
+    node.hidden = !visible;
+  });
+
+  if (save) {
+    persistTraderMode(normalized);
+  }
+}
+
+function setupTraderModeControls() {
+  const select = document.getElementById('trader-mode-select');
+  const showAllToggle = document.getElementById('trader-mode-show-all');
+  const cardsNode = document.getElementById('trader-mode-cards');
+  const routingNode = document.getElementById('trader-mode-routing');
+  if (!(select instanceof HTMLSelectElement)) {
+    return;
+  }
+  const initial = getActiveTraderMode();
+  applyTraderModeUI(initial, { save: true });
+  select.addEventListener('change', async () => {
+    const selected = normalizeTraderMode(select.value);
+    applyTraderModeUI(selected, { save: true });
+    await saveTraderMode(selected);
+    applyTraderModeUI(selected, { save: false });
+  });
+  if (showAllToggle instanceof HTMLInputElement) {
+    showAllToggle.addEventListener('change', () => {
+      applyTraderModeUI(getActiveTraderMode(), { save: false });
+    });
+  }
+  if (cardsNode instanceof HTMLElement) {
+    cardsNode.addEventListener('click', async (event) => {
+      const target = event.target;
+      if (!(target instanceof HTMLElement)) {
+        return;
+      }
+      const card = target.closest('[data-mode-card]');
+      if (!(card instanceof HTMLElement)) {
+        return;
+      }
+      const nextMode = normalizeTraderMode(card.getAttribute('data-mode-card'));
+      select.value = nextMode;
+      applyTraderModeUI(nextMode, { save: true });
+      await saveTraderMode(nextMode);
+    });
+  }
+  if (routingNode instanceof HTMLElement) {
+    routingNode.addEventListener('click', (event) => {
+      const target = event.target;
+      if (!(target instanceof HTMLElement)) {
+        return;
+      }
+      const link = target.closest('[data-trader-mode-route]');
+      if (!(link instanceof HTMLElement)) {
+        return;
+      }
+      event.preventDefault();
+      const mode = normalizeTraderMode(link.getAttribute('data-trader-mode-route'));
+      openModeRoute(mode);
+      window.location.href = TRADER_MODE_DETAILS[mode]?.route || `/ai-tools/${mode}`;
+    });
+  }
+}
+
+function findBestModuleTarget(query) {
+  const normalized = normalizeModuleSearchTerm(query);
+  if (!normalized) {
+    return null;
+  }
+  let bestTarget = null;
+  let bestScore = -1;
+  MODULE_NAV_TARGETS.forEach((target) => {
+    const score = scoreModuleMatch(normalized, target);
+    if (score > bestScore) {
+      bestTarget = target;
+      bestScore = score;
+    }
+  });
+  return bestScore >= 0 ? bestTarget : null;
+}
+
+function highlightModuleElement(element) {
+  if (!(element instanceof HTMLElement)) {
+    return;
+  }
+  element.classList.remove('module-highlight');
+  // Restart animation so repeated jumps are still visible.
+  void element.offsetWidth;
+  element.classList.add('module-highlight');
+  window.setTimeout(() => {
+    element.classList.remove('module-highlight');
+  }, 1500);
+}
+
+function jumpToModule(target) {
+  if (!target || !target.selector) {
+    return false;
+  }
+  const activeMode = getActiveTraderMode();
+  const showAllToggle = document.getElementById('trader-mode-show-all');
+  const showAllModes = showAllToggle instanceof HTMLInputElement ? Boolean(showAllToggle.checked) : false;
+  if (!showAllModes && !isModeVisibleForTarget(activeMode, target)) {
+    setModuleSearchStatus(`${target.label} is hidden in ${TRADER_MODE_LABELS[activeMode]} mode. Enable "Show All Modes" or switch trader mode.`, true);
+    return false;
+  }
+  if (dashboardModeController && typeof dashboardModeController.revealForTarget === 'function') {
+    dashboardModeController.revealForTarget(target);
+  }
+  const element = document.querySelector(target.selector);
+  if (!(element instanceof HTMLElement)) {
+    return false;
+  }
+  if (target.panel === 'sidebar') {
+    const parentDropdown = element.closest('details.module-dropdown');
+    if (parentDropdown instanceof HTMLDetailsElement) {
+      parentDropdown.open = true;
+    }
+    openSidebarMenu();
+    element.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    highlightModuleElement(element);
+  } else {
+    closeSidebarMenu();
+    element.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    highlightModuleElement(element);
+  }
+  return true;
+}
+
+function setupModuleNavigation() {
+  const form = document.getElementById('module-search-form');
+  const input = document.getElementById('module-search-input');
+  const datalist = document.getElementById('module-search-options');
+  const quickLinks = document.getElementById('quick-module-links');
+  if (!(form instanceof HTMLFormElement) || !(input instanceof HTMLInputElement)) {
+    return;
+  }
+
+  if (datalist instanceof HTMLDataListElement) {
+    datalist.innerHTML = MODULE_NAV_TARGETS
+      .map((target) => `<option value="${target.label}"></option>`)
+      .join('');
+  }
+
+  if (quickLinks) {
+    const quickKeys = ['stock-outlook', 'earnings-gambling', 'trend-trades', 'premium-spikes', 'ai-trade', 'order-setup-assistant', 'ai-auto-trader'];
+    quickLinks.innerHTML = quickKeys
+      .map((key) => {
+        const target = getModuleTargetByKey(key);
+        if (!target) {
+          return '';
+        }
+        return `<button type="button" class="btn-secondary module-link-btn" data-module-key="${target.key}">${target.label}</button>`;
+      })
+      .join('');
+    quickLinks.addEventListener('click', (event) => {
+      const clicked = event.target;
+      if (!(clicked instanceof HTMLElement)) {
+        return;
+      }
+      const button = clicked.closest('[data-module-key]');
+      if (!(button instanceof HTMLElement)) {
+        return;
+      }
+      const key = String(button.getAttribute('data-module-key') || '').trim();
+      const target = getModuleTargetByKey(key);
+      if (!target) {
+        return;
+      }
+      const jumped = jumpToModule(target);
+      if (jumped) {
+        setModuleSearchStatus(`Jumped to ${target.label}.`);
+      }
+    });
+  }
+
+  form.addEventListener('submit', (event) => {
+    event.preventDefault();
+    const query = String(input.value || '').trim();
+    if (!query) {
+      setModuleSearchStatus('Type a module name to navigate quickly.', true);
+      return;
+    }
+    const target = findBestModuleTarget(query);
+    if (!target) {
+      setModuleSearchStatus(`No module found for "${query}". Try "earnings", "AI trade", or "premium spikes".`, true);
+      return;
+    }
+    const jumped = jumpToModule(target);
+    if (!jumped) {
+      setModuleSearchStatus(`Could not open ${target.label} right now.`, true);
+      return;
+    }
+    setModuleSearchStatus(`Jumped to ${target.label}.`);
+  });
+}
+
+function setupQuickAccessHub() {
+  const searchButton = document.getElementById('quick-access-open-search');
+  const showProButton = document.getElementById('quick-access-show-pro');
+  const orderSetupButton = document.getElementById('quick-access-open-order-setup');
+  const openTrendTradesButton = document.getElementById('quick-access-open-trend-trades');
+  const openPremiumSpikesButton = document.getElementById('quick-access-open-premium-spikes');
+  const openAiInsightsButton = document.getElementById('home-open-ai-insights');
+  const aiOverviewButtons = Array.from(document.querySelectorAll('.home-ai-tool-button'));
+  const openCopilotInlineButton = document.getElementById('open-copilot-inline');
+  const menuToggle = document.getElementById('sidebar-menu-toggle');
+  if (!(searchButton instanceof HTMLButtonElement)) {
+    // Keep compatibility on pages where quick access search is absent.
+  } else {
+    searchButton.addEventListener('click', () => {
+      const searchSection = document.getElementById('module-command-title');
+      const searchInput = document.getElementById('module-search-input');
+      if (searchSection instanceof HTMLElement) {
+        searchSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }
+      if (searchInput instanceof HTMLInputElement) {
+        window.setTimeout(() => {
+          searchInput.focus();
+        }, 180);
+      }
+      setModuleSearchStatus('Type what you need and press "Go to module".');
+    });
+  }
+
+  const showProModules = () => {
+    if (dashboardModeController && typeof dashboardModeController.applyMode === 'function') {
+      dashboardModeController.applyMode('research', {
+        save: true,
+        statusOverride: 'Pro modules are now visible in the sidebar (Trend Trades, High IV, Premium Spikes).'
+      });
+    }
+    openSidebarMenu();
+    const proDropdown = document.getElementById('sidebar-pro-dropdown');
+    if (proDropdown instanceof HTMLDetailsElement) {
+      proDropdown.hidden = false;
+      proDropdown.open = true;
+      proDropdown.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+  };
+
+  if (showProButton instanceof HTMLButtonElement) {
+    showProButton.addEventListener('click', () => {
+      window.location.href = '/pro-modules.html';
+    });
+  }
+
+  if (orderSetupButton instanceof HTMLButtonElement) {
+    orderSetupButton.addEventListener('click', () => {
+      openAiOrderSetupAssistantPage();
+    });
+  }
+
+  if (openTrendTradesButton instanceof HTMLButtonElement) {
+    openTrendTradesButton.addEventListener('click', () => {
+      showProModules();
+      const target = getModuleTargetByKey('trend-trades');
+      if (target) {
+        jumpToModule(target);
+        setModuleSearchStatus('Opened Trend Trades.');
+      }
+    });
+  }
+
+  if (openPremiumSpikesButton instanceof HTMLButtonElement) {
+    openPremiumSpikesButton.addEventListener('click', async () => {
+      showProModules();
+      const target = getModuleTargetByKey('premium-spikes');
+      if (target) {
+        jumpToModule(target);
+      }
+      await focusPremiumSpikesSection({ load: true });
+      setModuleSearchStatus('Opened Premium Spikes.');
+    });
+  }
+
+  if (menuToggle instanceof HTMLButtonElement) {
+    menuToggle.textContent = 'Open Tool Library';
+  }
+
+  if (openAiInsightsButton instanceof HTMLButtonElement) {
+    openAiInsightsButton.addEventListener('click', () => {
+      if (!guardAuthenticatedToolAccess('AI Discovery', '/#ai-discovery-section')) {
+        return;
+      }
+      const target = getModuleTargetByKey('ai-discovery');
+      if (target) {
+        const jumped = jumpToModule(target);
+        if (jumped) {
+          setModuleSearchStatus('Opened AI Discovery.');
+        }
+      }
+    });
+  }
+
+  aiOverviewButtons.forEach((button) => {
+    button.addEventListener('click', () => {
+      const key = String(button.getAttribute('data-module-key') || '').trim();
+      const protectedToolLabelByKey = {
+        'realized-patterns': 'Pattern Analyzer',
+        'ai-analyzer': 'AI Analyzer',
+        'ai-trade': 'AI Trade',
+        'view-portfolios': 'Portfolio Tracker',
+        'order-setup-assistant': 'Order Setup Assistant'
+      };
+      const protectedToolNextPathByKey = {
+        'realized-patterns': '/#realized-patterns-section',
+        'ai-analyzer': '/ai-analyzer.html',
+        'ai-trade': '/ai-trade.html',
+        'view-portfolios': '/portfolios.html',
+        'order-setup-assistant': '/ai-trade.html#ai-order-setup-title'
+      };
+      const protectedLabel = protectedToolLabelByKey[key];
+      if (protectedLabel && !guardAuthenticatedToolAccess(protectedLabel, protectedToolNextPathByKey[key])) {
+        return;
+      }
+      const target = getModuleTargetByKey(key);
+      if (!target) {
+        return;
+      }
+      const jumped = jumpToModule(target);
+      if (jumped) {
+        setModuleSearchStatus(`Opened ${target.label}.`);
+      }
+    });
+  });
+
+  if (openCopilotInlineButton instanceof HTMLButtonElement) {
+    openCopilotInlineButton.addEventListener('click', () => {
+      if (!guardAuthenticatedToolAccess('AI Copilot', `${window.location.pathname || '/'}${window.location.search || ''}${window.location.hash || ''}`)) {
+        return;
+      }
+      window.dispatchEvent(new CustomEvent('dumbdollars:copilot-open', {
+        detail: {
+          message: 'Copilot opened. Ask what to do next and I will guide you.'
+        }
+      }));
+    });
+  }
+}
+
+function getSidebarDropdownById(id) {
+  const node = document.getElementById(id);
+  return node instanceof HTMLDetailsElement ? node : null;
+}
+
+function resolveDashboardMode(mode) {
+  const normalized = String(mode || '').trim().toLowerCase();
+  if (Object.prototype.hasOwnProperty.call(DASHBOARD_MODE_CONFIG, normalized)) {
+    return normalized;
+  }
+  return 'essentials';
+}
+
+function setupDashboardOrganization() {
+  const container = document.getElementById('dashboard-organizer');
+  const statusNode = document.getElementById('dashboard-organizer-status');
+  if (!(container instanceof HTMLElement) || !(statusNode instanceof HTMLElement)) {
+    return;
+  }
+  const modeButtons = Array.from(container.querySelectorAll('[data-dashboard-mode]'));
+  if (!modeButtons.length) {
+    return;
+  }
+
+  const setStatus = (text) => {
+    if (!statusNode) {
+      return;
+    }
+    statusNode.textContent = text;
+  };
+
+  const applyMode = (requestedMode, options = {}) => {
+    const { save = true, statusOverride = '' } = options;
+    const mode = resolveDashboardMode(requestedMode);
+    const config = DASHBOARD_MODE_CONFIG[mode];
+    const visibleMainSelectors = config.mainSelectors === 'all'
+      ? new Set(DASHBOARD_MAIN_MODULE_SELECTORS)
+      : new Set(config.mainSelectors || []);
+
+    DASHBOARD_MAIN_MODULE_SELECTORS.forEach((selector) => {
+      const element = document.querySelector(selector);
+      if (element instanceof HTMLElement) {
+        element.hidden = !visibleMainSelectors.has(selector);
+      }
+    });
+
+    const visibleDropdownIds = config.sidebarDropdownIds === 'all'
+      ? new Set(SIDEBAR_DROPDOWN_IDS)
+      : new Set(config.sidebarDropdownIds || []);
+    SIDEBAR_DROPDOWN_IDS.forEach((dropdownId) => {
+      const dropdown = getSidebarDropdownById(dropdownId);
+      if (!dropdown) {
+        return;
+      }
+      const visible = visibleDropdownIds.has(dropdownId);
+      dropdown.hidden = !visible;
+      if (!visible) {
+        dropdown.open = false;
+      }
+    });
+
+    const visibleDropdowns = SIDEBAR_DROPDOWN_IDS
+      .map((dropdownId) => getSidebarDropdownById(dropdownId))
+      .filter((dropdown) => dropdown && !dropdown.hidden);
+    if (visibleDropdowns.length > 0 && !visibleDropdowns.some((dropdown) => dropdown.open)) {
+      visibleDropdowns[0].open = true;
+    }
+
+    modeButtons.forEach((button) => {
+      const buttonMode = resolveDashboardMode(button.getAttribute('data-dashboard-mode'));
+      const active = buttonMode === mode;
+      button.classList.toggle('dashboard-mode-btn--active', active);
+      button.setAttribute('aria-pressed', active ? 'true' : 'false');
+    });
+
+    document.body.setAttribute('data-dashboard-mode', mode);
+    if (save) {
+      localStorage.setItem(DASHBOARD_MODE_STORAGE_KEY, mode);
+    }
+    setStatus(statusOverride || config.helperText || 'Workspace updated.');
+    return mode;
+  };
+
+  const revealForTarget = (target) => {
+    if (!target || !target.selector) {
+      return;
+    }
+    const currentMode = resolveDashboardMode(document.body.getAttribute('data-dashboard-mode'));
+    const currentConfig = DASHBOARD_MODE_CONFIG[currentMode];
+    let nextMode = currentMode;
+    if (target.panel === 'main') {
+      const mainVisible = currentConfig.mainSelectors === 'all'
+        || (Array.isArray(currentConfig.mainSelectors) && currentConfig.mainSelectors.includes(target.selector));
+      if (!mainVisible) {
+        const advancedMainSelectors = new Set(['#scanner-module', '#options-module', '#unusual-moves-module']);
+        nextMode = advancedMainSelectors.has(target.selector) ? 'research' : 'full';
+      }
+    } else if (target.panel === 'sidebar') {
+      const selector = String(target.selector || '').trim();
+      const proSelectors = new Set(['#trend-trades-section', '#high-iv-section', '#premium-spikes-section']);
+      const aiSelectors = new Set(['#ai-trade-section', '#ai-order-setup-section', '#ai-auto-trader-section', '#ai-analyzer-section', '#ai-implementation-section']);
+      const requiredDropdownId = proSelectors.has(selector)
+        ? 'sidebar-pro-dropdown'
+        : (aiSelectors.has(selector) ? 'sidebar-ai-dropdown' : 'sidebar-core-dropdown');
+      const dropdownVisible = currentConfig.sidebarDropdownIds === 'all'
+        || (Array.isArray(currentConfig.sidebarDropdownIds) && currentConfig.sidebarDropdownIds.includes(requiredDropdownId));
+      if (!dropdownVisible) {
+        nextMode = requiredDropdownId === 'sidebar-pro-dropdown'
+          ? 'research'
+          : (requiredDropdownId === 'sidebar-ai-dropdown' ? 'ai' : 'essentials');
+      }
+    }
+    if (nextMode !== currentMode) {
+      applyMode(nextMode, {
+        save: true,
+        statusOverride: `Switched to ${nextMode} view to open ${target.label}.`
+      });
+    }
+  };
+
+  dashboardModeController = {
+    applyMode,
+    revealForTarget
+  };
+
+  modeButtons.forEach((button) => {
+    button.addEventListener('click', () => {
+      const mode = button.getAttribute('data-dashboard-mode');
+      applyMode(mode, { save: true });
+    });
+  });
+
+  const savedMode = resolveDashboardMode(localStorage.getItem(DASHBOARD_MODE_STORAGE_KEY) || 'essentials');
+  applyMode(savedMode, { save: false });
+}
+
+function getPremiumSpikeProofMap() {
+  try {
+    const raw = localStorage.getItem(PREMIUM_SPIKE_PROOF_STORAGE_KEY);
+    if (!raw) {
+      return {};
+    }
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+      return {};
+    }
+    return parsed;
+  } catch (_error) {
+    return {};
+  }
+}
+
+function savePremiumSpikeProofMap(map) {
+  localStorage.setItem(PREMIUM_SPIKE_PROOF_STORAGE_KEY, JSON.stringify(map || {}));
+}
+
+function buildPremiumSpikeProofKey(item) {
+  const symbol = String(item?.symbol || 'UNKNOWN').trim().toUpperCase();
+  const premiumType = String(item?.premiumType || 'unknown').trim().toLowerCase();
+  const happenedAt = String(item?.happenedAt || '').trim();
+  const datePart = happenedAt ? happenedAt.slice(0, 10) : 'unknown-date';
+  return `${symbol}:${premiumType}:${datePart}`;
+}
+
+function readImageAsDataUrl(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result || ''));
+    reader.onerror = () => reject(new Error('Could not read image file.'));
+    reader.readAsDataURL(file);
+  });
+}
+
+function removePremiumSpikeProofByKey(proofKey) {
+  const map = getPremiumSpikeProofMap();
+  delete map[proofKey];
+  savePremiumSpikeProofMap(map);
+}
+
+function setPremiumSpikeProofByKey(proofKey, proof) {
+  const map = getPremiumSpikeProofMap();
+  map[proofKey] = proof;
+  const entries = Object.entries(map)
+    .sort((a, b) => Number(b[1]?.savedAt || 0) - Number(a[1]?.savedAt || 0));
+  const capped = Object.fromEntries(entries.slice(0, 20));
+  savePremiumSpikeProofMap(capped);
+}
+
+function renderPremiumSpikeProofPreview(container, proofKey) {
+  if (!container) {
+    return;
+  }
+  container.innerHTML = '';
+  const map = getPremiumSpikeProofMap();
+  const proof = map[proofKey];
+  if (!proof?.dataUrl) {
+    const empty = document.createElement('p');
+    empty.className = 'small-note';
+    empty.textContent = 'No Unusual Whales screenshot proof attached yet.';
+    container.appendChild(empty);
+    return;
+  }
+  const image = document.createElement('img');
+  image.className = 'premium-proof-image';
+  image.alt = 'Uploaded Unusual Whales screenshot proof';
+  image.loading = 'lazy';
+  image.src = proof.dataUrl;
+
+  const meta = document.createElement('p');
+  meta.className = 'small-note';
+  const savedAt = Number(proof.savedAt || 0);
+  meta.textContent = savedAt
+    ? `UW proof saved ${new Date(savedAt).toLocaleString()}`
+    : 'UW proof attached.';
+
+  const removeButton = document.createElement('button');
+  removeButton.type = 'button';
+  removeButton.className = 'btn-secondary premium-proof-clear';
+  removeButton.textContent = 'Remove proof screenshot';
+  removeButton.addEventListener('click', () => {
+    removePremiumSpikeProofByKey(proofKey);
+    renderPremiumSpikeProofPreview(container, proofKey);
+  });
+
+  container.appendChild(image);
+  container.appendChild(meta);
+  container.appendChild(removeButton);
+}
+
+function bindPremiumSpikeProofControls(card, item) {
+  const proofKey = buildPremiumSpikeProofKey(item);
+  const uploadButton = card.querySelector('.premium-proof-upload');
+  const fileInput = card.querySelector('.premium-proof-file-input');
+  const preview = card.querySelector('.premium-proof-preview');
+  if (!(uploadButton instanceof HTMLButtonElement) || !(fileInput instanceof HTMLInputElement) || !(preview instanceof HTMLElement)) {
+    return;
+  }
+
+  renderPremiumSpikeProofPreview(preview, proofKey);
+  uploadButton.addEventListener('click', () => {
+    fileInput.click();
+  });
+  fileInput.addEventListener('change', async () => {
+    const file = fileInput.files?.[0];
+    fileInput.value = '';
+    if (!file) {
+      return;
+    }
+    if (!String(file.type || '').startsWith('image/')) {
+      preview.innerHTML = '<p class="small-note auth-error">Please select an image file.</p>';
+      return;
+    }
+    if (file.size > 2_500_000) {
+      preview.innerHTML = '<p class="small-note auth-error">Image is too large. Keep screenshot under 2.5MB.</p>';
+      return;
+    }
+    try {
+      const dataUrl = await readImageAsDataUrl(file);
+      setPremiumSpikeProofByKey(proofKey, {
+        dataUrl,
+        savedAt: Date.now()
+      });
+      renderPremiumSpikeProofPreview(preview, proofKey);
+    } catch (error) {
+      preview.innerHTML = `<p class="small-note auth-error">${error.message || 'Could not attach screenshot proof.'}</p>`;
+    }
+  });
+}
+
+function clampPercent(value) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) {
+    return 0;
+  }
+  return Math.max(0, Math.min(100, numeric));
+}
+
+function normalizePairPercents(upValue, downValue) {
+  const upRaw = clampPercent(upValue);
+  const downRaw = clampPercent(downValue);
+  const total = upRaw + downRaw;
+  if (total <= 0) {
+    return { up: 50, down: 50 };
+  }
+  const up = Math.round((upRaw / total) * 100);
+  const down = 100 - up;
+  return { up, down };
+}
+
+function toEtNow() {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'America/New_York',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false
+  }).formatToParts(new Date());
+  const get = (type) => parts.find((part) => part.type === type)?.value || '00';
+  return {
+    year: Number(get('year')),
+    month: Number(get('month')),
+    day: Number(get('day')),
+    hour: Number(get('hour')),
+    minute: Number(get('minute'))
+  };
+}
+
+function getEtDateKey() {
+  const now = toEtNow();
+  return `${now.year}-${String(now.month).padStart(2, '0')}-${String(now.day).padStart(2, '0')}`;
+}
+
+function parseEventDateParts(isoDate) {
+  const text = String(isoDate || '').trim();
+  const match = text.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!match) {
+    return null;
+  }
+  return {
+    year: Number(match[1]),
+    month: Number(match[2]),
+    day: Number(match[3])
+  };
+}
+
+function parseSessionCutoffMinutes(reportTimeLabel) {
+  const value = String(reportTimeLabel || '').toLowerCase();
+  if (value.includes('pre-market')) {
+    return 9 * 60 + 30;
+  }
+  if (value.includes('after-hours')) {
+    return 16 * 60 + 30;
+  }
+  return 16 * 60 + 30;
+}
+
+function isEarningsItemStillActive(item) {
+  const dateParts = parseEventDateParts(item.eventDate || item.eventDateLabel || '');
+  if (!dateParts) {
+    return true;
+  }
+  const now = toEtNow();
+  const eventKey = dateParts.year * 10000 + dateParts.month * 100 + dateParts.day;
+  const nowKey = now.year * 10000 + now.month * 100 + now.day;
+  if (eventKey > nowKey) {
+    return true;
+  }
+  if (eventKey < nowKey) {
+    return false;
+  }
+  const nowMinutes = now.hour * 60 + now.minute;
+  const cutoffMinutes = parseSessionCutoffMinutes(item.reportTimeLabel);
+  return nowMinutes < cutoffMinutes;
+}
+
+function startEarningsDayRolloverWatcher() {
+  earningsLastEtDateKey = getEtDateKey();
+  if (earningsDayRolloverIntervalId) {
+    clearInterval(earningsDayRolloverIntervalId);
+  }
+  earningsDayRolloverIntervalId = window.setInterval(() => {
+    const currentDateKey = getEtDateKey();
+    if (currentDateKey === earningsLastEtDateKey) {
+      return;
+    }
+    earningsLastEtDateKey = currentDateKey;
+    loadEarningsBoard().catch((error) => {
+      console.error(error);
+    });
+  }, 60_000);
+}
+
+function renderStatus(text) {
+  const status = document.getElementById('status');
+  if (!status) {
+    return;
+  }
+  status.textContent = text;
+  applyStatusClass(status, 'status', text, false);
+}
+
+function openProPopup(message = 'Pro access needed. Upgrade to unlock this feature.') {
+  const backdrop = document.getElementById('pro-popup-backdrop');
+  const body = document.getElementById('pro-popup-text');
+  if (!backdrop || !body) {
+    return;
+  }
+  body.textContent = message;
+  backdrop.classList.remove('hidden');
+  document.body.classList.add('pro-popup-open');
+  proPopupVisible = true;
+}
+
+function closeProPopup() {
+  const backdrop = document.getElementById('pro-popup-backdrop');
+  if (!backdrop) {
+    return;
+  }
+  backdrop.classList.add('hidden');
+  document.body.classList.remove('pro-popup-open');
+  proPopupVisible = false;
+}
+
+function openProPlanScreen() {
+  const targetUrl = '/payment.html';
+  if (window.location.pathname.endsWith('/payment.html')) {
+    return;
+  }
+  try {
+    sessionStorage.setItem(
+      CHECKOUT_RETURN_PATH_STORAGE_KEY,
+      `${window.location.pathname || '/'}${window.location.search || ''}${window.location.hash || ''}`
+    );
+  } catch (_error) {
+    // Ignore sessionStorage failures in restrictive browser contexts.
+  }
+  window.location.href = targetUrl;
+}
+
+function openAutoTraderPage() {
+  const hub = document.getElementById('ai-trader-hub');
+  if (hub) {
+    hub.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    return;
+  }
+  window.location.href = '/#ai-trader-hub';
+}
+
+function openBrokerageOnboardingPage() {
+  window.location.href = '/brokerage-onboarding.html';
+}
+
+function openAiImplementationGuidePage() {
+  window.location.href = '/ai-implementation-steps.html';
+}
+
+function openAiLiveAccountSetupPage() {
+  window.location.href = '/ai-simple-setup.html';
+}
+
+function openDirectBrokerAiSetupPage(broker) {
+  const normalized = String(broker || '').trim().toLowerCase();
+  if (!normalized) {
+    window.location.href = '/ai-broker-direct-setup.html';
+    return;
+  }
+  window.location.href = `/ai-broker-direct-setup.html?broker=${encodeURIComponent(normalized)}&flow=instant`;
+}
+
+function openBrokerageOnboardingWithBroker(broker) {
+  const normalized = String(broker || '').trim().toLowerCase();
+  if (!normalized) {
+    openBrokerageOnboardingPage();
+    return;
+  }
+  window.location.href = `/brokerage-onboarding.html?broker=${encodeURIComponent(normalized)}`;
+}
+
+function setupStartHereRoutingGuard() {
+  const links = Array.from(document.querySelectorAll('.start-here-grid .start-here-link'));
+  if (!links.length) {
+    return;
+  }
+  const routeByStep = {
+    'signin': '/ai-trade-access.html?next=%2Fai-simple-setup.html',
+    'ai-setup': '/ai-simple-setup.html',
+    'funding': '/ai-bot-funding.html',
+    'broker': '/brokerage-onboarding.html',
+    'account': '/ai-bot-account.html'
+  };
+  links.forEach((link) => {
+    const stepKey = String(link.getAttribute('data-start-step') || '').trim().toLowerCase();
+    const targetHref = routeByStep[stepKey];
+    if (!targetHref) {
+      return;
+    }
+    // Force explicit routing for guided tiles in case stale handlers or browser cache interfere.
+    link.setAttribute('href', targetHref);
+    link.addEventListener('click', (event) => {
+      event.preventDefault();
+      window.location.href = targetHref;
+    });
+  });
+}
+
+async function openSmartAiSetupPath() {
+  const shortcutButton = document.getElementById('handsfree-auto-guide-button')
+    || document.getElementById('handsfree-smart-setup-button');
+  const statusNode = document.getElementById('handsfree-auto-guide-status')
+    || document.getElementById('handsfree-setup-status');
+  if (!(shortcutButton instanceof HTMLButtonElement) || !(statusNode instanceof HTMLElement)) {
+    return;
+  }
+  const openCopilotGuide = (detail = {}) => {
+    try {
+      window.dispatchEvent(new CustomEvent('dumbdollars:copilot-open', { detail }));
+      return true;
+    } catch (_error) {
+      return false;
+    }
+  };
+  const guideWithAiAndFallback = (guide) => {
+    const route = guide?.route || null;
+    const message = String(guide?.message || '').trim();
+    const prompt = String(guide?.prompt || '').trim();
+    const opened = openCopilotGuide({
+      message,
+      prompt,
+      route
+    });
+    if (!opened && route?.href) {
+      window.location.href = route.href;
+    }
+  };
+  const setBusy = (busy, text = '') => {
+    if (shortcutButton instanceof HTMLButtonElement) {
+      shortcutButton.disabled = busy;
+      shortcutButton.textContent = busy
+        ? 'Checking your setup...'
+        : 'Auto Guide Me to Next Step';
+    }
+    if (statusNode && text) {
+      statusNode.textContent = text;
+      statusNode.className = 'small-note';
+    }
+  };
+
+  if (!guardAuthenticatedToolAccess('Auto Guide', '/ai-simple-setup.html')) {
+    setBusy(false, 'AI guide: sign in first, then I will guide each next step.');
+    guideWithAiAndFallback({
+      message: 'You are not signed in yet. I will guide you through setup after sign in.',
+      prompt: 'Open sign in page for AI live account setup',
+      route: {
+        href: '/ai-trade-access.html?next=%2Fai-simple-setup.html',
+        label: 'Sign in / Create account',
+        wantsRedirect: false
+      }
+    });
+    return;
+  }
+
+  try {
+    setBusy(true, 'Checking your AI setup progress...');
+    const profile = await fetchJson('/api/market/auto-trader/account-view', {
+      headers: headersWithPlan()
+    });
+    const steps = Array.isArray(profile?.execution?.setup?.steps) ? profile.execution.setup.steps : [];
+    const nextPending = steps.find((step) => !step.completed);
+    const nextHref = String(nextPending?.navigateUrl || nextPending?.actionHref || nextPending?.actionUrl || '').trim();
+    if (nextHref) {
+      setBusy(false, `AI guide ready: ${nextPending.title}`);
+      guideWithAiAndFallback({
+        message: `Next step: ${nextPending.title}. ${nextPending.description || ''}`.trim(),
+        prompt: `Guide me to complete this step: ${nextPending.title}`,
+        route: {
+          href: nextHref,
+          label: nextPending.actionLabel || nextPending.title || 'Open next step',
+          wantsRedirect: false
+        }
+      });
+      return;
+    }
+    setBusy(false, 'AI guide: setup looks complete. Open hands-free trading control.');
+    guideWithAiAndFallback({
+      message: 'Great news: your setup looks complete. Open hands-free trading control and start autopilot.',
+      prompt: 'Open AI account view and start hands-free AI trading',
+      route: {
+        href: '/ai-bot-account.html#ai-account-start-autopilot',
+        label: 'Open Hands-Free Trading Control',
+        wantsRedirect: false
+      }
+    });
+  } catch (_error) {
+    // Fallback to the safest first step if progress lookup fails.
+    setBusy(false, 'AI guide: opening setup guide because progress check failed.');
+    guideWithAiAndFallback({
+      message: 'I could not read your setup progress right now, so start with the guided live setup page.',
+      prompt: 'Open AI live account setup guide',
+      route: {
+        href: '/ai-simple-setup.html',
+        label: 'Open Easy AI Setup',
+        wantsRedirect: false
+      }
+    });
+  } finally {
+    setBusy(false);
+  }
+}
+
+function setupBrokerageApiSection() {
+  const section = document.getElementById('brokerage-api-section');
+  if (!(section instanceof HTMLElement)) {
+    return;
+  }
+  section.addEventListener('click', (event) => {
+    const target = event.target;
+    if (!(target instanceof HTMLElement)) {
+      return;
+    }
+    const trigger = target.closest('[data-broker-action]');
+    if (!(trigger instanceof HTMLElement)) {
+      return;
+    }
+    const action = String(trigger.getAttribute('data-broker-action') || '').trim().toLowerCase();
+    const broker = String(trigger.getAttribute('data-broker') || '').trim().toLowerCase();
+    if (!action) {
+      return;
+    }
+    if (action === 'use-broker') {
+      event.preventDefault();
+      openBrokerageOnboardingWithBroker(broker);
+      return;
+    }
+    if (action === 'open-account') {
+      // Let anchor default behavior handle external links.
+      return;
+    }
+  });
+}
+
+function setupInstantAiLaunchpad() {
+  const instantTradeButton = document.getElementById('instant-ai-trade-button');
+  const connectBrokerButton = document.getElementById('instant-connect-broker-button');
+  const runByAiButton = document.getElementById('run-by-ai-now-button');
+  const runByAiSetupButton = document.getElementById('run-by-ai-setup-button');
+  const runByAiBrokerButton = document.getElementById('run-by-ai-broker-button');
+  const runByAiControlButton = document.getElementById('run-by-ai-control-button');
+  const brokerSelect = document.getElementById('instant-broker-select');
+  const statusNode = document.getElementById('instant-ai-launch-status');
+  const hasLaunchpad = (
+    instantTradeButton
+    || connectBrokerButton
+    || runByAiButton
+    || runByAiSetupButton
+    || runByAiBrokerButton
+    || runByAiControlButton
+    || brokerSelect
+    || statusNode
+  );
+  if (!hasLaunchpad) {
+    return;
+  }
+
+  const getSelectedBroker = () => {
+    if (!(brokerSelect instanceof HTMLSelectElement)) {
+      return 'alpaca';
+    }
+    return String(brokerSelect.value || 'alpaca').trim().toLowerCase();
+  };
+
+  const setLaunchStatus = (text) => {
+    if (!statusNode) {
+      return;
+    }
+    statusNode.textContent = text;
+  };
+
+  const buildDirectSetupUrl = (broker) => `/ai-broker-direct-setup.html?broker=${encodeURIComponent(broker)}&entry=instant`;
+
+  const syncLaunchLinkTargets = (broker) => {
+    const targetUrl = buildDirectSetupUrl(broker);
+    if (instantTradeButton instanceof HTMLAnchorElement) {
+      instantTradeButton.setAttribute('href', targetUrl);
+    }
+    if (connectBrokerButton instanceof HTMLAnchorElement) {
+      connectBrokerButton.setAttribute('href', targetUrl);
+    }
+    if (runByAiButton instanceof HTMLAnchorElement) {
+      runByAiButton.setAttribute('href', targetUrl);
+    }
+    if (runByAiSetupButton instanceof HTMLAnchorElement) {
+      runByAiSetupButton.setAttribute('href', '/ai-simple-setup.html');
+    }
+    if (runByAiBrokerButton instanceof HTMLAnchorElement) {
+      runByAiBrokerButton.setAttribute('href', `/brokerage-onboarding.html?broker=${encodeURIComponent(broker)}`);
+    }
+    if (runByAiControlButton instanceof HTMLAnchorElement) {
+      runByAiControlButton.setAttribute('href', '/ai-bot-account.html');
+    }
+  };
+
+  if (brokerSelect instanceof HTMLSelectElement) {
+    const remembered = String(localStorage.getItem('dumbdollars_selected_broker') || '').trim().toLowerCase();
+    if (remembered) {
+      brokerSelect.value = remembered;
+    }
+    syncLaunchLinkTargets(getSelectedBroker());
+    brokerSelect.addEventListener('change', () => {
+      const broker = getSelectedBroker();
+      localStorage.setItem('dumbdollars_selected_broker', broker);
+      syncLaunchLinkTargets(broker);
+      setLaunchStatus(`Broker selected: ${broker.replace(/-/g, ' ')}. Click Connect Broker to continue.`);
+    });
+  }
+
+  if (instantTradeButton instanceof HTMLButtonElement || instantTradeButton instanceof HTMLAnchorElement) {
+    instantTradeButton.addEventListener('click', () => {
+      const broker = getSelectedBroker();
+      localStorage.setItem('dumbdollars_selected_broker', broker);
+      if (instantTradeButton instanceof HTMLButtonElement) {
+        openDirectBrokerAiSetupPage(broker);
+      }
+    });
+  }
+
+  if (connectBrokerButton instanceof HTMLButtonElement || connectBrokerButton instanceof HTMLAnchorElement) {
+    connectBrokerButton.addEventListener('click', () => {
+      const broker = getSelectedBroker();
+      localStorage.setItem('dumbdollars_selected_broker', broker);
+      if (connectBrokerButton instanceof HTMLButtonElement) {
+        openDirectBrokerAiSetupPage(broker);
+      }
+    });
+  }
+
+  if (runByAiButton instanceof HTMLButtonElement || runByAiButton instanceof HTMLAnchorElement) {
+    runByAiButton.addEventListener('click', () => {
+      const broker = getSelectedBroker();
+      localStorage.setItem('dumbdollars_selected_broker', broker);
+      if (runByAiButton instanceof HTMLButtonElement) {
+        openDirectBrokerAiSetupPage(broker);
+      }
+    });
+  }
+
+  if (runByAiBrokerButton instanceof HTMLButtonElement || runByAiBrokerButton instanceof HTMLAnchorElement) {
+    runByAiBrokerButton.addEventListener('click', () => {
+      const broker = getSelectedBroker();
+      localStorage.setItem('dumbdollars_selected_broker', broker);
+      if (runByAiBrokerButton instanceof HTMLButtonElement) {
+        openBrokerageOnboardingWithBroker(broker);
+      }
+    });
+  }
+
+  if (runByAiSetupButton instanceof HTMLButtonElement) {
+    runByAiSetupButton.addEventListener('click', () => {
+      window.location.href = '/ai-simple-setup.html';
+    });
+  }
+
+  if (runByAiControlButton instanceof HTMLButtonElement) {
+    runByAiControlButton.addEventListener('click', () => {
+      window.location.href = '/ai-bot-account.html';
+    });
+  }
+
+  const smartSetupButton = document.getElementById('handsfree-auto-guide-button')
+    || document.getElementById('handsfree-smart-setup-button');
+  if (smartSetupButton instanceof HTMLButtonElement) {
+    smartSetupButton.addEventListener('click', async () => {
+      await openSmartAiSetupPath();
+    });
+  }
+}
+
+function openAiTradeEntryPage() {
+  if (!guardAuthenticatedToolAccess('AI Trade', '/ai-trade.html')) {
+    return;
+  }
+  window.location.href = '/ai-trade.html';
+}
+
+function openAiOrderSetupAssistantPage() {
+  if (!guardAuthenticatedToolAccess('Order Setup Assistant', '/ai-trade.html#ai-order-setup-title')) {
+    return;
+  }
+  window.location.href = '/ai-trade.html#ai-order-setup-title';
+}
+
+function openInsiderTradesPage() {
+  window.location.href = '/insider-trades.html';
+}
+
+function openPortfoliosPage() {
+  if (!guardAuthenticatedToolAccess('Portfolio Tracker', '/portfolios.html')) {
+    return;
+  }
+  window.location.href = '/portfolios.html';
+}
+
+function openAiAnalyzerPage() {
+  if (!guardAuthenticatedToolAccess('AI Analyzer', '/ai-analyzer.html')) {
+    return;
+  }
+  window.location.href = '/ai-analyzer.html';
+}
+
+function openAiCopilotTool() {
+  const nextPath = `${window.location.pathname || '/'}${window.location.search || ''}${window.location.hash || ''}`;
+  if (!guardAuthenticatedToolAccess('AI Copilot', nextPath)) {
+    return;
+  }
+  window.dispatchEvent(new CustomEvent('dumbdollars:copilot-open', {
+    detail: {
+      message: 'Copilot opened. Ask what to do next and I will guide you.'
+    }
+  }));
+}
+
+async function focusPremiumSpikesSection(options = {}) {
+  const sectionHeader = document.getElementById('premium-spikes-section');
+  const shouldLoad = options.load !== false;
+  if (sectionHeader) {
+    sectionHeader.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    sectionHeader.classList.remove('module-highlight');
+    // Force restart of highlight animation when opened repeatedly.
+    void sectionHeader.offsetWidth;
+    sectionHeader.classList.add('module-highlight');
+    window.setTimeout(() => {
+      sectionHeader.classList.remove('module-highlight');
+    }, 1500);
+  }
+  if (!shouldLoad) {
+    return;
+  }
+  try {
+    await loadPremiumSpikes();
+  } catch (error) {
+    renderPremiumSpikesLocked(error.message || 'Could not load Call / Put Premium Spikes.');
+    if (error.status === 403) {
+      openProPopup('Pro access needed for Call / Put Premium Spikes.');
+    }
+  }
+}
+
+function closeSidebarMenu() {
+  const sidebar = document.getElementById('sidebar-panel');
+  if (!sidebar) {
+    return;
+  }
+  sidebarOpen = false;
+  sidebar.classList.add('sidebar-collapsed');
+}
+
+function openSidebarMenu() {
+  const sidebar = document.getElementById('sidebar-panel');
+  if (!sidebar) {
+    return;
+  }
+  sidebarOpen = true;
+  sidebar.classList.remove('sidebar-collapsed');
+}
+
+function setBrowseToolsMenuState(isOpen) {
+  const menuToggle = document.getElementById('sidebar-menu-toggle');
+  const browseMenu = document.getElementById('browse-tools-menu');
+  if (!(menuToggle instanceof HTMLButtonElement) || !(browseMenu instanceof HTMLElement)) {
+    return;
+  }
+  browseToolsMenuOpen = Boolean(isOpen);
+  if (browseToolsMenuOpen) {
+    browseMenu.classList.add('is-open');
+    browseMenu.setAttribute('aria-hidden', 'false');
+    menuToggle.setAttribute('aria-expanded', 'true');
+    return;
+  }
+  browseMenu.classList.remove('is-open');
+  browseMenu.setAttribute('aria-hidden', 'true');
+  menuToggle.setAttribute('aria-expanded', 'false');
+}
+
+function openReportsPage() {
+  window.location.href = '/insider-trades.html';
+}
+
+function openSettingsPanel() {
+  const accountCenter = document.getElementById('account-center');
+  if (accountCenter instanceof HTMLDetailsElement) {
+    accountCenter.open = true;
+    accountCenter.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    return;
+  }
+  window.location.href = '/ai-trade-access.html?mode=login&next=%2F';
+}
+
+function ensureBrowseToolsFallbackMenuItems(browseMenu) {
+  if (!(browseMenu instanceof HTMLElement)) {
+    return;
+  }
+  const existingLinks = browseMenu.querySelectorAll('a.browse-tools-link');
+  if (existingLinks.length > 0) {
+    return;
+  }
+  const fallbackLinks = [
+    { label: 'Dashboard', href: '/' },
+    { label: 'AI Trader', href: '#ai-trader-hub' },
+    { label: 'Search', href: '#stock-outlook-module' },
+    { label: 'AI Tools', href: '#ai-tools-overview' },
+    { label: 'Portfolio', href: '/portfolios.html' },
+    { label: 'Reports', href: '#realized-patterns-section' },
+    { label: 'Settings', href: '#account-center' },
+    { label: 'Pro', href: '/pro.html' }
+  ];
+  browseMenu.innerHTML = fallbackLinks
+    .map((item) => `<a class="browse-tools-link" role="menuitem" href="${item.href}">${item.label}</a>`)
+    .join('');
+}
+
+function positionBrowseToolsMenu(menuToggle, browseMenu) {
+  if (!(menuToggle instanceof HTMLElement) || !(browseMenu instanceof HTMLElement)) {
+    return;
+  }
+  const viewportPadding = 8;
+  browseMenu.style.left = '';
+  browseMenu.style.right = '';
+  const menuRect = browseMenu.getBoundingClientRect();
+  if (menuRect.left < viewportPadding) {
+    browseMenu.style.left = `${Math.round(viewportPadding - menuRect.left)}px`;
+    browseMenu.style.right = 'auto';
+    return;
+  }
+  if (menuRect.right > window.innerWidth - viewportPadding) {
+    browseMenu.style.left = 'auto';
+    browseMenu.style.right = '0';
+  }
+}
+
+function handleBrowseToolsNavigation(event) {
+  const anchor = event.target instanceof Element
+    ? event.target.closest('.browse-tools-link')
+    : null;
+  if (!(anchor instanceof HTMLAnchorElement)) {
+    return;
+  }
+  setBrowseToolsMenuState(false);
+}
+
+function setupBrowseToolsMenu() {
+  if (browseToolsMenuInitialized) {
+    return;
+  }
+  const menuToggle = document.getElementById('sidebar-menu-toggle');
+  const browseMenu = document.getElementById('browse-tools-menu');
+  const funModeToggle = document.getElementById('fun-mode-toggle');
+  if (!(menuToggle instanceof HTMLButtonElement) || !(browseMenu instanceof HTMLElement)) {
+    return;
+  }
+
+  browseToolsMenuInitialized = true;
+  ensureBrowseToolsFallbackMenuItems(browseMenu);
+  setBrowseToolsMenuState(false);
+  setupFunModeBackgroundToggle(funModeToggle);
+
+  menuToggle.addEventListener('click', (event) => {
+    event.preventDefault();
+    setBrowseToolsMenuState(!browseToolsMenuOpen);
+    if (!browseToolsMenuOpen) {
+      return;
+    }
+    positionBrowseToolsMenu(menuToggle, browseMenu);
+  });
+
+  browseMenu.addEventListener('click', handleBrowseToolsNavigation);
+
+  const closeIfOutside = (event) => {
+    if (!browseToolsMenuOpen) {
+      return;
+    }
+    const target = event.target;
+    if (!(target instanceof Node)) {
+      return;
+    }
+    if (menuToggle.contains(target) || browseMenu.contains(target)) {
+      return;
+    }
+    setBrowseToolsMenuState(false);
+  };
+
+  document.addEventListener('pointerdown', closeIfOutside);
+  document.addEventListener('click', closeIfOutside);
+
+  document.addEventListener('keydown', (event) => {
+    if (event.key !== 'Escape') {
+      return;
+    }
+    if (!browseToolsMenuOpen) {
+      return;
+    }
+    event.preventDefault();
+    setBrowseToolsMenuState(false);
+  });
+
+  window.addEventListener('resize', () => {
+    if (!browseToolsMenuOpen) {
+      return;
+    }
+    positionBrowseToolsMenu(menuToggle, browseMenu);
+  });
+}
+
+function setFunModeBackgroundState(enabled) {
+  const isEnabled = Boolean(enabled);
+  document.body.classList.toggle('fun-mode-off', !isEnabled);
+  const toggle = document.getElementById('fun-mode-toggle');
+  if (toggle instanceof HTMLButtonElement) {
+    toggle.setAttribute('aria-pressed', isEnabled ? 'true' : 'false');
+    toggle.textContent = `Fun Mode Background: ${isEnabled ? 'ON' : 'OFF'}`;
+  }
+}
+
+function getInitialFunModeBackgroundPreference() {
+  try {
+    const stored = String(localStorage.getItem(FUN_MODE_BACKGROUND_STORAGE_KEY) || '').trim().toLowerCase();
+    if (stored === 'on') {
+      return true;
+    }
+    if (stored === 'off') {
+      return false;
+    }
+  } catch (_error) {
+    // Ignore storage failures in restrictive browser contexts.
+  }
+  return true;
+}
+
+function persistFunModeBackgroundPreference(enabled) {
+  try {
+    localStorage.setItem(FUN_MODE_BACKGROUND_STORAGE_KEY, enabled ? 'on' : 'off');
+  } catch (_error) {
+    // Ignore storage failures in restrictive browser contexts.
+  }
+}
+
+function setupFunModeBackgroundToggle(funModeToggle) {
+  const initialState = getInitialFunModeBackgroundPreference();
+  setFunModeBackgroundState(initialState);
+  persistFunModeBackgroundPreference(initialState);
+  if (!(funModeToggle instanceof HTMLButtonElement)) {
+    return;
+  }
+  funModeToggle.addEventListener('click', () => {
+    const nextEnabled = document.body.classList.contains('fun-mode-off');
+    setFunModeBackgroundState(nextEnabled);
+    persistFunModeBackgroundPreference(nextEnabled);
+  });
+}
+
+function setAuthMessage(text, isError = false) {
+  const node = document.getElementById('auth-message');
+  if (!node) {
+    return;
+  }
+  node.textContent = text;
+  applyStatusClass(node, 'small-note', text, isError);
+}
+
+let authLockoutTimer = null;
+
+function renderResendVerificationAction(email) {
+  const actions = document.getElementById('auth-message-actions');
+  if (!(actions instanceof HTMLElement)) {
+    return;
+  }
+  actions.innerHTML = '';
+  const button = document.createElement('button');
+  button.type = 'button';
+  button.className = 'link-button';
+  button.textContent = 'Resend verification email';
+  button.addEventListener('click', async () => {
+    button.disabled = true;
+    try {
+      await fetchJson('/api/auth/resend-verification', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: String(email || '').trim().toLowerCase() })
+      });
+      setAuthMessage('Verification email sent. Check your inbox and spam folder.');
+    } catch (error) {
+      setAuthMessage(error.message || 'Could not resend verification email.', true);
+    } finally {
+      button.disabled = false;
+    }
+  });
+  actions.appendChild(button);
+}
+
+function clearAuthMessageActions() {
+  if (authLockoutTimer) {
+    window.clearInterval(authLockoutTimer);
+    authLockoutTimer = null;
+  }
+  const actions = document.getElementById('auth-message-actions');
+  if (!(actions instanceof HTMLElement)) {
+    return;
+  }
+  actions.innerHTML = '';
+}
+
+function renderAuthActionLink(label, href) {
+  const actions = document.getElementById('auth-message-actions');
+  if (!(actions instanceof HTMLElement)) {
+    return;
+  }
+  const link = document.createElement('a');
+  link.className = 'link-button';
+  link.href = href;
+  link.textContent = label;
+  actions.appendChild(link);
+}
+
+function startAuthLockoutCountdown(lockoutUntilIso) {
+  const lockoutTs = Date.parse(String(lockoutUntilIso || ''));
+  if (!Number.isFinite(lockoutTs)) {
+    return;
+  }
+  const tick = () => {
+    const remainingMinutes = Math.max(1, Math.ceil((lockoutTs - Date.now()) / (60 * 1000)));
+    setAuthMessage(`Account temporarily locked. Try again in ${remainingMinutes} minute${remainingMinutes === 1 ? '' : 's'}.`, true);
+    if (Date.now() >= lockoutTs) {
+      if (authLockoutTimer) {
+        window.clearInterval(authLockoutTimer);
+        authLockoutTimer = null;
+      }
+      setAuthMessage('Lockout ended. You can try signing in again.');
+      clearAuthMessageActions();
+    }
+  };
+  tick();
+  authLockoutTimer = window.setInterval(tick, 1000);
+}
+
+function mapLoginErrorMessage(error, email) {
+  const code = String(error?.body?.error || '').trim().toLowerCase();
+  const message = String(error?.message || '').trim();
+  if (code === 'unknown_email' || error?.status === 404) {
+    return 'No account found with that email address.';
+  }
+  if (code === 'incorrect_password' || error?.status === 401) {
+    return message || 'Incorrect password.';
+  }
+  if (code === 'email_not_verified' || message.toLowerCase().includes('verify your email')) {
+    renderResendVerificationAction(email);
+    return 'Please verify your email before signing in.';
+  }
+  if (code === 'account_suspended') {
+    return 'This account has been suspended. Contact support.';
+  }
+  if (code === 'too_many_attempts' || error?.status === 429) {
+    return message || 'Account temporarily locked. Try again in 15 minutes.';
+  }
+  return message || 'Login failed.';
+}
+
+function setEmailAutomationStatus(text, isError = false) {
+  const node = document.getElementById('email-automation-status');
+  if (!node) {
+    return;
+  }
+  const normalized = String(text || '');
+  node.textContent = normalized;
+  if (isError) {
+    node.className = 'small-note email-automation-status-error';
+    return;
+  }
+  node.className = isLoadingStatusText(normalized)
+    ? 'small-note email-automation-status-ok status-loading'
+    : 'small-note email-automation-status-ok';
+}
+
+function setEmailAutomationBusy(button, isBusy, idleLabel, busyLabel) {
+  if (!(button instanceof HTMLButtonElement)) {
+    return;
+  }
+  button.disabled = isBusy;
+  button.textContent = isBusy ? busyLabel : idleLabel;
+  if (isBusy) {
+    button.classList.add('is-loading');
+    button.setAttribute('aria-busy', 'true');
+  } else {
+    button.classList.remove('is-loading');
+    button.removeAttribute('aria-busy');
+  }
+}
+
+function buildEmailAutomationHeaders() {
+  return {
+    'Content-Type': 'application/json'
+  };
+}
+
+function toggleEmailAutomationCardVisibility(isVisible) {
+  const card = document.getElementById('email-automation-card');
+  if (!card) {
+    return;
+  }
+  if (isVisible) {
+    card.classList.remove('hidden');
+  } else {
+    card.classList.add('hidden');
+  }
+}
+
+function populateEmailAutomationFormFromSettings(payload) {
+  const settings = payload?.preferences || payload?.settings || {};
+  const accountEmail = String(payload?.email || payload?.accountEmail || currentUser?.email || '').trim().toLowerCase();
+  const confirmEmailInput = document.getElementById('email-automation-confirm-email');
+  const enabledInput = document.getElementById('email-automation-enabled');
+  const freePromoInput = document.getElementById('email-automation-free-promo');
+  const proUpdateInput = document.getElementById('email-automation-pro-update');
+  const cadenceInput = document.getElementById('email-automation-cadence-days');
+  const transportReady = Boolean(payload?.transportReady);
+  if (confirmEmailInput instanceof HTMLInputElement) {
+    confirmEmailInput.value = accountEmail;
+  }
+  if (enabledInput instanceof HTMLInputElement) {
+    enabledInput.checked = settings.daily_report !== false;
+  }
+  if (freePromoInput instanceof HTMLInputElement) {
+    freePromoInput.checked = settings.trade_alerts_buy === true;
+  }
+  if (proUpdateInput instanceof HTMLInputElement) {
+    proUpdateInput.checked = settings.weekly_report !== false;
+  }
+  if (cadenceInput instanceof HTMLInputElement) {
+    const cadenceDays = Number(settings.cadenceDays || 3);
+    cadenceInput.value = Number.isFinite(cadenceDays) ? String(Math.max(1, Math.min(30, Math.trunc(cadenceDays)))) : '3';
+  }
+  const statusLine = transportReady
+    ? 'Email notifications ready.'
+    : 'Email notifications active (provider readiness pending).';
+  setEmailAutomationStatus(statusLine, false);
+}
+
+async function loadEmailAutomationSettings() {
+  const authSnapshot = getAuthStateSnapshot();
+  if (authSnapshot.loading || !authSnapshot.user) {
+    toggleEmailAutomationCardVisibility(false);
+    setEmailAutomationStatus('Sign in to configure email automation.', false);
+    return;
+  }
+  toggleEmailAutomationCardVisibility(true);
+  setEmailAutomationStatus('Loading email automation settings...', false);
+  try {
+    const payload = await fetchJson('/api/auth/email/preferences', {
+      headers: buildEmailAutomationHeaders()
+    });
+    populateEmailAutomationFormFromSettings(payload);
+  } catch (error) {
+    setEmailAutomationStatus(error.message || 'Could not load email automation settings.', true);
+  }
+}
+
+function setupEmailAutomationCard() {
+  const form = document.getElementById('email-automation-form');
+  const sendTestButton = document.getElementById('email-automation-send-test');
+  if (!(form instanceof HTMLFormElement) || !(sendTestButton instanceof HTMLButtonElement)) {
+    return;
+  }
+
+  form.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    const authSnapshot = getAuthStateSnapshot();
+    if (authSnapshot.loading || !authSnapshot.user) {
+      setEmailAutomationStatus('Sign in first to save email automation.', true);
+      return;
+    }
+    const saveButton = document.getElementById('email-automation-save');
+    const idleLabel = saveButton instanceof HTMLButtonElement ? saveButton.textContent || 'Save Email Automation' : 'Save Email Automation';
+    try {
+      setEmailAutomationBusy(saveButton, true, idleLabel, 'Saving...');
+      const enabled = Boolean(document.getElementById('email-automation-enabled')?.checked);
+      const tradeAlertBuy = Boolean(document.getElementById('email-automation-free-promo')?.checked);
+      const weeklyReport = Boolean(document.getElementById('email-automation-pro-update')?.checked);
+      const cadenceDays = Number(document.getElementById('email-automation-cadence-days')?.value || 3);
+      const payload = await fetchJson('/api/auth/email/preferences', {
+        method: 'POST',
+        headers: buildEmailAutomationHeaders(),
+        body: JSON.stringify({
+          daily_report: enabled,
+          weekly_report: weeklyReport,
+          trade_alerts_buy: tradeAlertBuy,
+          trade_alerts_sell: false,
+          stop_loss_alerts: true,
+          daily_loss_alerts: true,
+          bot_status_alerts: true,
+          report_time: cadenceDays >= 4 ? '18:00' : '16:30'
+        })
+      });
+      populateEmailAutomationFormFromSettings(payload);
+      setEmailAutomationStatus('Email automation settings saved.', false);
+    } catch (error) {
+      setEmailAutomationStatus(error.message || 'Could not save email automation settings.', true);
+    } finally {
+      setEmailAutomationBusy(saveButton, false, idleLabel, 'Saving...');
+    }
+  });
+
+  sendTestButton.addEventListener('click', async () => {
+    const authSnapshot = getAuthStateSnapshot();
+    if (authSnapshot.loading || !authSnapshot.user) {
+      setEmailAutomationStatus('Sign in first to send a test email.', true);
+      return;
+    }
+    const idleLabel = sendTestButton.textContent || 'Send Test Email Now';
+    try {
+      setEmailAutomationBusy(sendTestButton, true, idleLabel, 'Sending...');
+      const payload = await fetchJson('/api/auth/email/test', {
+        method: 'POST',
+        headers: buildEmailAutomationHeaders()
+      });
+      if (payload?.ok) {
+        setEmailAutomationStatus('Test email sent successfully.', false);
+      } else {
+        setEmailAutomationStatus('Test email request completed.', false);
+      }
+      await loadEmailAutomationSettings();
+    } catch (error) {
+      setEmailAutomationStatus(error.message || 'Could not send test email.', true);
+    } finally {
+      setEmailAutomationBusy(sendTestButton, false, idleLabel, 'Sending...');
+    }
+  });
+}
+
+function ensureEmailAutomationCardVisibility() {
+  const authSnapshot = getAuthStateSnapshot();
+  toggleEmailAutomationCardVisibility(!authSnapshot.loading && Boolean(authSnapshot.user));
+  if (authSnapshot.loading || !authSnapshot.user) {
+    setEmailAutomationStatus('Sign in to configure email automation.', false);
+  }
+}
+
+function normalizeCheckoutErrorMessage(error) {
+  const rawMessage = String(error?.message || '').trim();
+  const rawErrorCode = String(error?.body?.error || '').trim().toLowerCase();
+  if (rawErrorCode === 'stripe_account_inactive') {
+    return 'Stripe account is not fully activated for live card processing yet. Complete activation in Stripe Dashboard, then retry.';
+  }
+  if (rawErrorCode === 'card_network_not_enabled') {
+    return 'This card network is not enabled in Stripe yet. Enable it in Stripe Dashboard > Payments > Payment methods, then retry.';
+  }
+  if (rawErrorCode === 'test_live_mode_mismatch') {
+    return 'Stripe mode mismatch detected. Use matching live keys + live price (or test keys + test price), then retry.';
+  }
+  if (rawErrorCode === 'stripe_customer_not_found') {
+    return 'Stripe customer mapping was stale and has been reset. Retry checkout once now.';
+  }
+  return rawMessage || 'Could not start checkout.';
+}
+
+function formatBillingAmount(info) {
+  if (!info || !Number.isFinite(Number(info.amountMonthly))) {
+    return '$15';
+  }
+  return `$${Number(info.amountMonthly)}`;
+}
+
+function renderBillingInfo(info, checkoutPreview = null) {
+  const planLine = document.getElementById('billing-plan-line');
+  const trustPoints = document.getElementById('billing-trust-points');
+  const continueButton = document.getElementById('billing-safe-continue');
+  if (!planLine || !trustPoints) {
+    return;
+  }
+
+  trustPoints.innerHTML = '';
+  if (!info) {
+    planLine.textContent = 'Billing details are temporarily unavailable.';
+    if (continueButton) {
+      continueButton.disabled = true;
+    }
+    return;
+  }
+
+  const monthly = formatBillingAmount(info);
+  const configured = Boolean(info.configured);
+  planLine.textContent = `Plan: DumbDollars Pro • ${monthly}/${info.recurringInterval || 'month'}`;
+
+  const points = [
+    `${info.provider || 'Stripe'} hosts checkout so card data is not entered on DumbDollars.`,
+    checkoutPreview?.cancellationPolicy || info.cancellationPolicy || 'Cancel anytime from Manage Billing.',
+    checkoutPreview?.renewalPolicy || 'Recurring monthly subscription until canceled.'
+  ];
+  if (Array.isArray(checkoutPreview?.benefits)) {
+    checkoutPreview.benefits.forEach((benefit) => points.push(benefit));
+  }
+  if (info.secureCheckoutUrl) {
+    points.push(`Security: <a class="open-link" href="${info.secureCheckoutUrl}" target="_blank" rel="noopener noreferrer">Stripe security overview</a>`);
+  }
+  if (info.billingTermsUrl) {
+    points.push(`Billing terms: <a class="open-link" href="${info.billingTermsUrl}" target="_blank" rel="noopener noreferrer">Stripe billing terms</a>`);
+  }
+
+  trustPoints.innerHTML = points.map((point) => `<li>${point}</li>`).join('');
+  if (continueButton) {
+    continueButton.disabled = !configured;
+  }
+}
+
+function openAllAiPlatforms(query) {
+  const select = document.getElementById('ai-platform-select');
+  if (!select) {
+    return;
+  }
+  const payload = {
+    query,
+    platforms: Array.from(select.options).map((option) => ({
+      id: option.value,
+      label: option.textContent || option.value
+    }))
+  };
+  fetchJson(`/api/market/ai-discovery?query=${encodeURIComponent(query)}`, {
+    headers: headersWithPlan()
+  })
+    .then((response) => {
+      const platforms = response.platforms || [];
+      platforms.forEach((platform) => {
+        if (platform.searchUrl && platform.searchUrl !== '#') {
+          openExternal(platform.searchUrl);
+        }
+      });
+    })
+    .catch((_error) => {
+      // Fallback: open known source pages if API discovery is unavailable.
+      const fallbackLinks = [
+        'https://x.com/search?q=' + encodeURIComponent(query),
+        'https://grok.com/',
+        'https://chatgpt.com/',
+        'https://claude.ai/',
+        'https://www.anthropic.com/claude/'
+      ];
+      fallbackLinks.forEach((url) => openExternal(url));
+    });
+}
+
+function renderAuthState() {
+  const authSnapshot = getAuthStateSnapshot();
+  const planBadge = document.getElementById('plan-badge');
+  const checkoutButton = document.getElementById('upgrade-pro-btn');
+  const billingPortalButton = document.getElementById('billing-portal-btn');
+  const logoutButton = document.getElementById('logout-btn');
+  const headerLoginLink = document.getElementById('header-login-link');
+  const headerSignupLink = document.getElementById('header-signup-link');
+  const headerProfileButton = document.getElementById('header-profile-btn');
+  const headerLogoutButton = document.getElementById('header-logout-btn');
+  const authGrid = document.querySelector('#account-center .auth-grid');
+  const socialAuthRow = document.getElementById('social-auth-row');
+  const openAuthAccessPageLink = document.getElementById('open-auth-access-page');
+  const emailVerifyBanner = document.getElementById('email-verify-banner');
+  const emailVerifyResendBtn = document.getElementById('email-verify-resend-btn');
+  const hasOwnerAccess = Boolean(authSnapshot.user && authSnapshot.user.ownerAccess);
+
+  activePlan = authSnapshot.user && authSnapshot.user.plan === PLAN_PRO ? PLAN_PRO : PLAN_FREE;
+
+  if (authSnapshot.loading) {
+    planBadge.textContent = 'CHECKING SESSION';
+    planBadge.className = 'plan-badge plan-free';
+    setAuthMessage('Checking your session...');
+  } else {
+    planBadge.textContent = hasOwnerAccess
+      ? 'OWNER PRO ACCESS'
+      : (activePlan === PLAN_PRO ? 'PRO ACCESS' : 'FREE ACCESS');
+    planBadge.className = activePlan === PLAN_PRO ? 'plan-badge plan-pro' : 'plan-badge plan-free';
+    setAuthMessage(
+      authSnapshot.user
+        ? `${authSnapshot.user.email} • ${hasOwnerAccess ? 'Owner access active' : (activePlan === PLAN_PRO ? 'Pro active' : 'Free plan')}`
+        : 'You are logged out. Log in or sign up to save your dashboard and analysis history.'
+    );
+  }
+
+  if (checkoutButton) {
+    checkoutButton.disabled = authSnapshot.loading || !authSnapshot.user || activePlan === PLAN_PRO || hasOwnerAccess;
+    checkoutButton.textContent = hasOwnerAccess
+      ? 'Owner Access Active'
+      : (activePlan === PLAN_PRO ? 'Pro Active' : `Upgrade to Pro (${PRO_MONTHLY_PRICE})`);
+  }
+
+  if (billingPortalButton) {
+    billingPortalButton.disabled = authSnapshot.loading || !authSnapshot.user;
+  }
+
+  if (logoutButton) {
+    logoutButton.disabled = authSnapshot.loading || !authSnapshot.user;
+  }
+
+  if (headerLoginLink) {
+    headerLoginLink.classList.toggle('hidden', authSnapshot.loading || Boolean(authSnapshot.user));
+  }
+  if (headerSignupLink) {
+    headerSignupLink.classList.toggle('hidden', authSnapshot.loading || Boolean(authSnapshot.user));
+  }
+  if (headerProfileButton instanceof HTMLButtonElement) {
+    headerProfileButton.classList.toggle('hidden', authSnapshot.loading || !authSnapshot.user);
+    headerProfileButton.disabled = authSnapshot.loading || !authSnapshot.user;
+    if (authSnapshot.user) {
+      headerProfileButton.textContent = `Hi, ${resolveGreetingName(authSnapshot.user)}`;
+    } else {
+      headerProfileButton.textContent = 'Profile';
+    }
+  }
+  if (headerLogoutButton instanceof HTMLButtonElement) {
+    headerLogoutButton.classList.toggle('hidden', authSnapshot.loading || !authSnapshot.user);
+    headerLogoutButton.disabled = authSnapshot.loading || !authSnapshot.user;
+  }
+  if (authGrid instanceof HTMLElement) {
+    authGrid.classList.toggle('hidden', authSnapshot.loading || Boolean(authSnapshot.user));
+  }
+  if (socialAuthRow instanceof HTMLElement) {
+    socialAuthRow.classList.toggle('hidden', authSnapshot.loading || Boolean(authSnapshot.user));
+  }
+  if (openAuthAccessPageLink instanceof HTMLElement) {
+    openAuthAccessPageLink.classList.toggle('hidden', authSnapshot.loading || Boolean(authSnapshot.user));
+  }
+  const needsEmailVerification = Boolean(
+    !authSnapshot.loading
+    && authSnapshot.user
+    && authSnapshot.user.emailVerified === false
+  );
+  if (emailVerifyBanner instanceof HTMLElement) {
+    emailVerifyBanner.classList.toggle('hidden', !needsEmailVerification);
+  }
+  if (emailVerifyResendBtn instanceof HTMLButtonElement) {
+    emailVerifyResendBtn.disabled = authSnapshot.loading || !needsEmailVerification;
+    emailVerifyResendBtn.onclick = async () => {
+      const email = String(authSnapshot?.user?.email || '').trim().toLowerCase();
+      if (!email) {
+        return;
+      }
+      emailVerifyResendBtn.disabled = true;
+      try {
+        await fetchJson('/api/auth/resend-verification', {
+          method: 'POST',
+          credentials: 'include',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email })
+        });
+        setAuthMessage('Verification email sent. Check inbox and spam folder.');
+      } catch (error) {
+        setAuthMessage(error.message || 'Could not resend verification email.', true);
+      } finally {
+        emailVerifyResendBtn.disabled = false;
+      }
+    };
+  }
+  ensureEmailAutomationCardVisibility();
+  renderDashboardGreeting();
+  renderRecentAnalyses();
+}
+
+function readRecentAnalysisCache() {
+  try {
+    const raw = localStorage.getItem(RECENT_ANALYSES_STORAGE_KEY);
+    if (!raw) {
+      return [];
+    }
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) {
+      return [];
+    }
+    return parsed
+      .map((item) => ({
+        ticker: String(item?.ticker || '').trim().toUpperCase(),
+        companyName: String(item?.companyName || '').trim(),
+        outlook: String(item?.outlook || '').trim(),
+        guidanceLabel: String(item?.guidanceLabel || '').trim(),
+        updatedAt: String(item?.updatedAt || '').trim()
+      }))
+      .filter((item) => item.ticker);
+  } catch (_error) {
+    return [];
+  }
+}
+
+function setRecentAnalysisCache(nextItems) {
+  const normalized = Array.isArray(nextItems) ? nextItems.slice(0, 6) : [];
+  try {
+    localStorage.setItem(RECENT_ANALYSES_STORAGE_KEY, JSON.stringify(normalized));
+  } catch (_error) {
+    // Ignore storage failures.
+  }
+}
+
+function buildRecentAnalysisItemHtml(item) {
+  const updated = item.updatedAt ? new Date(item.updatedAt) : null;
+  const updatedLabel = updated && !Number.isNaN(updated.getTime())
+    ? updated.toLocaleString()
+    : 'Unknown time';
+  return `
+    <article class="stack-item">
+      <p><strong>${escapeHtml(item.ticker)}</strong> • ${escapeHtml(item.companyName || 'Company')}</p>
+      <p class="small-note">${escapeHtml(item.outlook || 'Outlook unavailable')} • ${escapeHtml(item.guidanceLabel || 'No Clear Setup')}</p>
+      <p class="small-note">Last run: ${escapeHtml(updatedLabel)}</p>
+    </article>
+  `;
+}
+
+function renderRecentAnalyses() {
+  const target = document.getElementById('recent-analyses');
+  if (!target) {
+    return;
+  }
+  const items = readRecentAnalysisCache();
+  if (!items.length) {
+    target.innerHTML = '<p class="small-note">Recent analyses will appear here after you run stock analysis.</p>';
+    return;
+  }
+  target.innerHTML = items.map((item) => buildRecentAnalysisItemHtml(item)).join('');
+}
+
+function pushRecentAnalysis(payload) {
+  const ticker = String(payload?.ticker || '').trim().toUpperCase();
+  if (!ticker) {
+    return;
+  }
+  const item = {
+    ticker,
+    companyName: String(payload?.companyName || '').trim(),
+    outlook: String(payload?.outlook?.bias || '').trim() || 'Neutral',
+    guidanceLabel: String(payload?.outlook?.guidanceLabel || '').trim() || 'No Clear Setup',
+    updatedAt: String(payload?.lastUpdated || new Date().toISOString())
+  };
+  const existing = readRecentAnalysisCache().filter((entry) => entry.ticker !== ticker);
+  setRecentAnalysisCache([item, ...existing].slice(0, 6));
+}
+
+function isUnavailableValue(value) {
+  return value === null || value === undefined || String(value).trim() === '' || String(value).toLowerCase() === 'unavailable';
+}
+
+function formatNumberOrUnavailable(value, { decimals = 2, suffix = '' } = {}) {
+  if (isUnavailableValue(value)) {
+    return 'Unavailable';
+  }
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) {
+    return 'Unavailable';
+  }
+  return `${numeric.toFixed(decimals)}${suffix}`;
+}
+
+function formatLargeNumberOrUnavailable(value) {
+  if (isUnavailableValue(value)) {
+    return 'Unavailable';
+  }
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) {
+    return 'Unavailable';
+  }
+  return numeric.toLocaleString();
+}
+
+function formatCurrencyOrUnavailable(value) {
+  if (isUnavailableValue(value)) {
+    return 'Unavailable';
+  }
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) {
+    return 'Unavailable';
+  }
+  return `$${numeric.toLocaleString(undefined, {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2
+  })}`;
+}
+
+function formatCompactCurrencyOrUnavailable(value) {
+  if (isUnavailableValue(value)) {
+    return 'Unavailable';
+  }
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) {
+    return 'Unavailable';
+  }
+  if (Math.abs(numeric) >= 1_000_000_000) {
+    return `$${(numeric / 1_000_000_000).toFixed(2)}B`;
+  }
+  if (Math.abs(numeric) >= 1_000_000) {
+    return `$${(numeric / 1_000_000).toFixed(2)}M`;
+  }
+  if (Math.abs(numeric) >= 1_000) {
+    return `$${(numeric / 1_000).toFixed(2)}K`;
+  }
+  return `$${numeric.toFixed(2)}`;
+}
+
+function escapeHtml(value) {
+  return String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+function renderDataDisclosure(payload = {}) {
+  const dataNatureRaw = String(payload?.dataNature || payload?.result?.dataNature || '').trim().toLowerCase();
+  const sourceDisclosure = String(payload?.sourceDisclosure || payload?.result?.sourceDisclosure || '').trim();
+  const dataNatureLabel = dataNatureRaw
+    ? dataNatureRaw.replaceAll('_', ' ')
+    : '';
+  if (!dataNatureLabel && !sourceDisclosure) {
+    return '';
+  }
+  return `
+    <p class="small-note market-disclosure">
+      ${dataNatureLabel ? `<strong>Data nature:</strong> ${escapeHtml(dataNatureLabel)}.` : ''}
+      ${sourceDisclosure ? ` ${escapeHtml(sourceDisclosure)}` : ''}
+    </p>
+  `;
+}
+
+function renderOutlookLoading() {
+  const target = document.getElementById('stock-results');
+  if (!target) {
+    return;
+  }
+  target.innerHTML = `
+    <article class="prob-card outlook-loading-card">
+      <div class="outlook-loading-row">
+        <span class="status-loading" aria-hidden="true"></span>
+        <strong>Analyzing market data…</strong>
+      </div>
+      <p class="small-note">Fetching quote, technicals, news, and earnings context.</p>
+    </article>
+  `;
+}
+
+function mapStockOutlookErrorMessage(error) {
+  const code = String(error?.body?.error || '').trim().toLowerCase();
+  if (code === 'no_api_key') {
+    return 'Market data API key is missing. Add it to your .env file and restart the dev server.';
+  }
+  if (code === 'invalid_ticker') {
+    return 'Ticker not found. Check the symbol and try again.';
+  }
+  if (code === 'api_limit') {
+    return 'Could not fetch market data right now. Try again.';
+  }
+  if (code === 'market_data_unavailable' || code === 'market_data_provider_unreachable' || code === 'market_data_provider_error') {
+    return 'Could not fetch market data right now. Try again.';
+  }
+  if (error instanceof TypeError || Number(error?.status || 0) === 0) {
+    return 'Could not fetch market data right now. Try again.';
+  }
+  return String(error?.message || '').trim() || 'Could not fetch market data right now. Try again.';
+}
+
+function renderOutlook(payload) {
+  const target = document.getElementById('stock-results');
+  if (!target) {
+    return;
+  }
+  const stock = payload?.stock || {};
+  const outlook = payload?.outlook || {};
+  const summary = payload?.summary || {};
+  const tradePlan = payload?.tradePlan || {};
+  const technicals = payload?.technicals || {};
+  const fundamentals = payload?.fundamentals || {};
+  const news = Array.isArray(payload?.news) ? payload.news : [];
+  const sourceLabel = escapeHtml(payload?.dataProvider || 'Market provider');
+  const updatedLabel = payload?.lastUpdated ? new Date(payload.lastUpdated).toLocaleString() : 'Unavailable';
+  const outlookBadgeClass = String(outlook?.bias || '').toLowerCase() === 'bullish'
+    ? 'outlook-badge--bullish'
+    : String(outlook?.bias || '').toLowerCase() === 'bearish'
+      ? 'outlook-badge--bearish'
+      : 'outlook-badge--neutral';
+  const riskBadgeClass = String(outlook?.riskLevel || '').toLowerCase() === 'high'
+    ? 'risk-badge--high'
+    : String(outlook?.riskLevel || '').toLowerCase() === 'medium'
+      ? 'risk-badge--medium'
+      : 'risk-badge--low';
+  const newsHtml = news.length
+    ? `<ul class="detail-list outlook-news-list">${news.slice(0, 5).map((item) => {
+      const title = escapeHtml(item?.title || 'Untitled headline');
+      const url = escapeHtml(item?.url || '#');
+      const source = escapeHtml(item?.source || 'news');
+      const published = item?.publishedAt ? new Date(item.publishedAt).toLocaleString() : 'Time unavailable';
+      return `<li><a href="${url}" target="_blank" rel="noopener noreferrer">${title}</a> <span class="small-note">(${source} • ${published})</span></li>`;
+    }).join('')}</ul>`
+    : '<p class="small-note">Recent news: Unavailable</p>';
+  const strengths = Array.isArray(summary?.strengths) ? summary.strengths : [];
+  const risks = Array.isArray(summary?.risks) ? summary.risks : [];
+  const keyLevels = Array.isArray(summary?.keyLevelsToWatch) ? summary.keyLevelsToWatch : [];
+  target.innerHTML = `
+    <article class="prob-card outlook-result-card">
+      <div class="outlook-header">
+        <h3>${escapeHtml(payload?.ticker || activeTicker)} • ${escapeHtml(payload?.companyName || 'Company name unavailable')}</h3>
+        <div class="outlook-badges">
+          <span class="chip outlook-badge ${outlookBadgeClass}">${escapeHtml(outlook?.bias || 'Neutral')}</span>
+          <span class="chip risk-badge ${riskBadgeClass}">${escapeHtml(outlook?.riskLevel || 'Risk Unavailable')} Risk</span>
+          <span class="chip">${escapeHtml(outlook?.guidanceLabel || 'No Clear Setup')}</span>
+        </div>
+      </div>
+      <p class="small-note">Data from ${sourceLabel}. Last updated: ${escapeHtml(updatedLabel)}.${payload?.marketDataMayBeDelayed ? ' Market data may be delayed.' : ''}</p>
+      ${renderDataDisclosure(payload)}
+
+      <div class="outlook-grid">
+        <div>
+          <h4>Stock</h4>
+      <p><strong>Current price:</strong> ${formatCurrencyOrUnavailable(stock.currentPrice)}</p>
+      <p><strong>Change:</strong> ${formatCurrencyOrUnavailable(stock.dailyChange)}</p>
+      <p><strong>Change %:</strong> ${formatNumberOrUnavailable(stock.dailyChangePercent, { decimals: 2, suffix: '%' })}</p>
+      <p><strong>Volume:</strong> ${formatLargeNumberOrUnavailable(stock.volume)}</p>
+      <p><strong>Previous close:</strong> ${formatCurrencyOrUnavailable(stock.previousClose)}</p>
+      <p><strong>Latest trading day:</strong> ${isUnavailableValue(stock.latestTradingDay) ? 'Unavailable' : escapeHtml(stock.latestTradingDay)}</p>
+      <p><strong>Market cap:</strong> ${formatCompactCurrencyOrUnavailable(stock.marketCap)}</p>
+        </div>
+        <div>
+          <h4>Outlook</h4>
+          <p><strong>Confidence:</strong> ${formatNumberOrUnavailable(outlook.confidenceScore, { decimals: 0, suffix: '%' })}</p>
+          <p><strong>Risk score:</strong> ${formatNumberOrUnavailable(outlook.riskScore, { decimals: 0 })}</p>
+          <p><strong>Timeframe:</strong> ${escapeHtml(outlook.timeframe || 'Near-term swing (days to weeks)')}</p>
+          <p><strong>Bullish score:</strong> ${formatNumberOrUnavailable(outlook.bullishScore, { decimals: 0 })}</p>
+          <p><strong>Bearish score:</strong> ${formatNumberOrUnavailable(outlook.bearishScore, { decimals: 0 })}</p>
+        </div>
+        <div>
+          <h4>Technicals</h4>
+          <p><strong>50-day MA:</strong> ${formatCurrencyOrUnavailable(technicals.movingAverage50Day)}</p>
+          <p><strong>200-day MA:</strong> ${formatCurrencyOrUnavailable(technicals.movingAverage200Day)}</p>
+          <p><strong>RSI (14):</strong> ${formatNumberOrUnavailable(technicals.rsi14, { decimals: 2 })}</p>
+          <p><strong>Avg volume (20d):</strong> ${formatLargeNumberOrUnavailable(technicals.averageVolume20Day)}</p>
+          <p><strong>Volatility:</strong> ${formatNumberOrUnavailable(technicals.volatilityDailyPercent, { decimals: 2, suffix: '%' })}</p>
+        </div>
+      </div>
+
+      <h4>AI Summary</h4>
+      <p>${escapeHtml(summary.plainEnglish || 'No summary is available yet because live inputs are incomplete.')}</p>
+      <p class="small-note"><strong>Strengths:</strong> ${strengths.length ? strengths.map((line) => escapeHtml(line)).join(' ') : 'Unavailable'}</p>
+      <p class="small-note"><strong>Risks:</strong> ${risks.length ? risks.map((line) => escapeHtml(line)).join(' ') : 'Unavailable'}</p>
+
+      <h4>Trade Plan (for research only)</h4>
+      <p><strong>Entry zone:</strong> ${isUnavailableValue(tradePlan.entryZone) ? 'Unavailable' : escapeHtml(tradePlan.entryZone)}</p>
+      <p><strong>Stop-loss idea:</strong> ${formatCurrencyOrUnavailable(tradePlan.stopLoss)}</p>
+      <p><strong>Target idea:</strong> ${formatCurrencyOrUnavailable(tradePlan.target)}</p>
+      <p><strong>Wait recommendation:</strong> ${escapeHtml(tradePlan.waitRecommendation || 'No Clear Setup')}</p>
+      <p class="small-note"><strong>Invalidation:</strong> ${escapeHtml(tradePlan.invalidation || 'Unavailable')}</p>
+      <p class="small-note">This is educational market research, not financial advice. Always do your own research and manage risk.</p>
+
+      <h4>Key levels to watch</h4>
+      ${keyLevels.length
+    ? `<ul class="detail-list">${keyLevels.map((line) => `<li>${escapeHtml(line)}</li>`).join('')}</ul>`
+    : '<p class="small-note">Data unavailable for key levels.</p>'}
+
+      <h4>Earnings and analyst context</h4>
+      <p><strong>Earnings date:</strong> ${isUnavailableValue(fundamentals.earningsDate) ? 'Unavailable' : escapeHtml(new Date(fundamentals.earningsDate).toLocaleDateString())}</p>
+      <p><strong>Analyst rating:</strong> ${isUnavailableValue(fundamentals.analystRating) ? 'Unavailable' : escapeHtml(fundamentals.analystRating)}</p>
+      <p><strong>Analyst mean / count:</strong> ${formatNumberOrUnavailable(fundamentals.analystRatingMean, { decimals: 2 })} / ${formatNumberOrUnavailable(fundamentals.analystCount, { decimals: 0 })}</p>
+
+      <h4>Recent news</h4>
+      ${newsHtml}
+    </article>
+  `;
+  pushRecentAnalysis(payload);
+  renderRecentAnalyses();
+}
+
+function renderScanner(payload) {
+  const target = document.getElementById('scan-results');
+  const result = payload.result;
+  let metrics = '';
+  if (result.metrics) {
+    metrics = `
+      <p><strong>Market flow score:</strong> ${result.metrics.marketFlowScore}</p>
+      <p><strong>Gamma exposure:</strong> ${fmtUsd(result.metrics.gammaExposureUsd)}</p>
+      <p><strong>Call premium:</strong> ${fmtUsd(result.metrics.callPremiumUsd)}</p>
+      <p><strong>Put premium:</strong> ${fmtUsd(result.metrics.putPremiumUsd)}</p>
+      <p><strong>Put/Call ratio:</strong> ${result.metrics.putCallRatio}</p>
+    `;
+  }
+  target.innerHTML = `
+    <article class="stack-item">
+      <p><strong>${result.ticker}</strong> (${result.method})</p>
+      <p>${result.summary}</p>
+      <p class="small-note">Source: ${result.source}</p>
+      <p class="small-note">Last run: ${result.lastRunUtc}</p>
+      ${renderDataDisclosure(result)}
+      ${metrics}
+      ${result.isLimited ? '<p class="pro-lock">Free preview. Upgrade to Pro for full market flow detail.</p>' : ''}
+    </article>
+  `;
+}
+
+function renderOptions(payload) {
+  const target = document.getElementById('options-results');
+  if (!target) {
+    return;
+  }
+  const mode = getActiveTraderMode();
+  const modeHint = mode === 'scalper'
+    ? 'Tight stop-loss calculator active. Use quick exits for scalp setups.'
+    : mode === 'day'
+      ? 'Use this for intraday risk sizing and breakout pullback entries.'
+      : mode === 'swing'
+        ? 'Use wider stop placements based on support/resistance structure.'
+        : 'Fast options tools are secondary in Long-Term mode. Focus on valuation and risk outlook.';
+  target.innerHTML = `
+    <article class="stack-item">
+      <p class="small-note"><strong>${TRADER_MODE_DETAILS[mode].title} note:</strong> ${modeHint}</p>
+      <p><strong>${payload.ticker}</strong> ${payload.contract.type.toUpperCase()} ${payload.contract.strike}</p>
+      <p><strong>Expiration:</strong> ${payload.contract.expiration}</p>
+      <p><strong>Premium/contract:</strong> ${fmtUsd(payload.contract.premiumPerContractUsd)}</p>
+      <p><strong>Call premium:</strong> ${fmtUsd(payload.premium.callPremiumUsd)}</p>
+      <p><strong>Put premium:</strong> ${fmtUsd(payload.premium.putPremiumUsd)}</p>
+      <p><strong>Net gamma exposure:</strong> ${fmtUsd(payload.gammaExposure.net)} (${payload.gammaExposure.signedDirection})</p>
+      ${renderDataDisclosure(payload)}
+    </article>
+  `;
+}
+
+function renderOptionsLocked(message) {
+  const target = document.getElementById('options-results');
+  target.innerHTML = `<div class="pro-lock">${message}</div>`;
+}
+
+function renderUnusual(payload) {
+  const target = document.getElementById('unusual-results');
+  if (!target) {
+    return;
+  }
+  target.innerHTML = '';
+  const mode = getActiveTraderMode();
+  const modeHeadline = mode === 'day'
+    ? 'Intraday catalyst feed'
+    : mode === 'scalper'
+      ? 'Short-window order-flow alerts'
+      : mode === 'swing'
+        ? 'Multi-session unusual flow context'
+        : 'Long-horizon unusual activity context';
+  const intro = document.createElement('p');
+  intro.className = 'small-note';
+  intro.innerHTML = `<strong>${modeHeadline}:</strong> ${TRADER_MODE_DETAILS[mode].aiPrefix}.`;
+  target.appendChild(intro);
+  const rows = Array.isArray(payload?.data) ? payload.data : [];
+  rows.forEach((move) => {
+    const row = document.createElement('article');
+    row.className = 'stack-item';
+    row.innerHTML = `
+      <p><strong>${move.ticker}</strong> ${move.size} (${move.sentiment})</p>
+      <p>Premium: ${fmtUsd(move.premiumUsd)}</p>
+      <p class="small-note">${move.detectedAt}</p>
+    `;
+    target.appendChild(row);
+  });
+  if (rows.length) {
+    target.insertAdjacentHTML('beforeend', renderDataDisclosure(payload));
+  }
+  if (!rows.length) {
+    target.innerHTML = '<div class="pro-lock">No unusual moves are available right now.</div>';
+  }
+}
+
+function renderUnusualLocked(message) {
+  const target = document.getElementById('unusual-results');
+  target.innerHTML = `<div class="pro-lock">${message}</div>`;
+}
+
+function renderHighIv(payload) {
+  const target = document.getElementById('high-iv-results');
+  if (!target) {
+    return;
+  }
+  target.innerHTML = '';
+  const mode = getActiveTraderMode();
+  const hint = document.createElement('p');
+  hint.className = 'small-note';
+  hint.innerHTML = `<strong>${TRADER_MODE_DETAILS[mode].title} context:</strong> ${mode === 'scalper' ? 'Prioritize the most liquid names and quickest expected moves.' : mode === 'day' ? 'Focus on names with intraday catalyst + elevated IV.' : mode === 'swing' ? 'Use elevated IV for swing entry/hedge timing.' : 'Use IV spikes as caution flags, not short-term triggers.'}`;
+  target.appendChild(hint);
+  (payload.items || []).forEach((item) => {
+    const card = document.createElement('article');
+    card.className = 'high-iv-card';
+    card.innerHTML = `
+      <h4>${item.symbol}</h4>
+      <p><strong>IV:</strong> ${(Number(item.impliedVolatility || 0) * 100).toFixed(1)}%</p>
+      <p><strong>IV Rank:</strong> ${item.ivRank} • <strong>IV Percentile:</strong> ${item.ivPercentile}</p>
+      <p><strong>Expected Move:</strong> ±${Number(item.expectedMovePct || 0).toFixed(1)}%</p>
+      <p><strong>Premium Bias:</strong> ${item.premiumBias || 'N/A'}</p>
+      <p><strong>Session:</strong> ${item.sessionFocus || 'Mixed'}</p>
+      <ul class="detail-list">
+        ${(item.catalysts || []).map((catalyst) => `<li>${catalyst}</li>`).join('')}
+      </ul>
+    `;
+    target.appendChild(card);
+  });
+  if (Array.isArray(payload.items) && payload.items.length) {
+    target.insertAdjacentHTML('beforeend', renderDataDisclosure(payload));
+  }
+
+  if (!payload.items || payload.items.length === 0) {
+    target.innerHTML = '<div class="pro-lock">No elevated IV names are available right now.</div>';
+  }
+}
+
+function renderHighIvLocked(message) {
+  const target = document.getElementById('high-iv-results');
+  if (!target) {
+    return;
+  }
+  target.innerHTML = `<div class="pro-lock">${message}</div>`;
+}
+
+function renderPremiumSpikes(payload) {
+  const target = document.getElementById('premium-spikes-results');
+  if (!target) {
+    return;
+  }
+  target.innerHTML = '';
+  const mode = getActiveTraderMode();
+  const modeLead = document.createElement('p');
+  modeLead.className = 'small-note';
+  modeLead.innerHTML = `<strong>${TRADER_MODE_DETAILS[mode].title} signal:</strong> ${mode === 'scalper' ? 'Use only same-session spikes with immediate reaction.' : mode === 'day' ? 'Confirm with VWAP + breakout before entry.' : mode === 'swing' ? 'Look for multi-day continuation after the spike.' : 'Treat spikes as sentiment context for fundamental watchlists.'}`;
+  target.appendChild(modeLead);
+  const rows = Array.isArray(payload?.items) ? payload.items : [];
+  rows.forEach((item) => {
+    const isCall = String(item.premiumType || '').toLowerCase() === 'call';
+    const symbol = String(item.symbol || '').trim().toUpperCase();
+    const encodedSymbol = encodeURIComponent(symbol);
+    const yahooQuoteUrl = `https://finance.yahoo.com/quote/${encodedSymbol}`;
+    const yahooChartUrl = `https://finance.yahoo.com/quote/${encodedSymbol}/chart?p=${encodedSymbol}`;
+    const unusualWhalesUrl = `https://unusualwhales.com/stock/${encodedSymbol}/overview`;
+    const card = document.createElement('article');
+    card.className = `premium-spike-card premium-spike-card--${isCall ? 'call' : 'put'}`;
+    const reaction = item.reaction || {};
+    const reactionMove = Number(reaction.movePct || 0);
+    const reactionSign = reactionMove > 0 ? '+' : '';
+    const happenedAt = item.happenedAt || payload.generatedAt || 'N/A';
+    const happenedAtLabel = happenedAt && happenedAt !== 'N/A'
+      ? new Date(happenedAt).toLocaleString()
+      : 'N/A';
+    const baselineLabel = Number(item.previousDayPremiumUsd || item.baselinePremiumUsd || 0);
+    card.innerHTML = `
+      <h4>${symbol} • ${isCall ? 'CALL' : 'PUT'} spike</h4>
+      <p><strong>Spike:</strong> ${fmtUsd(item.spikeAmountUsd)} (${Number(item.spikeMultiple || 0).toFixed(2)}x vs yesterday)</p>
+      <p><strong>Previous day:</strong> ${fmtUsd(baselineLabel)} • <strong>When:</strong> ${happenedAtLabel}</p>
+      <p><strong>Expected:</strong> ${String(item.expectedDirection || '').toUpperCase()} • <strong>Reacted:</strong> ${reaction.label || 'N/A'}</p>
+      <p><strong>Move after spike:</strong> ${reactionSign}${reactionMove.toFixed(2)}%</p>
+      <p class="small-note">Call prem ${fmtUsd(item.callPremiumUsd)} • Put prem ${fmtUsd(item.putPremiumUsd)} • PCR ${Number(item.putCallRatio || 0).toFixed(2)}</p>
+      <p class="small-note">Proof links:
+        <a class="open-link" href="${yahooQuoteUrl}" target="_blank" rel="noopener noreferrer">Yahoo quote</a>
+        • <a class="open-link" href="${yahooChartUrl}" target="_blank" rel="noopener noreferrer">Yahoo chart</a>
+        • <a class="open-link" href="${unusualWhalesUrl}" target="_blank" rel="noopener noreferrer">Unusual Whales</a>
+      </p>
+      <p class="small-note">Attach your Unusual Whales screenshot for audit proof on this spike:</p>
+      <div class="premium-proof-controls">
+        <button type="button" class="btn-secondary premium-proof-upload">Attach UW screenshot proof</button>
+        <input class="premium-proof-file-input hidden" type="file" accept="image/*" />
+      </div>
+      <div class="premium-proof-preview"></div>
+    `;
+    target.appendChild(card);
+    bindPremiumSpikeProofControls(card, item);
+  });
+  if (rows.length) {
+    target.insertAdjacentHTML('beforeend', renderDataDisclosure(payload));
+  }
+
+  if (!rows.length) {
+    target.innerHTML = '<div class="pro-lock">No premium spikes detected right now.</div>';
+  }
+}
+
+function renderPremiumSpikesLocked(message) {
+  const target = document.getElementById('premium-spikes-results');
+  if (!target) {
+    return;
+  }
+  target.innerHTML = `<div class="pro-lock">${message}</div>`;
+}
+
+function renderEarningsBoard(payload) {
+  const target = document.getElementById('earnings-board');
+  target.innerHTML = '';
+  const scheduleLabel = payload.scheduleLabel || 'Upcoming earnings';
+  const dataSource = payload.source === 'nasdaq' ? 'Nasdaq calendar' : 'Estimated board';
+  const activeItems = (payload.items || []).filter((item) => isEarningsItemStillActive(item));
+  const displayItems = activeItems.length > 0 ? activeItems : (payload.items || []);
+  displayItems.forEach((item) => {
+    const pair = normalizePairPercents(item?.predictedMove?.up, item?.predictedMove?.down);
+    const up = pair.up;
+    const down = pair.down;
+    const directionClass = up >= down ? 'up' : 'down';
+    const spread = Math.abs(up - down);
+    const dateLabel = item.eventDateLabel || item.eventDate || scheduleLabel;
+    const volumeSourceLabel = String(item.volumeSource || '').includes('yahoo')
+      ? 'live vol'
+      : 'est vol';
+    const verificationState = String(item.verificationStatus || 'estimated').toLowerCase();
+    const verificationLabel = verificationState === 'verified'
+      ? 'verified'
+      : verificationState === 'partial'
+        ? 'partially verified'
+        : 'estimated';
+    const verificationClass = verificationState === 'verified'
+      ? 'high'
+      : verificationState === 'partial'
+        ? 'medium'
+        : 'low';
+    const card = document.createElement('article');
+    card.className = `earnings-card earnings-card--${directionClass} earnings-card--strength-${spread >= 14 ? 'high' : spread >= 7 ? 'mid' : 'low'}`;
+    card.setAttribute('role', 'button');
+    card.setAttribute('tabindex', '0');
+    card.addEventListener('click', () => renderEarningsDetail(item));
+    card.addEventListener('keydown', (event) => {
+      if (event.key === 'Enter' || event.key === ' ') {
+        event.preventDefault();
+        renderEarningsDetail(item);
+      }
+    });
+    card.innerHTML = `
+      <h3>${item.ticker}</h3>
+      <p>${dateLabel} • ${item.reportTimeLabel}</p>
+      <p>
+        <span class="earnings-up-pct">${fmtPct(up)} up</span>
+        /
+        <span class="earnings-down-pct">${fmtPct(down)} down</span>
+      </p>
+      <p class="small-note">Volume: ${Number(item.volume || 0).toLocaleString()} <span class="earnings-volume-source">(${volumeSourceLabel})</span></p>
+      <p class="small-note">Status: <span class="earnings-verification-chip earnings-verification-chip--${verificationClass}">${verificationLabel}</span></p>
+      <p class="small-note">${directionClass.toUpperCase()} bias</p>
+    `;
+    target.appendChild(card);
+  });
+
+  const detail = document.getElementById('earnings-detail');
+  if (detail) {
+    detail.setAttribute('data-schedule-label', scheduleLabel);
+    detail.setAttribute('data-source-label', dataSource);
+  }
+
+  if (displayItems.length > 0) {
+    renderEarningsDetail(displayItems[0]);
+  } else {
+    const detail = document.getElementById('earnings-detail');
+    if (detail) {
+      detail.innerHTML = '<div class="pro-lock">No active earnings sessions right now. The board will auto-refresh for the next session.</div>';
+    }
+  }
+}
+
+function renderEarningsDetail(item) {
+  const target = document.getElementById('earnings-detail');
+  if (!target || !item) {
+    return;
+  }
+  const scheduleLabel = target.getAttribute('data-schedule-label') || 'Upcoming earnings';
+  const sourceLabel = target.getAttribute('data-source-label') || 'Estimated board';
+
+  const fallbackIntel = item.unusualWhalesIntel || item.intel || {};
+  const movePair = normalizePairPercents(
+    item.predictedMove?.up ?? item.probabilityUp ?? 0,
+    item.predictedMove?.down ?? item.probabilityDown ?? 0
+  );
+  const upPct = movePair.up;
+  const downPct = movePair.down;
+  const plays = item.unusualWhales?.plays || fallbackIntel.unusualPlays || [];
+  const commentary = item.unusualWhales?.commentary || fallbackIntel.notes || [];
+  const growth = item.futureGrowthSignals || fallbackIntel.notes || [];
+  const outlookLines = item.unusualWhales?.futureGrowthOutlook || (fallbackIntel.headline ? [fallbackIntel.headline] : []);
+  const analystPushes = item.analystPushes || [];
+  const recentNews = item.recentNews || [];
+
+  const playsHtml = plays
+    .map(
+      (play) => {
+        const type = play.type || play.side || 'Flow';
+        const strike = play.strike || play.strikeHint || '?';
+        const expiration = play.expiration || `${play.expiry || '?'}d`;
+        const sentiment = play.sentiment || 'watchlist';
+        return `<li><strong>${type}</strong> ${strike} exp ${expiration} • ${fmtUsd(play.premiumUsd)} • ${sentiment}</li>`;
+      }
+    )
+    .join('');
+  const commentaryHtml = commentary.map((line) => `<li>${line}</li>`).join('');
+  const growthHtml = growth.map((line) => `<li>${line}</li>`).join('');
+  const outlookHtml = outlookLines.map((line) => `<li>${line}</li>`).join('');
+  const analystPushesHtml = analystPushes
+    .map((push) => {
+      if (typeof push === 'string') {
+        return `<li>${push}</li>`;
+      }
+      return `<li>${push.firm}: ${push.action} (${push.impact})</li>`;
+    })
+    .join('');
+  const recentNewsHtml = recentNews
+    .map((headline) => {
+      const title = headline.title || 'Headline';
+      const url = headline.url || '#';
+      const publishedAt = headline.publishedAt ? ` • ${headline.publishedAt}` : '';
+      return `<li><a class="open-link" href="${url}" target="_blank" rel="noopener noreferrer">${title}</a>${publishedAt}</li>`;
+    })
+    .join('');
+  const mode = getActiveTraderMode();
+  const modeNarrative = mode === 'scalper'
+    ? 'If trading this event, keep position size small and exits fast.'
+    : mode === 'day'
+      ? 'Use opening range + volume confirmation before intraday entry.'
+      : mode === 'swing'
+        ? 'Wait for post-earnings trend direction and retest confirmation.'
+        : 'Prioritize guidance quality, earnings growth, and valuation trajectory over short-term moves.';
+
+  target.innerHTML = `
+    <article class="earnings-detail-card">
+      <h3>${item.ticker} Earnings Intel</h3>
+      <p class="small-note"><strong>${TRADER_MODE_DETAILS[mode].title} lens:</strong> ${modeNarrative}</p>
+      <p><strong>Date:</strong> ${item.eventDateLabel || item.eventDate || scheduleLabel}</p>
+      <p><strong>Session:</strong> ${item.reportTimeLabel || 'Pre-Market'}</p>
+      <p class="small-note"><strong>Calendar source:</strong> ${sourceLabel}</p>
+      <p><strong>Direction:</strong> ${item.direction.toUpperCase()} • ${fmtPct(upPct)} up / ${fmtPct(downPct)} down</p>
+      <p><strong>Estimated volume:</strong> ${Number(item.volume || 0).toLocaleString()}</p>
+      <h4>Analyst Pushes</h4>
+      <ul class="detail-list">${analystPushesHtml || '<li>No fresh analyst pushes detected.</li>'}</ul>
+      <h4>Recent News</h4>
+      <ul class="detail-list">${recentNewsHtml || '<li>No recent headlines available.</li>'}</ul>
+      <h4>Unusual Plays (Whales-style)</h4>
+      <ul class="detail-list">${playsHtml || '<li>No unusual plays detected.</li>'}</ul>
+      <h4>Earnings / Future Growth Commentary</h4>
+      <ul class="detail-list">${commentaryHtml || '<li>No commentary available.</li>'}</ul>
+      <ul class="detail-list">${growthHtml || '<li>No growth signals available.</li>'}</ul>
+      <h4>Whale Outlook</h4>
+      <ul class="detail-list">${outlookHtml || '<li>No outlook notes available.</li>'}</ul>
+    </article>
+  `;
+}
+
+function renderAiSidebar(payload) {
+  const details = document.getElementById('ai-platform-details');
+  const select = document.getElementById('ai-platform-select');
+  const openLink = document.getElementById('ai-open-link');
+  if (!details || !select || !openLink) {
+    return;
+  }
+
+  const platforms = payload.platforms || [];
+  select.innerHTML = '';
+  details.innerHTML = '';
+
+  if (!platforms.length) {
+    details.innerHTML = '<div class="pro-lock">No AI platforms available.</div>';
+    openLink.setAttribute('href', FALLBACK_AI_DISCOVERY_LINK);
+    return;
+  }
+  const mode = getActiveTraderMode();
+
+  if (!platforms.some((platform) => platform.id === activeAiPlatform)) {
+    activeAiPlatform = platforms[0].id;
+  }
+
+  platforms.forEach((platform) => {
+    const option = document.createElement('option');
+    option.value = platform.id;
+    option.textContent = platform.label;
+    select.appendChild(option);
+
+    const isActive = activeAiPlatform === platform.id;
+    if (isActive) {
+      details.innerHTML = `
+        <article class="stack-item">
+          <p><strong>${platform.label}</strong> <span class="chip">Selected</span></p>
+          <p class="small-note">${platform.description}</p>
+          <p class="small-note"><strong>${TRADER_MODE_DETAILS[mode].aiPrefix}:</strong> ${mode === 'scalper' ? 'Enter now / exit now / momentum fading.' : mode === 'day' ? 'Intraday breakout forming with volume confirmation detected.' : mode === 'swing' ? 'Trend continuation probability improving; wait for confirmation.' : 'Undervalued based on fundamentals with long-term risk outlook.'}</p>
+        </article>
+      `;
+      openLink.setAttribute('href', platform.searchUrl);
+    }
+  });
+
+  select.value = activeAiPlatform;
+}
+
+function humanizeSource(source) {
+  const value = String(source || '').toLowerCase();
+  const map = {
+    all: 'All sources',
+    tiktok: 'TikTok',
+    youtube_shorts: 'YouTube Shorts',
+    youtube: 'YouTube',
+    snapchat_spotlight: 'Snapchat Spotlight',
+    instagram_reels: 'Instagram Reels',
+    facebook: 'Facebook',
+    x_com: 'X.com'
+  };
+  return map[value] || source;
+}
+
+function renderTrendTrades(payload) {
+  const target = document.getElementById('trend-trades-results');
+  const sourceSelect = document.getElementById('trend-source-select');
+  if (!target) {
+    return;
+  }
+  target.innerHTML = '';
+  const mode = getActiveTraderMode();
+  const preface = document.createElement('p');
+  preface.className = 'small-note';
+  preface.innerHTML = `<strong>${TRADER_MODE_DETAILS[mode].title} filter:</strong> ${mode === 'scalper' ? 'Only strongest momentum names should be actioned quickly.' : mode === 'day' ? 'Prioritize names with volume + catalyst alignment.' : mode === 'swing' ? 'Prefer higher-confidence names with multi-day continuation.' : 'Use trend as sentiment input, not immediate execution trigger.'}`;
+  target.appendChild(preface);
+  if (sourceSelect) {
+    const sources = payload.availableSources || payload.sources || ['all'];
+    sourceSelect.innerHTML = '';
+    sources.forEach((source) => {
+      const option = document.createElement('option');
+      option.value = source;
+      option.textContent = humanizeSource(source);
+      sourceSelect.appendChild(option);
+    });
+    if (!sources.includes(activeTrendSource)) {
+      activeTrendSource = 'all';
+    }
+    sourceSelect.value = activeTrendSource;
+  }
+  (payload.items || []).forEach((item) => {
+    const card = document.createElement('article');
+    card.className = `trend-card trend-card--${item.momentum}`;
+    card.innerHTML = `
+      <h4>${item.symbol}</h4>
+      <p><strong>${item.source}</strong> • ${item.visibility}</p>
+      <p>Trend score: ${item.trendScore}</p>
+      <p>Views: ${Number(item.views).toLocaleString()}</p>
+      <p>${item.confidence.up}% up / ${item.confidence.down}% down</p>
+    `;
+    target.appendChild(card);
+  });
+  if (Array.isArray(payload?.items) && payload.items.length) {
+    target.insertAdjacentHTML('beforeend', renderDataDisclosure(payload));
+  }
+  if (!Array.isArray(payload?.items) || payload.items.length === 0) {
+    target.innerHTML = '<div class="pro-lock">No trend trades are available right now.</div>';
+  }
+  applyModeSpecificContentHints();
+}
+
+function renderTrendTradesLocked(message) {
+  const target = document.getElementById('trend-trades-results');
+  if (!target) {
+    return;
+  }
+  target.innerHTML = `<div class="pro-lock">${message}</div>`;
+}
+
+function humanizePatternType(type) {
+  const value = String(type || '').toLowerCase();
+  const map = {
+    all: 'All Patterns',
+    candlestick: 'Candlestick',
+    volume_down: 'Volume-Down',
+    volume_down_patterns: 'Volume-Down'
+  };
+  return map[value] || type;
+}
+
+function renderRealizedPatterns(payload) {
+  const target = document.getElementById('patterns-results');
+  const filterSelect = document.getElementById('pattern-type-select');
+  if (!target) {
+    return;
+  }
+  target.innerHTML = '';
+  const mode = getActiveTraderMode();
+  const intro = document.createElement('p');
+  intro.className = 'small-note';
+  intro.innerHTML = `<strong>${TRADER_MODE_DETAILS[mode].title} pattern lens:</strong> ${mode === 'scalper' ? 'Focus on quick trigger + invalidation levels.' : mode === 'day' ? 'Use intraday pattern confirmation with VWAP context.' : mode === 'swing' ? 'Track continuation/breakout structures across sessions.' : 'Use pattern quality as secondary context to fundamentals.'}`;
+  target.appendChild(intro);
+
+  if (filterSelect) {
+    const filters = payload.availableTypes || payload.availableFilters || ['all'];
+    filterSelect.innerHTML = '';
+    filters.forEach((filter) => {
+      const option = document.createElement('option');
+      option.value = filter;
+      option.textContent = humanizePatternType(filter);
+      filterSelect.appendChild(option);
+    });
+    if (!filters.includes(activePatternFilter)) {
+      activePatternFilter = 'all';
+    }
+    filterSelect.value = activePatternFilter;
+  }
+
+  (payload.items || []).forEach((item) => {
+    const card = document.createElement('article');
+    card.className = 'pattern-card';
+    const sessionLabel = item.sessionLabel
+      || (item.session === 'pre-market' ? 'Pre-Market' : item.session === 'after-hours' ? 'After-Hours' : 'Live');
+    const patternTypeLabel = item.patternTypeLabel || humanizePatternType(item.patternType);
+    const triggerAt = item.triggerAt || `${item.targetMovePct || '?'}% target / ${item.invalidationPct || '?'}% invalidation`;
+    const note = item.note || `Confidence ${item.confidence || '?'} • ${item.candleSignal || 'Pattern tracking active'}`;
+    const volume = Number(item.volume || item.estVolume || item.volumeEstimate || 0).toLocaleString();
+    card.innerHTML = `
+      <h4>${item.ticker || item.symbol} • ${item.patternName}</h4>
+      <p><strong>Session:</strong> ${sessionLabel}</p>
+      <p><strong>Type:</strong> ${patternTypeLabel}</p>
+      <p><strong>Trigger:</strong> ${triggerAt}</p>
+      <p><strong>Volume:</strong> ${volume}</p>
+      <p class="small-note">${note}</p>
+    `;
+    target.appendChild(card);
+  });
+
+  if (!payload.items || payload.items.length === 0) {
+    target.innerHTML = '<div class="pro-lock">No active realized patterns right now. Triggered patterns are removed automatically.</div>';
+  }
+  applyModeSpecificContentHints();
+}
+
+function renderWildTakes(payload) {
+  const target = document.getElementById('wild-takes-results');
+  if (!target) {
+    return;
+  }
+  target.innerHTML = '';
+  const mode = getActiveTraderMode();
+  const intro = document.createElement('p');
+  intro.className = 'small-note';
+  intro.innerHTML = `<strong>${TRADER_MODE_DETAILS[mode].title} AI style:</strong> ${mode === 'scalper' ? 'Short, direct, execution-focused.' : mode === 'day' ? 'Fast but structured intraday narrative.' : mode === 'swing' ? 'Explained setups with confirmation language.' : 'Analytical long-horizon interpretation.'}`;
+  target.appendChild(intro);
+  (payload.items || []).forEach((item) => {
+    const card = document.createElement('article');
+    card.className = `wild-take-card wild-take-card--${item.sentiment || item.direction || 'neutral'}`;
+    const title = item.title || `${item.symbol || 'Market'} ${String(item.direction || '').toUpperCase() || 'TAKE'}`;
+    const summary = item.summary || item.text || 'No summary available.';
+    const timeLabel = item.createdAtLabel || item.generatedAtLabel || 'Now';
+    card.innerHTML = `
+      <p><strong>${title}</strong></p>
+      <p>${summary}</p>
+      <p class="small-note">${item.source} • ${timeLabel}</p>
+    `;
+    target.appendChild(card);
+  });
+
+  if (!payload.items || payload.items.length === 0) {
+    target.innerHTML = '<div class="pro-lock">No fresh wild takes right now.</div>';
+  }
+  applyModeSpecificContentHints();
+}
+
+function renderInsiderTrades(payload) {
+  const target = document.getElementById('insider-trades-results');
+  if (!target) {
+    return;
+  }
+  target.innerHTML = '';
+  const rows = Array.isArray(payload?.items) ? payload.items : [];
+  const filters = payload?.filters || {};
+  const summary = document.createElement('p');
+  summary.className = 'small-note insider-trades-summary';
+  summary.textContent = `Matches: ${Number(payload?.totalMatches || rows.length).toLocaleString()} • Weird flow: ${Number(payload?.unusualCount || 0).toLocaleString()} • Side: ${String(filters.side || 'all').toUpperCase()} • Sort: ${String(filters.sortBy || 'anomaly_desc').replaceAll('_', ' ')}`;
+  target.appendChild(summary);
+  rows.forEach((item) => {
+    const side = String(item.side || item.action || '').toLowerCase() === 'buy' ? 'buy' : 'sell';
+    const valueUsd = Number(item.valueUsd ?? item.totalUsd ?? 0);
+    const averagePriceUsd = Number(item.averagePriceUsd ?? item.priceUsd ?? 0);
+    const shares = Number(item.shares || item.shareCount || 0);
+    const reactionPct = Number(item.stockReactionPct || 0);
+    const reactionSign = reactionPct > 0 ? '+' : '';
+    const reactionClass = reactionPct > 0 ? 'up' : reactionPct < 0 ? 'down' : 'flat';
+    const anomalyScore = Number(item.anomalyScore || 0);
+    const unusualVolumeMultiple = Number(item.unusualVolumeMultiple || 0);
+    const filedAtLabel = item.filedAt
+      ? new Date(item.filedAt).toLocaleString()
+      : (item.filedAtLabel || 'Filed recently');
+    const role = item.role || item.insiderTitle || item.insiderRole || 'N/A';
+    const conviction = String(item.conviction || item.impactLabel || 'medium')
+      .replaceAll('_', ' ')
+      .replace(/\b\w/g, (char) => char.toUpperCase());
+    const card = document.createElement('article');
+    card.className = `insider-trade-card insider-trade-card--${side}`;
+    card.innerHTML = `
+      <h4>${item.symbol} • ${side.toUpperCase()}</h4>
+      <p><strong>Insider:</strong> ${item.insiderName || 'N/A'} (${role})</p>
+      <p><strong>Shares:</strong> ${shares.toLocaleString()} • <strong>Avg price:</strong> ${fmtUsd(averagePriceUsd)}</p>
+      <p><strong>Total trade:</strong> ${fmtUsd(valueUsd)} • <strong>Conviction:</strong> ${conviction}</p>
+      <p><strong>Anomaly score:</strong> <span class="insider-trade-anomaly-score">${anomalyScore}/100</span> • <strong>Size vs baseline:</strong> ${unusualVolumeMultiple.toFixed(2)}x</p>
+      ${(item.unusualSignals || []).length ? `<ul class="detail-list insider-trade-signals">${(item.unusualSignals || []).map((signal) => `<li>${signal}</li>`).join('')}</ul>` : ''}
+      <p><strong>Stock reaction:</strong> <span class="insider-trade-reaction insider-trade-reaction--${reactionClass}">${reactionSign}${reactionPct.toFixed(2)}%</span></p>
+      <p class="small-note">${filedAtLabel} • Source: ${item.source || 'Insider feed'}</p>
+      <p class="small-note">${item.details || item.summary || ''}</p>
+    `;
+    target.appendChild(card);
+  });
+
+  if (!rows.length) {
+    target.innerHTML = '<div class="pro-lock">No large insider trades available right now.</div>';
+  }
+}
+
+async function loadOutlook(ticker) {
+  const payload = await fetchJson(`/api/market/stock-outlook?ticker=${encodeURIComponent(ticker)}`, {
+    headers: headersWithPlan()
+  });
+  renderOutlook(payload);
+}
+
+async function loadEarningsBoard() {
+  let payload;
+  try {
+    payload = await fetchJson('/api/market/earnings-gambling?targetDate=tomorrow&session=pre-market', {
+      headers: headersWithPlan()
+    });
+  } catch (_error) {
+    payload = null;
+  }
+  const hasTomorrowItems = payload && Array.isArray(payload.items) && payload.items.length > 0;
+  if (!hasTomorrowItems) {
+    payload = await fetchJson('/api/market/earnings-gambling?targetDate=tomorrow&session=pre-market&includeCompleted=true', {
+      headers: headersWithPlan()
+    });
+  }
+  const hasPreMarket = payload
+    && Array.isArray(payload.items)
+    && payload.items.some((item) => String(item.reportTimeLabel || '').toLowerCase().includes('pre-market'));
+  if (!hasPreMarket) {
+    payload = await fetchJson('/api/market/earnings-gambling?targetDate=tomorrow&includeCompleted=true', {
+      headers: headersWithPlan()
+    });
+  }
+  renderEarningsBoard(payload);
+}
+
+async function runScanner(query, method) {
+  const payload = await fetchJson(
+    `/api/market/scan-x?ticker=${encodeURIComponent(query)}&method=${encodeURIComponent(method)}`,
+    { headers: headersWithPlan() }
+  );
+  renderScanner(payload);
+}
+
+async function loadAiSidebar(query = '') {
+  const payload = await fetchJson(`/api/market/ai-discovery?query=${encodeURIComponent(query)}`, {
+    headers: headersWithPlan()
+  });
+  renderAiSidebar(payload);
+}
+
+async function loadTrendTrades() {
+  try {
+    const payload = await fetchJson(
+      `/api/market/trend-trades?limit=8&source=${encodeURIComponent(activeTrendSource)}`,
+      {
+        headers: headersWithPlan()
+      }
+    );
+    renderTrendTrades(payload);
+  } catch (error) {
+    if (error.status === 403) {
+      renderTrendTradesLocked('Trend Trades is Pro-only. Upgrade to see social trend trading signals.');
+      openProPopup('Pro access needed for Trend Trades. Upgrade to see social trend trading signals.');
+      return;
+    }
+    renderTrendTradesLocked('Trend Trades is temporarily unavailable. Please refresh in a moment.');
+  }
+}
+
+async function loadRealizedPatterns() {
+  const payload = await fetchJson(
+    `/api/market/realized-patterns?limit=8&type=${encodeURIComponent(activePatternFilter)}`,
+    { headers: headersWithPlan() }
+  );
+  renderRealizedPatterns(payload);
+}
+
+async function loadWildTakes() {
+  const payload = await fetchJson('/api/market/wild-takes?limit=6', {
+    headers: headersWithPlan()
+  });
+  renderWildTakes(payload);
+}
+
+async function loadInsiderTrades() {
+  const params = new URLSearchParams({
+    limit: '12',
+    side: activeInsiderSide,
+    symbol: activeInsiderSymbol,
+    minValueUsd: String(Math.max(0, Math.trunc(activeInsiderMinValueUsd || 0))),
+    sortBy: activeInsiderSortBy,
+    unusualOnly: activeInsiderUnusualOnly ? 'true' : 'false'
+  });
+  const payload = await fetchJson(`/api/market/insider-trades?${params.toString()}`, {
+    headers: headersWithPlan()
+  });
+  renderInsiderTrades(payload);
+}
+
+async function loadUnusualFeed() {
+  try {
+    const payload = await fetchJson('/api/market/unusual-moves', { headers: headersWithPlan() });
+    renderUnusual(payload);
+  } catch (error) {
+    if (error.status === 403) {
+      renderUnusualLocked('Pro feature locked. Upgrade to access unusual moves feed.');
+      openProPopup('Pro access needed for Unusual Moves Feed.');
+      return;
+    }
+    renderUnusualLocked('Unusual Moves is temporarily unavailable. Please refresh shortly.');
+  }
+}
+
+async function loadHighIvTracker() {
+  try {
+    const payload = await fetchJson('/api/market/high-iv?limit=8', {
+      headers: headersWithPlan()
+    });
+    renderHighIv(payload);
+  } catch (error) {
+    if (error.status === 403) {
+      renderHighIvLocked('High IV Tracker is Pro-only. Upgrade to unlock elevated IV monitoring.');
+      openProPopup('Pro access needed for High IV Tracker.');
+      return;
+    }
+    renderHighIvLocked('High IV Tracker is temporarily unavailable. Please refresh shortly.');
+  }
+}
+
+async function loadPremiumSpikes() {
+  try {
+    const payload = await fetchJson('/api/market/premium-spikes?limit=10', {
+      headers: headersWithPlan()
+    });
+    renderPremiumSpikes(payload);
+  } catch (error) {
+    if (error.status === 403) {
+      renderPremiumSpikesLocked('Call / Put Premium Spikes is Pro-only. Upgrade to unlock this module.');
+      openProPopup('Pro access needed for Call / Put Premium Spikes.');
+      return;
+    }
+    renderPremiumSpikesLocked('Call / Put Premium Spikes is temporarily unavailable. Please refresh shortly.');
+  }
+}
+
+async function calculateOptions(formValues) {
+  const query = new URLSearchParams({
+    ticker: formValues.symbol,
+    spot: formValues.spotPrice,
+    strike: formValues.strikePrice,
+    daysToExpiry: formValues.daysToExpiry,
+    iv: formValues.impliedVolatility,
+    type: formValues.contractType
+  });
+  try {
+    const payload = await fetchJson(`/api/market/options?${query.toString()}`, {
+      headers: headersWithPlan()
+    });
+    renderOptions(payload);
+  } catch (error) {
+    if (error.status === 403) {
+      renderOptionsLocked('Pro feature locked. Upgrade to use options calculator and gamma exposure.');
+      openProPopup('Pro access needed for the Options Calculator + Gamma Exposure.');
+      return;
+    }
+    throw error;
+  }
+}
+
+async function refreshBaseline() {
+  const health = await fetchJson('/health');
+  renderStatus(`API status: ${health.status}`);
+  applyTraderModeUI(getActiveTraderMode(), { save: false, persistToServer: false });
+  try {
+    await loadOutlook(activeTicker);
+  } catch (error) {
+    const target = document.getElementById('stock-results');
+    if (target) {
+      target.innerHTML = `<div class="pro-lock">${escapeHtml(error?.message || 'Could not load stock analysis right now.')}</div>`;
+    }
+    renderStatus(error?.message || 'Stock analysis is unavailable right now.');
+  }
+  await Promise.all([
+    loadEarningsBoard(),
+    loadAiSidebar(activeTicker)
+  ]);
+  await Promise.allSettled([
+    loadTrendTrades(),
+    loadRealizedPatterns(),
+    loadWildTakes(),
+    loadInsiderTrades(),
+    loadHighIvTracker(),
+    loadPremiumSpikes(),
+    loadUnusualFeed()
+  ]);
+}
+
+async function fetchBillingInfo() {
+  try {
+    billingInfo = await fetchJson('/api/auth/billing-info');
+  } catch (_error) {
+    billingInfo = null;
+  }
+  renderBillingInfo(billingInfo, null);
+}
+
+async function fetchCurrentUser() {
+  applyAuthStatePatch({ loading: true }, { skipRender: false, skipLog: true });
+  let restoredFromRemember = false;
+  if (!authState.session?.token) {
+    const restored = await restoreAuthSessionFromRememberToken();
+    if (!restored) {
+      applyAuthStatePatch({
+        loading: false,
+        session: null,
+        user: null
+      });
+      return;
+    }
+    restoredFromRemember = true;
+  }
+
+  try {
+    const payload = await fetchJson('/api/auth/me', {
+      credentials: 'include',
+      headers: headersWithPlan()
+    });
+    applyAuthStatePatch({
+      loading: false,
+      user: payload.user || null
+    });
+    flushPendingDisplayNameUpdate();
+    if (payload?.user && restoredFromRemember) {
+      setAuthMessage(`Welcome back, ${payload.user.email}. Session restored.`);
+    }
+    return;
+  } catch (error) {
+    const status = Number(error?.status || 0);
+    if (status !== 401) {
+      // Avoid logging users out for transient API failures.
+      applyAuthStatePatch({ loading: false }, { skipRender: false, skipLog: true });
+      return;
+    }
+  }
+
+  // Token was rejected; clear only after confirmed 401.
+  applyAuthStatePatch({
+    loading: true,
+    session: null,
+    user: null
+  });
+  const restored = await restoreAuthSessionFromRememberToken();
+  if (restored) {
+    try {
+      const retryPayload = await fetchJson('/api/auth/me', {
+        credentials: 'include',
+        headers: headersWithPlan()
+      });
+      applyAuthStatePatch({
+        loading: false,
+        user: retryPayload.user || null
+      });
+      flushPendingDisplayNameUpdate();
+      if (retryPayload?.user) {
+        setAuthMessage(`Welcome back, ${retryPayload.user.email}. Session restored.`);
+      }
+      return;
+    } catch (retryError) {
+      const retryStatus = Number(retryError?.status || 0);
+      if (retryStatus === 401) {
+        setAuthMessage('Session expired. Please sign in again.', true);
+      }
+      applyAuthStatePatch({
+        loading: false,
+        session: null,
+        user: null
+      });
+      return;
+    }
+  }
+  setAuthMessage('Session expired. Please sign in again.', true);
+  applyAuthStatePatch({
+    loading: false,
+    session: null,
+    user: null
+  });
+}
+
+// One place to refresh post-auth UI/data so login/signup flows stay consistent.
+async function runPostAuthHydration() {
+  await Promise.allSettled([
+    refreshBaseline(),
+    loadUnusualFeed(),
+    loadTrendTrades(),
+    loadEmailAutomationSettings()
+  ]);
+}
+
+async function login(email, password, options = {}) {
+  const remember = options.remember !== false;
+  const payload = await fetchJson('/api/auth/login', {
+    method: 'POST',
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      email,
+      password,
+      remember
+    })
+  });
+  applyAuthPayload(payload, email);
+  await fetchCurrentUser();
+  return payload;
+}
+
+async function signup(email, password, options = {}) {
+  const traderMode = normalizeTraderMode(options.traderMode || getActiveTraderMode());
+  const confirmPassword = String(options.confirmPassword || password || '');
+  const remember = options.remember !== false;
+  const payload = await fetchJson('/api/auth/signup', {
+    method: 'POST',
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      email,
+      password,
+      confirmPassword,
+      traderMode,
+      remember
+    })
+  });
+  applyAuthPayload(payload, email);
+  persistTraderMode(payload?.user?.traderMode || traderMode);
+  await fetchCurrentUser();
+  return payload;
+}
+
+async function socialSignIn(provider, email, options = {}) {
+  const traderMode = normalizeTraderMode(options.traderMode || getActiveTraderMode());
+  const remember = options.remember !== false;
+  const payload = await fetchJson('/api/auth/oauth/signin', {
+    method: 'POST',
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      provider,
+      email,
+      traderMode,
+      remember
+    })
+  });
+  applyAuthPayload(payload, email);
+  persistTraderMode(payload?.user?.traderMode || traderMode);
+  await fetchCurrentUser();
+  return payload;
+}
+
+function openSocialAuthPage(provider, email, redirectPath, remember = true, traderMode = getActiveTraderMode()) {
+  const normalizedProvider = String(provider || '').trim().toLowerCase();
+  const params = new URLSearchParams();
+  const normalizedTraderMode = normalizeTraderMode(traderMode);
+  if (normalizedProvider) {
+    params.set('provider', normalizedProvider);
+  }
+  const normalizedEmail = String(email || '').trim().toLowerCase();
+  if (normalizedEmail) {
+    params.set('email', normalizedEmail);
+  }
+  params.set('traderMode', normalizedTraderMode);
+  if (redirectPath && String(redirectPath).startsWith('/')) {
+    params.set('next', String(redirectPath));
+  }
+  params.set('remember', remember ? '1' : '0');
+  const query = params.toString();
+  window.location.href = `/social-auth.html${query ? `?${query}` : ''}`;
+}
+
+function setupAuthForms() {
+  const loginForm = document.getElementById('login-form');
+  const signupForm = document.getElementById('signup-form');
+  const socialButtons = Array.from(document.querySelectorAll('.oauth-btn'));
+  const logoutButton = document.getElementById('logout-btn');
+  const openAuthAccessPageLink = document.getElementById('open-auth-access-page');
+  const checkoutButton = document.getElementById('upgrade-pro-btn');
+  const billingPortalButton = document.getElementById('billing-portal-btn');
+  const headerLoginLink = document.getElementById('header-login-link');
+  const headerSignupLink = document.getElementById('header-signup-link');
+  const headerProfileButton = document.getElementById('header-profile-btn');
+  const headerLogoutButton = document.getElementById('header-logout-btn');
+  const billingCard = document.getElementById('billing-safety-card');
+  const billingCancelButton = document.getElementById('billing-safe-cancel');
+  const billingContinueButton = document.getElementById('billing-safe-continue');
+  if (!(loginForm instanceof HTMLFormElement) || !(signupForm instanceof HTMLFormElement)) {
+    return;
+  }
+
+  const openAuthAccessPage = (mode) => {
+    const targetMode = mode === 'signup' ? 'signup' : 'login';
+    const next = encodeURIComponent(`${window.location.pathname || '/'}${window.location.search || ''}${window.location.hash || ''}`);
+    window.location.href = `/ai-trade-access.html?mode=${encodeURIComponent(targetMode)}&next=${next}`;
+  };
+
+  if (headerLoginLink instanceof HTMLAnchorElement) {
+    headerLoginLink.addEventListener('click', (event) => {
+      event.preventDefault();
+      openAuthAccessPage('login');
+    });
+  }
+
+  if (headerSignupLink instanceof HTMLAnchorElement) {
+    headerSignupLink.addEventListener('click', (event) => {
+      event.preventDefault();
+      openAuthAccessPage('signup');
+    });
+  }
+
+  if (headerProfileButton instanceof HTMLButtonElement) {
+    headerProfileButton.addEventListener('click', () => {
+      const authSnapshot = getAuthStateSnapshot();
+      if (authSnapshot.loading || !authSnapshot.user) {
+        openAuthAccessPage('login');
+        return;
+      }
+      const authDetails = document.querySelector('.dashboard-auth-details');
+      if (authDetails instanceof HTMLDetailsElement) {
+        authDetails.open = true;
+        authDetails.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }
+    });
+  }
+
+  if (openAuthAccessPageLink instanceof HTMLAnchorElement) {
+    openAuthAccessPageLink.addEventListener('click', (event) => {
+      event.preventDefault();
+      openAuthAccessPage('login');
+    });
+  }
+
+  function closeBillingCard() {
+    if (!billingCard) {
+      return;
+    }
+    billingCard.classList.add('hidden');
+  }
+
+  function setButtonBusy(button, isBusy, idleLabel, busyLabel) {
+    if (!button) {
+      return;
+    }
+    button.disabled = isBusy;
+    button.textContent = isBusy ? busyLabel : idleLabel;
+    if (isBusy) {
+      button.classList.add('is-loading');
+      button.setAttribute('aria-busy', 'true');
+    } else {
+      button.classList.remove('is-loading');
+      button.removeAttribute('aria-busy');
+    }
+  }
+
+  applySavedEmailToForms();
+  updatePasswordHint('signup-password', 'signup-password-strength');
+
+  const refreshAfterAuth = async () => {
+    await runPostAuthHydration();
+  };
+
+  loginForm.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    const email = document.getElementById('login-email').value.trim().toLowerCase();
+    const password = document.getElementById('login-password').value;
+    const remember = false;
+    const submitButton = loginForm.querySelector('button[type="submit"]');
+    const idleLabel = submitButton?.textContent || 'Log in';
+    try {
+      clearAuthMessageActions();
+      setButtonBusy(submitButton, true, idleLabel, 'Signing in...');
+      const payload = await login(email, password, { remember });
+      savePreferredEmail(email);
+      if (!hasAuthenticatedSession()) {
+        throw new Error('Login succeeded but session did not persist. Please try again.');
+      }
+      clearAuthMessageActions();
+      setAuthMessage(`Logged in successfully as ${payload?.user?.email || email}.`);
+      await refreshAfterAuth();
+    } catch (error) {
+      const code = String(error?.body?.error || '').trim().toLowerCase();
+      const mappedMessage = mapLoginErrorMessage(error, email);
+      setAuthMessage(mappedMessage, true);
+      if (code === 'unknown_email') {
+        renderAuthActionLink('Create Account', '/register');
+      } else if (code === 'too_many_attempts') {
+        renderAuthActionLink('Reset Password Instead', '/forgot-password');
+        startAuthLockoutCountdown(error?.body?.lockoutUntil || '');
+      }
+    } finally {
+      setButtonBusy(submitButton, false, idleLabel, 'Signing in...');
+    }
+  });
+
+  signupForm.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    const email = document.getElementById('signup-email').value.trim().toLowerCase();
+    const password = document.getElementById('signup-password').value;
+    const remember = false;
+    const submitButton = signupForm.querySelector('button[type="submit"]');
+    const idleLabel = submitButton?.textContent || 'Sign up';
+    if (!isLikelyRealEmail(email)) {
+      setAuthMessage('Please enter a valid real email address.', true);
+      return;
+    }
+    if (!isSignupPasswordStrong(password)) {
+      setAuthMessage('Use at least 8 characters with uppercase, number, and symbol.', true);
+      return;
+    }
+    try {
+      clearAuthMessageActions();
+      setButtonBusy(submitButton, true, idleLabel, 'Creating...');
+      const payload = await signup(email, password, {
+        confirmPassword: password,
+        remember
+      });
+      savePreferredEmail(email);
+      if (hasAuthenticatedSession()) {
+        setAuthMessage('Account created and logged in.');
+        await refreshAfterAuth();
+        return;
+      }
+      const requiresEmailConfirmation = Boolean(
+        payload?.requiresEmailConfirmation
+        || payload?.emailConfirmationRequired
+        || !payload?.token
+      );
+      if (requiresEmailConfirmation) {
+        setAuthMessage('Check your email to confirm your account.');
+        return;
+      }
+      setAuthMessage('Account created. Please log in to continue.', true);
+    } catch (error) {
+      if (error?.status === 409 || String(error?.body?.error || '').trim().toLowerCase() === 'email_in_use') {
+        setAuthMessage('That email already has an account. Please use Log in with your existing password.', true);
+        return;
+      }
+      setAuthMessage(error.message || 'Signup failed.', true);
+    } finally {
+      setButtonBusy(submitButton, false, idleLabel, 'Creating...');
+    }
+  });
+
+  socialButtons.forEach((button) => {
+    button.addEventListener('click', async () => {
+      const provider = String(button.getAttribute('data-provider') || '').trim().toLowerCase();
+      const loginInput = document.getElementById('login-email');
+      const signupInput = document.getElementById('signup-email');
+      const fallbackEmail = loadPreferredEmail() || getSavedAuthEmail();
+      const preferred = String(loginInput?.value || signupInput?.value || fallbackEmail || '').trim().toLowerCase();
+      button.disabled = true;
+      openSocialAuthPage(provider, preferred, window.location.pathname || '/', true, getActiveTraderMode());
+    });
+  });
+
+  logoutButton.addEventListener('click', async () => {
+    try {
+      await fetchJson('/api/auth/logout', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' }
+      });
+    } catch (_error) {
+      // Best-effort revoke only.
+    }
+    applyAuthStatePatch({
+      session: null,
+      user: null,
+      loading: false
+    });
+    closeBillingCard();
+    setAuthMessage('Logged out.');
+    await refreshAfterAuth();
+  });
+
+  if (headerLogoutButton instanceof HTMLButtonElement) {
+    headerLogoutButton.addEventListener('click', async () => {
+      if (logoutButton instanceof HTMLButtonElement) {
+        logoutButton.click();
+        return;
+      }
+      // Fallback safety path if inline logout button is unavailable.
+      applyAuthStatePatch({
+        session: null,
+        user: null,
+        loading: false
+      });
+      setAuthMessage('Logged out.');
+    });
+  }
+
+  if (billingCancelButton) {
+    billingCancelButton.addEventListener('click', closeBillingCard);
+  }
+
+  if (billingContinueButton) {
+    billingContinueButton.addEventListener('click', async () => {
+      const authSnapshot = getAuthStateSnapshot();
+      if (authSnapshot.loading || !authSnapshot.user) {
+        setAuthMessage('Please login first.', true);
+        closeBillingCard();
+        return;
+      }
+      if (!billingInfo?.configured) {
+        setAuthMessage('Billing is not configured yet. Try again later.', true);
+        return;
+      }
+
+      try {
+        closeBillingCard();
+        try {
+          sessionStorage.setItem(
+            CHECKOUT_RETURN_PATH_STORAGE_KEY,
+            `${window.location.pathname || '/'}${window.location.search || ''}${window.location.hash || ''}`
+          );
+        } catch (_error) {
+          // Ignore sessionStorage failures in restrictive browser contexts.
+        }
+        window.location.href = '/payment.html';
+      } catch (error) {
+        setAuthMessage(normalizeCheckoutErrorMessage(error), true);
+      }
+    });
+  }
+
+  checkoutButton.addEventListener('click', async () => {
+    const authSnapshot = getAuthStateSnapshot();
+    if (authSnapshot.loading || !authSnapshot.user) {
+      setAuthMessage('Please login first.', true);
+      return;
+    }
+    openProPlanScreen();
+  });
+
+  document.addEventListener('click', (event) => {
+    const target = event.target;
+    if (!(target instanceof Element) || !billingCard) {
+      return;
+    }
+    if (!billingCard.classList.contains('hidden') && !billingCard.contains(target) && target !== checkoutButton) {
+      const clickedCheckoutButton = checkoutButton.contains(target);
+      if (!clickedCheckoutButton) {
+        closeBillingCard();
+      }
+    }
+  });
+
+  document.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape') {
+      closeBillingCard();
+      closeProPopup();
+    }
+  });
+
+  billingPortalButton.addEventListener('click', async () => {
+    const authSnapshot = getAuthStateSnapshot();
+    if (authSnapshot.loading || !authSnapshot.user) {
+      setAuthMessage('Please login first.', true);
+      return;
+    }
+    try {
+      const payload = await fetchJson('/api/auth/stripe/create-customer-portal', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...headersWithPlan()
+        }
+      });
+      window.location.href = payload.url;
+    } catch (error) {
+      setAuthMessage(error.message || 'Could not open billing portal.', true);
+    }
+  });
+}
+
+function setupAiSidebar() {
+  const form = document.getElementById('ai-search-form');
+  const trendForm = document.getElementById('trend-trades-form');
+  const patternForm = document.getElementById('patterns-form');
+  const insiderForm = document.getElementById('insider-trades-form');
+  const select = document.getElementById('ai-platform-select');
+  const trendSourceSelect = document.getElementById('trend-source-select');
+  const patternTypeSelect = document.getElementById('pattern-type-select');
+  const insiderSideSelect = document.getElementById('insider-side-select');
+  const insiderSymbolInput = document.getElementById('insider-symbol-input');
+  const insiderMinValueInput = document.getElementById('insider-min-value-input');
+  const insiderSortSelect = document.getElementById('insider-sort-select');
+  const insiderUnusualOnlyInput = document.getElementById('insider-unusual-only-input');
+  const wildTakesButton = document.getElementById('wild-takes-refresh');
+  const searchAllButton = document.getElementById('ai-search-all');
+  const highIvButton = document.getElementById('high-iv-refresh');
+  const premiumSpikesButton = document.getElementById('premium-spikes-refresh');
+  const insiderTradesPageButton = document.getElementById('open-insider-trades-page');
+  const portfoliosPageButton = document.getElementById('open-portfolios-page');
+  const aiTradeButton = document.getElementById('open-ai-trade');
+  const orderSetupAssistantButton = document.getElementById('open-order-setup-assistant');
+  const autoTraderButton = document.getElementById('open-ai-auto-trader');
+  const liveBrokerageButton = document.getElementById('open-live-brokerage-account');
+  const aiImplementationStepsButton = document.getElementById('open-ai-implementation-steps');
+  const aiLiveAccountSetupButton = document.getElementById('open-ai-live-account-setup');
+  const aiAnalyzerButton = document.getElementById('open-ai-analyzer');
+
+  // Bind module navigation/actions early so these links still work even if one sidebar filter control is absent.
+  if (highIvButton) {
+    highIvButton.addEventListener('click', async () => {
+      try {
+        renderStatus('Loading High IV Tracker...');
+        await loadHighIvTracker();
+        renderStatus('High IV Tracker updated.');
+      } catch (error) {
+        renderHighIvLocked(error.message || 'Could not load High IV Tracker.');
+        renderStatus(error.message || 'Could not load High IV Tracker.');
+        if (error.status === 403) {
+          openProPopup('Pro access needed for High IV Tracker.');
+        }
+      }
+    });
+  }
+
+  if (premiumSpikesButton) {
+    premiumSpikesButton.addEventListener('click', async () => {
+      renderStatus('Loading premium spikes...');
+      await focusPremiumSpikesSection();
+      renderStatus('Premium spikes updated.');
+    });
+  }
+
+  if (insiderTradesPageButton) {
+    insiderTradesPageButton.addEventListener('click', () => {
+      openInsiderTradesPage();
+    });
+  }
+
+  if (portfoliosPageButton) {
+    portfoliosPageButton.addEventListener('click', () => {
+      openPortfoliosPage();
+    });
+  }
+
+  if (aiTradeButton) {
+    aiTradeButton.addEventListener('click', () => {
+      openAiTradeEntryPage();
+      renderStatus('Opening AI Trade...');
+    });
+  }
+
+  if (orderSetupAssistantButton) {
+    orderSetupAssistantButton.addEventListener('click', () => {
+      openAiOrderSetupAssistantPage();
+      renderStatus('Opening Build Trade Plan...');
+    });
+  }
+
+  if (autoTraderButton) {
+    autoTraderButton.addEventListener('click', () => {
+      openAutoTraderPage();
+      renderStatus('Opening AI Trading Bot...');
+    });
+  }
+
+  if (liveBrokerageButton) {
+    liveBrokerageButton.addEventListener('click', () => {
+      openBrokerageOnboardingPage();
+      renderStatus('Opening live brokerage setup...');
+    });
+  }
+
+  if (aiImplementationStepsButton) {
+    aiImplementationStepsButton.addEventListener('click', () => {
+      openAiImplementationGuidePage();
+      renderStatus('Opening AI implementation guide...');
+    });
+  }
+
+  if (aiLiveAccountSetupButton) {
+    aiLiveAccountSetupButton.addEventListener('click', () => {
+      openAiLiveAccountSetupPage();
+      renderStatus('Opening easy AI setup...');
+    });
+  }
+
+  if (aiAnalyzerButton) {
+    aiAnalyzerButton.addEventListener('click', () => {
+      openAiAnalyzerPage();
+      renderStatus('Opening AI Analyzer...');
+    });
+  }
+
+  if (
+    !form
+    || !trendForm
+    || !patternForm
+    || !insiderForm
+    || !select
+    || !trendSourceSelect
+    || !patternTypeSelect
+    || !insiderSideSelect
+    || !insiderSymbolInput
+    || !insiderMinValueInput
+    || !insiderSortSelect
+    || !wildTakesButton
+  ) {
+    return;
+  }
+
+  insiderSideSelect.value = activeInsiderSide;
+  insiderSortSelect.value = activeInsiderSortBy;
+  insiderSymbolInput.value = activeInsiderSymbol;
+  insiderMinValueInput.value = activeInsiderMinValueUsd > 0 ? String(activeInsiderMinValueUsd) : '';
+  if (insiderUnusualOnlyInput) {
+    insiderUnusualOnlyInput.checked = activeInsiderUnusualOnly;
+  }
+
+  function syncAndLoadInsiders() {
+    if (!guardAuthenticatedToolAccess('Insider Trades', '/#insider-trades-section')) {
+      throw new Error('Insider Trades requires login.');
+    }
+    activeInsiderSide = String(insiderSideSelect.value || 'all').trim().toLowerCase();
+    activeInsiderSymbol = String(insiderSymbolInput.value || '').trim().toUpperCase();
+    const parsedMin = Number(insiderMinValueInput.value || 0);
+    activeInsiderMinValueUsd = Number.isFinite(parsedMin) && parsedMin > 0 ? Math.round(parsedMin) : 0;
+    activeInsiderSortBy = String(insiderSortSelect.value || 'anomaly_desc').trim().toLowerCase();
+    activeInsiderUnusualOnly = insiderUnusualOnlyInput
+      ? Boolean(insiderUnusualOnlyInput.checked)
+      : activeInsiderUnusualOnly;
+    return loadInsiderTrades();
+  }
+
+  form.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    if (!guardAuthenticatedToolAccess('AI Discovery', '/#ai-discovery-section')) {
+      return;
+    }
+    const query = document.getElementById('ai-search-query').value.trim() || activeTicker;
+    try {
+      renderStatus('Searching AI tools...');
+      activeAiPlatform = select.value || activeAiPlatform;
+      await loadAiSidebar(query);
+      await runScanner(query, 'llm-sentiment');
+      renderStatus('AI search completed.');
+    } catch (error) {
+      const target = document.getElementById('scan-results');
+      target.innerHTML = `<div class="pro-lock">${error.message || 'AI search failed.'}</div>`;
+      renderStatus(error.message || 'AI search failed.');
+    }
+  });
+
+  select.addEventListener('change', async () => {
+    if (!guardAuthenticatedToolAccess('AI Discovery', '/#ai-discovery-section')) {
+      return;
+    }
+    activeAiPlatform = select.value || 'x-com';
+    const query = document.getElementById('ai-search-query').value.trim() || activeTicker;
+    await loadAiSidebar(query);
+  });
+
+  trendForm.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    if (!guardAuthenticatedToolAccess('Trend Trades', '/#trend-trades-section')) {
+      return;
+    }
+    activeTrendSource = trendSourceSelect.value || 'all';
+    try {
+      renderStatus('Loading trend trades...');
+      await loadTrendTrades();
+      renderStatus('Trend trades updated.');
+    } catch (error) {
+      renderTrendTradesLocked(error.message || 'Could not load trend trades.');
+      renderStatus(error.message || 'Could not load trend trades.');
+      if (error.status === 403) {
+        openProPopup('Pro access needed for Trend Trades.');
+      }
+    }
+  });
+
+  trendSourceSelect.addEventListener('change', async () => {
+    if (!guardAuthenticatedToolAccess('Trend Trades', '/#trend-trades-section')) {
+      return;
+    }
+    activeTrendSource = trendSourceSelect.value || 'all';
+    try {
+      await loadTrendTrades();
+    } catch (error) {
+      renderTrendTradesLocked(error.message || 'Could not load trend trades.');
+      if (error.status === 403) {
+        openProPopup('Pro access needed for Trend Trades.');
+      }
+    }
+  });
+
+  patternForm.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    if (!guardAuthenticatedToolAccess('Pattern Analyzer', '/#realized-patterns-section')) {
+      return;
+    }
+    activePatternFilter = patternTypeSelect.value || 'all';
+    try {
+      renderStatus('Finding patterns...');
+      await loadRealizedPatterns();
+      renderStatus('Pattern scan complete.');
+    } catch (error) {
+      const target = document.getElementById('patterns-results');
+      target.innerHTML = `<div class="pro-lock">${error.message || 'Could not load realized patterns.'}</div>`;
+      renderStatus(error.message || 'Could not load realized patterns.');
+    }
+  });
+
+  patternTypeSelect.addEventListener('change', async () => {
+    if (!guardAuthenticatedToolAccess('Pattern Analyzer', '/#realized-patterns-section')) {
+      return;
+    }
+    activePatternFilter = patternTypeSelect.value || 'all';
+    try {
+      await loadRealizedPatterns();
+    } catch (error) {
+      const target = document.getElementById('patterns-results');
+      target.innerHTML = `<div class="pro-lock">${error.message || 'Could not load realized patterns.'}</div>`;
+    }
+  });
+
+  wildTakesButton.addEventListener('click', async () => {
+    if (!guardAuthenticatedToolAccess('Wild Takes', '/#wild-takes-section')) {
+      return;
+    }
+    try {
+      renderStatus('Loading wild takes...');
+      await loadWildTakes();
+      renderStatus('Wild takes updated.');
+    } catch (error) {
+      const target = document.getElementById('wild-takes-results');
+      target.innerHTML = `<div class="pro-lock">${error.message || 'Could not load wild takes.'}</div>`;
+      renderStatus(error.message || 'Could not load wild takes.');
+    }
+  });
+
+  insiderForm.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    if (!guardAuthenticatedToolAccess('Insider Trades', '/#insider-trades-section')) {
+      return;
+    }
+    try {
+      renderStatus('Loading insider trades...');
+      await syncAndLoadInsiders();
+      renderStatus('Insider trades updated.');
+    } catch (error) {
+      const target = document.getElementById('insider-trades-results');
+      if (target) {
+        target.innerHTML = `<div class="pro-lock">${error.message || 'Could not load insider trades.'}</div>`;
+      }
+      renderStatus(error.message || 'Could not load insider trades.');
+    }
+  });
+
+  insiderSortSelect.addEventListener('change', async () => {
+    try {
+      await syncAndLoadInsiders();
+    } catch (_error) {
+      // Form submit handler surfaces visible error states.
+    }
+  });
+
+  insiderSideSelect.addEventListener('change', async () => {
+    try {
+      await syncAndLoadInsiders();
+    } catch (_error) {
+      // Form submit handler surfaces visible error states.
+    }
+  });
+
+  if (insiderUnusualOnlyInput) {
+    insiderUnusualOnlyInput.addEventListener('change', async () => {
+      try {
+        await syncAndLoadInsiders();
+      } catch (_error) {
+        // Form submit handler surfaces visible error states.
+      }
+    });
+  }
+
+  insiderSymbolInput.addEventListener('input', () => {
+    window.clearTimeout(insiderAutoRefreshTimerId);
+    insiderAutoRefreshTimerId = window.setTimeout(() => {
+      syncAndLoadInsiders().catch((_error) => {
+        // Form submit handler surfaces visible error states.
+      });
+    }, 300);
+  });
+
+  if (searchAllButton) {
+    searchAllButton.addEventListener('click', () => {
+      const query = document.getElementById('ai-search-query').value.trim() || activeTicker;
+      openAllAiPlatforms(query);
+    });
+  }
+
+}
+
+function setupModuleDeepLinks() {
+  const params = new URLSearchParams(window.location.search);
+  const moduleParam = String(params.get('module') || '').trim();
+  const hashParam = String(window.location.hash || '').replace(/^#/, '').trim();
+  const deepLinkTarget = moduleParam || hashParam;
+  if (!deepLinkTarget) {
+    return;
+  }
+
+  const resolveTarget = (rawTarget) => {
+    const normalizedTarget = normalizeModuleSearchTerm(rawTarget);
+    if (!normalizedTarget) {
+      return null;
+    }
+    const byKey = getModuleTargetByKey(normalizedTarget);
+    if (byKey) {
+      return byKey;
+    }
+    const bySelector = MODULE_NAV_TARGETS.find((target) => {
+      const selectorId = String(target.selector || '').replace(/^#/, '');
+      return normalizeModuleSearchTerm(selectorId) === normalizedTarget;
+    });
+    if (bySelector) {
+      return bySelector;
+    }
+    return findBestModuleTarget(normalizedTarget);
+  };
+
+  window.setTimeout(() => {
+    const target = resolveTarget(deepLinkTarget);
+    if (!target) {
+      return;
+    }
+    const jumped = jumpToModule(target);
+    if (!jumped) {
+      return;
+    }
+    setModuleSearchStatus(`Opened ${target.label}.`);
+    if (normalizeModuleSearchTerm(target.key) === 'premium-spikes') {
+      focusPremiumSpikesSection().catch((error) => {
+        console.error(error);
+      });
+    }
+  }, 180);
+}
+
+function setupSidebarMenu() {
+  const sidebar = document.getElementById('sidebar-panel');
+  const closeButton = document.getElementById('sidebar-close-btn');
+  const riskPlannerButton = document.getElementById('open-risk-planner');
+  const copilotToolButton = document.getElementById('open-ai-copilot-tool');
+  const patternsRefreshButton = document.getElementById('patterns-refresh');
+  const insiderRefreshButton = document.getElementById('insider-trades-refresh');
+  const trendRefreshButton = document.getElementById('trend-trades-refresh');
+  if (!sidebar) {
+    return;
+  }
+
+  // Start in non-blocking collapsed state to avoid obstructing dashboard.
+  closeSidebarMenu();
+
+  if (closeButton instanceof HTMLButtonElement) {
+    closeButton.addEventListener('click', () => {
+      closeSidebarMenu();
+    });
+  }
+
+  document.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape' && sidebarOpen) {
+      closeSidebarMenu();
+    }
+  });
+
+  if (riskPlannerButton instanceof HTMLButtonElement) {
+    riskPlannerButton.addEventListener('click', () => {
+      openAiOrderSetupAssistantPage();
+      renderStatus('Opened Build Trade Plan.');
+    });
+  }
+
+  if (copilotToolButton instanceof HTMLButtonElement) {
+    copilotToolButton.addEventListener('click', () => {
+      if (!guardAuthenticatedToolAccess('AI Copilot', `${window.location.pathname || '/'}${window.location.search || ''}${window.location.hash || ''}`)) {
+        return;
+      }
+      window.dispatchEvent(new CustomEvent('dumbdollars:copilot-open', {
+        detail: {
+          message: 'Copilot opened. Ask what to do next and I will guide you.'
+        }
+      }));
+      renderStatus('Opened AI Copilot.');
+    });
+  }
+
+  if (patternsRefreshButton instanceof HTMLButtonElement) {
+    patternsRefreshButton.addEventListener('click', () => {
+      renderStatus('Finding patterns...');
+    });
+  }
+  if (insiderRefreshButton instanceof HTMLButtonElement) {
+    insiderRefreshButton.addEventListener('click', () => {
+      renderStatus('Loading insider trades...');
+    });
+  }
+  if (trendRefreshButton instanceof HTMLButtonElement) {
+    trendRefreshButton.addEventListener('click', () => {
+      renderStatus('Loading trend trades...');
+    });
+  }
+}
+
+function setupQuickActions() {
+  const browseToolsButton = document.getElementById('quick-open-browse-tools');
+  const reportsLink = document.getElementById('reports-nav-link');
+  const settingsLink = document.getElementById('settings-link-placeholder');
+  if (browseToolsButton instanceof HTMLButtonElement) {
+    browseToolsButton.addEventListener('click', () => {
+      const nextState = !browseToolsMenuOpen;
+      setBrowseToolsMenuState(nextState);
+      if (nextState) {
+        const menuToggle = document.getElementById('sidebar-menu-toggle');
+        const browseMenu = document.getElementById('browse-tools-menu');
+        if (menuToggle instanceof HTMLElement && browseMenu instanceof HTMLElement) {
+          positionBrowseToolsMenu(menuToggle, browseMenu);
+        }
+      }
+    });
+  }
+  if (reportsLink instanceof HTMLAnchorElement) {
+    reportsLink.addEventListener('click', (event) => {
+      event.preventDefault();
+      openReportsPage();
+      renderStatus('Opened reports.');
+    });
+  }
+  if (settingsLink instanceof HTMLAnchorElement) {
+    settingsLink.addEventListener('click', (event) => {
+      event.preventDefault();
+      openSettingsPanel();
+      renderStatus('Opened settings panel.');
+    });
+  }
+}
+
+function setupSidebarDropdowns() {
+  const dropdowns = Array.from(document.querySelectorAll('details.module-dropdown'));
+  if (!dropdowns.length) {
+    return;
+  }
+  dropdowns.forEach((dropdown) => {
+    dropdown.addEventListener('toggle', () => {
+      if (!dropdown.open) {
+        return;
+      }
+      dropdowns.forEach((other) => {
+        if (other !== dropdown) {
+          other.open = false;
+        }
+      });
+    });
+  });
+}
+
+function setupToolLibraryEntryPoints() {
+  const openAiInsightsButton = document.getElementById('home-open-ai-insights');
+  const aiOverviewButtons = Array.from(document.querySelectorAll('.home-ai-tool-button'));
+  const openCopilotInlineButton = document.getElementById('open-copilot-inline');
+  const sidebarCloseButton = document.getElementById('sidebar-close-btn');
+
+  if (openAiInsightsButton instanceof HTMLButtonElement) {
+    openAiInsightsButton.addEventListener('click', () => {
+      if (!guardAuthenticatedToolAccess('AI Discovery', '/#ai-discovery-section')) {
+        return;
+      }
+      const target = getModuleTargetByKey('ai-discovery');
+      if (!target) {
+        return;
+      }
+      const jumped = jumpToModule(target);
+      if (jumped) {
+        setModuleSearchStatus('Opened AI Discovery.');
+      }
+    });
+  }
+
+  aiOverviewButtons.forEach((button) => {
+    button.addEventListener('click', () => {
+      const key = String(button.getAttribute('data-module-key') || '').trim();
+      const protectedToolLabelByKey = {
+        'realized-patterns': 'Pattern Analyzer',
+        'ai-analyzer': 'AI Analyzer',
+        'ai-trade': 'AI Trade',
+        'view-portfolios': 'Portfolio Tracker',
+        'order-setup-assistant': 'Order Setup Assistant'
+      };
+      const protectedToolNextPathByKey = {
+        'realized-patterns': '/#realized-patterns-section',
+        'ai-analyzer': '/ai-analyzer.html',
+        'ai-trade': '/ai-trade.html',
+        'view-portfolios': '/portfolios.html',
+        'order-setup-assistant': '/ai-trade.html#ai-order-setup-title'
+      };
+      const protectedLabel = protectedToolLabelByKey[key];
+      if (protectedLabel && !guardAuthenticatedToolAccess(protectedLabel, protectedToolNextPathByKey[key])) {
+        return;
+      }
+      const target = getModuleTargetByKey(key);
+      if (!target) {
+        return;
+      }
+      const jumped = jumpToModule(target);
+      if (jumped) {
+        setModuleSearchStatus(`Opened ${target.label}.`);
+      }
+    });
+  });
+
+  if (openCopilotInlineButton instanceof HTMLButtonElement) {
+    openCopilotInlineButton.addEventListener('click', () => {
+      window.dispatchEvent(new CustomEvent('dumbdollars:copilot-open', {
+        detail: {
+          message: 'Copilot opened. Ask what to do next and I will guide you.'
+        }
+      }));
+    });
+  }
+
+  if (sidebarCloseButton instanceof HTMLButtonElement) {
+    sidebarCloseButton.addEventListener('click', () => {
+      closeSidebarMenu();
+    });
+  }
+}
+
+function setupStockForm() {
+  const form = document.getElementById('stock-form');
+  if (!(form instanceof HTMLFormElement)) {
+    return;
+  }
+  const input = document.getElementById('ticker-input');
+  const analyzeButton = document.getElementById('analyze-stock-button');
+  const inlineError = document.getElementById('stock-inline-error');
+  if (!(input instanceof HTMLInputElement) || !(analyzeButton instanceof HTMLButtonElement)) {
+    return;
+  }
+
+  const setAnalyzeLoading = (isLoading) => {
+    analyzeButton.disabled = isLoading;
+    analyzeButton.classList.toggle('is-loading', isLoading);
+    analyzeButton.textContent = isLoading ? 'Analyzing...' : 'Analyze Stock';
+    analyzeButton.setAttribute('aria-busy', String(isLoading));
+  };
+
+  const clearInlineError = () => {
+    if (!inlineError) {
+      return;
+    }
+    inlineError.textContent = '';
+    inlineError.classList.add('hidden');
+  };
+
+  const showInlineError = (message) => {
+    if (!inlineError) {
+      return;
+    }
+    inlineError.textContent = message;
+    inlineError.classList.remove('hidden');
+  };
+
+  const handleAnalyze = async (event) => {
+    if (event) {
+      event.preventDefault();
+    }
+
+    const ticker = (input.value || '').trim().toUpperCase();
+    clearInlineError();
+
+    if (!ticker) {
+      input.classList.remove('ticker-input-shake');
+      void input.offsetWidth;
+      input.classList.add('ticker-input-shake');
+      window.setTimeout(() => input.classList.remove('ticker-input-shake'), 450);
+      showInlineError('Please enter a ticker symbol');
+      renderStatus('Enter a ticker symbol.');
+      return;
+    }
+
+    activeTicker = ticker;
+    renderOutlookLoading();
+    renderStatus(`Analyzing ${activeTicker}...`);
+    setAnalyzeLoading(true);
+
+    // Trigger warm fetch but do not await; stock page fetches its own data from URL params.
+    fetch(`/api/market/stock-analysis?ticker=${encodeURIComponent(activeTicker)}`).catch((error) => {
+      console.warn('Stock prefetch failed before route transition:', error);
+    });
+
+    const destination = `/stock/${encodeURIComponent(activeTicker)}`;
+    window.location.href = destination;
+  };
+
+  form.addEventListener('submit', handleAnalyze);
+  analyzeButton.addEventListener('click', handleAnalyze);
+  input.addEventListener('keydown', (event) => {
+    if (event.key === 'Enter') {
+      event.preventDefault();
+      handleAnalyze(event);
+    }
+  });
+}
+
+function setupScanForm() {
+  const form = document.getElementById('scan-form');
+  if (!(form instanceof HTMLFormElement)) {
+    return;
+  }
+  form.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    const queryEl = document.getElementById('scan-query');
+    const methodEl = document.getElementById('scan-method');
+    const query = (queryEl.value || '').trim();
+    if (!query) {
+      return;
+    }
+    try {
+      await runScanner(query, methodEl.value);
+    } catch (error) {
+      const target = document.getElementById('scan-results');
+      if (error.status === 403) {
+        target.innerHTML = `<div class="pro-lock">${error.message}</div>`;
+        openProPopup(`Pro access needed. ${error.message}`);
+      } else {
+        target.innerHTML = '<div class="pro-lock">Scanner failed. Try again.</div>';
+      }
+    }
+  });
+}
+
+function setupOptionsForm() {
+  const form = document.getElementById('options-form');
+  if (!(form instanceof HTMLFormElement)) {
+    return;
+  }
+  form.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    const values = {
+      symbol: document.getElementById('option-symbol').value.trim().toUpperCase() || activeTicker,
+      spotPrice: document.getElementById('spot-price').value,
+      strikePrice: document.getElementById('strike-price').value,
+      daysToExpiry: document.getElementById('days-to-expiry').value,
+      impliedVolatility: document.getElementById('iv').value,
+      contractType: document.getElementById('contract-type').value
+    };
+    try {
+      await calculateOptions(values);
+    } catch (error) {
+      console.error(error);
+      renderOptionsLocked('Failed to calculate options. Check inputs and retry.');
+      if (error.status === 403) {
+        openProPopup('Pro access needed for the Options Calculator + Gamma Exposure.');
+      }
+    }
+  });
+}
+
+function setupUnusualRefresh() {
+  const button = document.getElementById('refresh-unusual');
+  if (!(button instanceof HTMLButtonElement)) {
+    return;
+  }
+  button.addEventListener('click', async () => {
+    try {
+      await loadUnusualFeed();
+    } catch (error) {
+      console.error(error);
+      renderUnusualLocked('Failed to refresh unusual moves feed.');
+      if (error.status === 403) {
+        openProPopup('Pro access needed for Unusual Moves Feed.');
+      }
+    }
+  });
+}
+
+function setupProPopup() {
+  const backdrop = document.getElementById('pro-popup-backdrop');
+  const popup = document.getElementById('pro-popup');
+  const upgradeBtn = document.getElementById('pro-popup-upgrade');
+  const closeBtn = document.getElementById('pro-popup-close');
+  if (!backdrop || !popup || !closeBtn) {
+    return;
+  }
+
+  closeBtn.addEventListener('click', closeProPopup);
+  if (upgradeBtn) {
+    upgradeBtn.addEventListener('click', () => {
+      closeProPopup();
+      openProPlanScreen();
+    });
+  }
+  backdrop.addEventListener('click', (event) => {
+    if (event.target === backdrop) {
+      closeProPopup();
+    }
+  });
+  document.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape' && proPopupVisible) {
+      closeProPopup();
+    }
+  });
+}
+
+async function init() {
+  setupBrowseToolsMenu();
+  setupTraderModeControls();
+  bindDashboardStatusEvents();
+  const cachedUser = getStoredAuthUserSnapshot();
+  applyAuthStatePatch({
+    token: localStorage.getItem(AUTH_TOKEN_STORAGE_KEY) || '',
+    user: cachedUser,
+    loading: true
+  }, { skipRender: true, skipLog: true, persistToken: false });
+  renderAuthState();
+  setAuthMessage('Checking your session...');
+  const authMessageNode = document.getElementById('auth-message');
+  if (authMessageNode instanceof HTMLElement) {
+    authMessageNode.classList.add('auth-checking');
+  }
+  await handleCheckoutReturn();
+  applySavedEmailToForms();
+  const rememberedEmail = loadPreferredEmail();
+  if (rememberedEmail) {
+    const loginEmail = document.getElementById('login-email');
+    const signupEmail = document.getElementById('signup-email');
+    if (loginEmail instanceof HTMLInputElement) {
+      loginEmail.value = rememberedEmail;
+    }
+    if (signupEmail instanceof HTMLInputElement) {
+      signupEmail.value = rememberedEmail;
+    }
+  }
+  await fetchBillingInfo();
+  setupAuthForms();
+  setupProPopup();
+  setupSidebarMenu();
+  setupQuickActions();
+  setupSidebarDropdowns();
+  setupStartHereRoutingGuard();
+  setupInstantAiLaunchpad();
+  setupQuickAccessHub();
+  setupModuleNavigation();
+  setupEmailAutomationCard();
+  ensureEmailAutomationCardVisibility();
+  setupDashboardOrganization();
+  setupBrokerageApiSection();
+  setupAiSidebar();
+  setupModuleDeepLinks();
+  setupStockForm();
+  setupScanForm();
+  setupOptionsForm();
+  setupUnusualRefresh();
+  flushPendingDisplayNameUpdate();
+
+  try {
+    await fetchCurrentUser();
+    await refreshBaseline();
+    await runScanner(activeTicker, 'llm-sentiment');
+  } catch (error) {
+    console.error(error);
+    renderStatus('Failed to initialize dashboard.');
+  }
+  if (authMessageNode) {
+    authMessageNode.classList.remove('auth-checking');
+  }
+
+  if (earningsRefreshIntervalId) {
+    clearInterval(earningsRefreshIntervalId);
+  }
+  earningsRefreshIntervalId = window.setInterval(() => {
+    loadEarningsBoard().catch((error) => {
+      console.error(error);
+    });
+  }, 90_000);
+
+  startEarningsDayRolloverWatcher();
+
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState !== 'visible') {
+      return;
+    }
+    const currentDateKey = getEtDateKey();
+    if (currentDateKey !== earningsLastEtDateKey) {
+      earningsLastEtDateKey = currentDateKey;
+      loadEarningsBoard().catch((error) => {
+        console.error(error);
+      });
+    }
+  });
+}
+
+init();
