@@ -20,12 +20,20 @@ const {
 const router = express.Router();
 
 const SETUP_STEP_KEYS = Object.freeze([
-  'accountCreated',
-  'settingsSaved',
-  'brokerageReady',
-  'brokerConnected',
-  'botStartedOnce'
+  'setup_step_1_complete',
+  'setup_step_2_complete',
+  'setup_step_3_complete',
+  'setup_step_4_complete',
+  'setup_step_5_complete'
 ]);
+
+const LEGACY_SETUP_STEP_KEY_MAP = Object.freeze({
+  setup_step_1_complete: 'accountCreated',
+  setup_step_2_complete: 'settingsSaved',
+  setup_step_3_complete: 'brokerageReady',
+  setup_step_4_complete: 'brokerConnected',
+  setup_step_5_complete: 'botStartedOnce'
+});
 
 const BOT_CONTROL_STATE = new Map();
 
@@ -300,9 +308,19 @@ function computeMarketStatusSnapshot() {
 function getPersistedSetup(user) {
   const rawSteps = user?.aiTraderSetup?.steps || {};
   return SETUP_STEP_KEYS.reduce((acc, key) => {
-    acc[key] = Boolean(rawSteps[key]);
+    const legacyKey = LEGACY_SETUP_STEP_KEY_MAP[key];
+    acc[key] = Boolean(rawSteps[key] ?? rawSteps[legacyKey]);
     return acc;
   }, {});
+}
+
+function resolveSetupStepKey(stepKeyRaw) {
+  const normalized = String(stepKeyRaw || '').trim();
+  if (SETUP_STEP_KEYS.includes(normalized)) {
+    return normalized;
+  }
+  const fromLegacy = SETUP_STEP_KEYS.find((key) => LEGACY_SETUP_STEP_KEY_MAP[key] === normalized);
+  return fromLegacy || null;
 }
 
 function persistSetup(req, patch = {}) {
@@ -313,17 +331,27 @@ function persistSetup(req, patch = {}) {
   const current = getPersistedSetup(req.user);
   const mergedSteps = {
     ...current,
-    accountCreated: true,
+    setup_step_1_complete: true,
     ...Object.entries(patch).reduce((acc, [key, value]) => {
-      if (SETUP_STEP_KEYS.includes(key)) {
-        acc[key] = Boolean(value);
+      const setupKey = resolveSetupStepKey(key);
+      if (setupKey) {
+        acc[setupKey] = Boolean(value);
       }
       return acc;
     }, {})
   };
   const completed = SETUP_STEP_KEYS.every((key) => mergedSteps[key]);
+  const storageSteps = SETUP_STEP_KEYS.reduce((acc, key) => {
+    const value = Boolean(mergedSteps[key]);
+    acc[key] = value;
+    const legacyKey = LEGACY_SETUP_STEP_KEY_MAP[key];
+    if (legacyKey) {
+      acc[legacyKey] = value;
+    }
+    return acc;
+  }, {});
   const updated = setUserAiTraderSetupById(userId, {
-    steps: mergedSteps,
+    steps: storageSteps,
     completed,
     completedAt: completed ? new Date().toISOString() : null
   });
@@ -339,15 +367,15 @@ function deriveSetupGuide(req, status) {
     status?.lastCycle
     || (Array.isArray(status?.cycleHistory) && status.cycleHistory.length > 0)
   );
-  const brokerConnected = Boolean(status?.execution?.brokerConnection?.isConnected) || persisted.brokerConnected;
-  const settingsSaved = Boolean(persisted.settingsSaved);
-  const botStartedOnce = Boolean(status?.isActive || hasCycle || persisted.botStartedOnce);
+  const brokerConnected = Boolean(status?.execution?.brokerConnection?.isConnected) || persisted.setup_step_4_complete;
+  const settingsSaved = Boolean(persisted.setup_step_2_complete);
+  const botStartedOnce = Boolean(status?.isActive || hasCycle || persisted.setup_step_5_complete);
   const steps = {
-    accountCreated: true,
-    settingsSaved,
-    brokerageReady: brokerConnected || persisted.brokerageReady,
-    brokerConnected,
-    botStartedOnce
+    setup_step_1_complete: true,
+    setup_step_2_complete: settingsSaved,
+    setup_step_3_complete: brokerConnected || persisted.setup_step_3_complete,
+    setup_step_4_complete: brokerConnected,
+    setup_step_5_complete: botStartedOnce
   };
   const completedCount = SETUP_STEP_KEYS.filter((key) => steps[key]).length;
   const currentStepIndex = SETUP_STEP_KEYS.findIndex((key) => !steps[key]);
@@ -565,6 +593,24 @@ router.get('/market-status', requireSignedIn, (_req, res) => {
   return res.json({
     market: marketSnapshot,
     holidays: [...NYSE_HOLIDAYS_2026]
+  });
+});
+
+router.post('/setup-progress', requireSignedIn, (req, res) => {
+  const stepKey = resolveSetupStepKey(req.body?.stepKey || req.body?.step || req.body?.key);
+  if (!stepKey) {
+    return res.status(400).json({
+      error: 'invalid_step',
+      message: 'Invalid setup step key.'
+    });
+  }
+  const complete = Boolean(req.body?.complete ?? req.body?.value ?? true);
+  persistSetup(req, { [stepKey]: complete });
+  const refreshed = loadStatusAndAccount(req);
+  return res.json({
+    ok: true,
+    setup: getPersistedSetup(req.user),
+    ...buildStatusPayload(req, refreshed.status, refreshed.accountView)
   });
 });
 
@@ -817,7 +863,7 @@ router.post('/start', requireSignedIn, (req, res) => {
   try {
     const { status } = loadStatusAndAccount(req);
     const setupSteps = getPersistedSetup(req.user);
-    if (!status?.configured || !setupSteps.settingsSaved) {
+    if (!status?.configured || !setupSteps.setup_step_2_complete) {
       return res.status(400).json({
         error: 'settings_required',
         message: 'Save your bot settings first.'
@@ -838,10 +884,10 @@ router.post('/start', requireSignedIn, (req, res) => {
     setBotActive(req.user, true);
     setControlState(req, 'running');
     persistSetup(req, {
-      settingsSaved: true,
-      brokerageReady: true,
-      brokerConnected: true,
-      botStartedOnce: true
+      setup_step_2_complete: true,
+      setup_step_3_complete: true,
+      setup_step_4_complete: true,
+      setup_step_5_complete: true
     });
     try {
       const cycle = runAutoTraderCycle(req.user);
@@ -916,9 +962,9 @@ function saveSettingsInternal(req) {
   const refreshed = loadStatusAndAccount(req);
   const brokerConnected = Boolean(refreshed.status?.execution?.brokerConnection?.isConnected);
   persistSetup(req, {
-    settingsSaved: true,
-    brokerageReady: brokerConnected,
-    brokerConnected
+    setup_step_2_complete: true,
+    setup_step_3_complete: brokerConnected,
+    setup_step_4_complete: brokerConnected
   });
   return refreshed;
 }

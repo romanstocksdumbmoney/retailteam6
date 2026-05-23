@@ -39,12 +39,19 @@ const DISPOSABLE_EMAIL_DOMAINS = new Set([
 const ALLOWED_TRADER_MODES = new Set(['scalper', 'day', 'swing', 'long']);
 const DEFAULT_TRADER_MODE = 'day';
 const AI_TRADER_SETUP_STEP_KEYS = Object.freeze([
-  'accountCreated',
-  'settingsSaved',
-  'brokerageReady',
-  'brokerConnected',
-  'botStartedOnce'
+  'setup_step_1_complete',
+  'setup_step_2_complete',
+  'setup_step_3_complete',
+  'setup_step_4_complete',
+  'setup_step_5_complete'
 ]);
+const AI_TRADER_SETUP_LEGACY_KEY_MAP = Object.freeze({
+  setup_step_1_complete: 'accountCreated',
+  setup_step_2_complete: 'settingsSaved',
+  setup_step_3_complete: 'brokerageReady',
+  setup_step_4_complete: 'brokerConnected',
+  setup_step_5_complete: 'botStartedOnce'
+});
 
 function normalizeEmail(email) {
   return String(email || '')
@@ -85,11 +92,11 @@ function defaultAiTraderSetup() {
   const now = nowIso();
   return {
     steps: {
-      accountCreated: false,
-      settingsSaved: false,
-      brokerageReady: false,
-      brokerConnected: false,
-      botStartedOnce: false
+      setup_step_1_complete: false,
+      setup_step_2_complete: false,
+      setup_step_3_complete: false,
+      setup_step_4_complete: false,
+      setup_step_5_complete: false
     },
     completed: false,
     completedAt: null,
@@ -102,7 +109,8 @@ function normalizeAiTraderSetup(rawSetup) {
   const source = rawSetup && typeof rawSetup === 'object' ? rawSetup : {};
   const sourceSteps = source.steps && typeof source.steps === 'object' ? source.steps : {};
   const steps = AI_TRADER_SETUP_STEP_KEYS.reduce((acc, key) => {
-    acc[key] = Boolean(sourceSteps[key]);
+    const legacyKey = AI_TRADER_SETUP_LEGACY_KEY_MAP[key];
+    acc[key] = Boolean(sourceSteps[key] ?? sourceSteps[legacyKey]);
     return acc;
   }, {});
   const completed = AI_TRADER_SETUP_STEP_KEYS.every((key) => steps[key]);
