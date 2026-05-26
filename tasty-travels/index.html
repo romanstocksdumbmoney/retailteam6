@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>Tasty Travels</title>
+  <link rel="stylesheet" href="./styles.css" />
+</head>
+<body>
+  <main id="app">
+    <div id="game-shell">
+      <canvas id="game-canvas" aria-label="Tasty Travels game board"></canvas>
+
+      <div class="curtain curtain-left"></div>
+      <div class="curtain curtain-right"></div>
+
+      <div id="hud-layer">
+        <section id="coins-panel" class="glass-panel">
+          <span class="icon">⭐</span>
+          <span id="coin-count">0</span>
+        </section>
+
+        <section id="order-panel" class="glass-panel">
+          <div class="clothesline">
+            <span class="pin pin-left"></span>
+            <span class="pin pin-right"></span>
+          </div>
+          <div class="order-header">To-Go Order</div>
+          <div id="order-content">
+            <span id="order-sprite">🍹</span>
+            <div>
+              <div id="order-name">Tropical Pitcher</div>
+              <div id="order-reward">+100 coins</div>
+            </div>
+          </div>
+        </section>
+
+        <section id="next-panel" class="glass-panel">
+          <div class="panel-title">Next</div>
+          <div id="next-preview">🧋</div>
+          <button id="open-store-btn" type="button">Open Store</button>
+        </section>
+
+        <section id="logo-panel">Tasty Travels</section>
+
+        <button id="settings-btn" type="button" aria-label="Settings and save">
+          ⚙️
+        </button>
+
+        <section id="collection-panel" class="glass-panel">
+          <div class="panel-title">Collection</div>
+          <div id="collection-row" aria-label="Tier collection progress"></div>
+        </section>
+
+        <div id="floating-text-layer"></div>
+      </div>
+
+      <div id="game-over-overlay" class="hidden">
+        <div class="game-over-card">
+          <h2>Table Overflow!</h2>
+          <p>Drinks reached the danger line.</p>
+          <button id="restart-btn" type="button">Play Again</button>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <script src="https://cdn.jsdelivr.net/npm/matter-js@0.20.0/build/matter.min.js"></script>
+  <script src="./drinks.js"></script>
+  <script src="./ui.js"></script>
+  <script src="./audio.js"></script>
+  <script src="./game.js"></script>
+</body>
+</html>

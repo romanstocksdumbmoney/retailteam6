@@ -1,14 +1,9 @@
-# Setup Instructions
+# Repository Notes
 
-## Prerequisites
-- List prerequisite software
+This repository now includes a playable browser prototype for **Tasty Travels** in:
 
-## Installation
-1. Steps to install
-2. Configuration steps
+- `tasty-travels/`
 
-## Usage
-- How to use the application
+For setup, controls, and tuning details, see:
 
-## Troubleshooting
-- Common issues and resolutions
+- `tasty-travels/README.md`
